@@ -205,6 +205,8 @@ S4A21 适配代码不得依赖其整合包使用的数据库类型，也不得�
 `ENTER_SELECT_DUNGEON`、`SELECT_DUNGEON`、`CHANGE_TUTORIAL_FLAG` 和
 `FINISH_LOADING` 原语及单元测试；适配层还增加了仅供内部使用的 run phase/generation 状态和已验证回包转换。上述内容尚未接入 `Session.MoveDungeon`、调度器或 Web。正式接入前仍需补齐失败、超时、回城和 Session drain 协调。
 
+Session drain 协调的第一步已完成：S4A21 session 现在提供私有、可替换且可安全清理的 packet observer，单元测试覆盖真实 drain 转发和旧 observer cleanup；它仍不向共享层暴露原始封包，也不自动推进地下城能力。
+
 ## 验证要求
 
 每阶段至少运行相关 Go 测试和 `git diff --check`。后端必须通过统一的契约测试；S4A21 额外验证不得导入数据库驱动、不得访问服务端数据库文件。环境切换测试需覆盖停止旧会话、重建 runtime、能力刷新和失败回滚/保留诊断信息。
