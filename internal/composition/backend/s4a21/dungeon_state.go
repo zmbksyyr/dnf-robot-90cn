@@ -63,20 +63,6 @@ func (s *dungeonRunState) BeginEntry() error {
 	return nil
 }
 
-func (s *dungeonRunState) AcceptSelectDungeonAck(body []byte) error {
-	if s == nil {
-		return fmt.Errorf("S4A21 dungeon state is nil")
-	}
-	if s.phase != dungeonPhaseSelection {
-		return fmt.Errorf("S4A21 SELECT_DUNGEON ACK requires selection phase")
-	}
-	if len(body) != 1 || body[0] != 1 {
-		return fmt.Errorf("S4A21 SELECT_DUNGEON ACK rejected")
-	}
-	s.phase = dungeonPhaseEntry
-	return nil
-}
-
 func (s *dungeonRunState) AcceptStartMap(body []byte) error {
 	if s == nil {
 		return fmt.Errorf("S4A21 dungeon state is nil")
@@ -102,11 +88,6 @@ func (s *dungeonRunState) AcceptFinishLoading(body []byte) error {
 
 func (s *dungeonRunState) AcceptPacket(packet protocol.Packet) error {
 	switch packet.Type {
-	case protocol.CmdSelectDungeon:
-		if packet.Command != 1 {
-			return fmt.Errorf("S4A21 SELECT_DUNGEON packet is not a response")
-		}
-		return s.AcceptSelectDungeonAck(packet.Body)
 	case 0x001D: // NOTI START_MAP
 		if packet.Command != 0 {
 			return fmt.Errorf("S4A21 START_MAP packet is not a notification")
