@@ -161,6 +161,15 @@ func runMain() int {
 			dnf.PrintfRed("robot manager shutdown error: %v\n", err)
 		}
 	}()
+	transportBundle, err := composeBackendTransports(backendInfo, cfg)
+	if err != nil {
+		dnf.LogString(fmt.Sprintf("BACKEND_TRANSPORT_COMPOSE_FAILED backend=%s err=%v\n", backendInfo.ID, err))
+		dnf.PrintfRed("backend transport compose failed: %v\n", err)
+		return 1
+	}
+	defer transportBundle.close()
+	manager.SetBackendActionTransport(transportBundle.actions)
+	manager.SetBackendSessionTransport(transportBundle.sessions)
 	townMaps, err := loadBackendTownMapCatalog(context.Background(), backendInfo, cfg)
 	if err != nil {
 		dnf.LogString(fmt.Sprintf("BACKEND_TOWN_MAP_CATALOG_FAILED backend=%s err=%v\n", backendInfo.ID, err))
