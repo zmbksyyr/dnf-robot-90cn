@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -23,7 +24,8 @@ func TestLiveRobotCreatorThroughProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := robotstate.OpenFileStore(filepath.Join(t.TempDir(), "robot_state.json"))
+	storePath := filepath.Join(t.TempDir(), "robot_state.json")
+	store, err := robotstate.OpenFileStore(storePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,15 +40,31 @@ func TestLiveRobotCreatorThroughProtocol(t *testing.T) {
 		},
 		Names: robottemplate.NameTemplates{}, Maps: maps, AccountPrefix: prefix, IDStart: 19000000,
 	}
-	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 2})
+	count := 2
+	if raw := os.Getenv("S4A21_TEST_COUNT"); raw != "" {
+		parsed, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || parsed <= 0 || parsed > 1000 {
+			t.Fatalf("invalid S4A21_TEST_COUNT=%q", raw)
+		}
+		count = parsed
+	}
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: count})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(robots) != 2 {
-		t.Fatalf("created %d robots, want 2", len(robots))
+	if len(robots) != count {
+		t.Fatalf("created %d robots, want %d", len(robots), count)
 	}
-	selected, err := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 2})
-	if err != nil || len(selected) != 2 {
+	selected, err := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: count})
+	if err != nil || len(selected) != count {
 		t.Fatalf("selected=%+v err=%v", selected, err)
+	}
+	reloaded, err := robotstate.OpenFileStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err = reloaded.SelectRobots(context.Background(), robotcap.CommandRequest{Count: count})
+	if err != nil || len(selected) != count {
+		t.Fatalf("reloaded selected=%+v err=%v", selected, err)
 	}
 }
