@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"robot/internal/protocol/nocache"
 	"robot/internal/scheduler"
 	schedulerrepo "robot/internal/scheduler/repository"
+	"robot/internal/shared"
 )
 
 func main() {
@@ -75,6 +77,16 @@ func runMain() int {
 		fmt.Fprintf(os.Stderr, "create config dir error: %v\n", err)
 		return 1
 	}
+	backendSelection, err := loadBackendSelection(paths.BackendSelection())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load backend selection error: %v\n", err)
+		return 1
+	}
+	backendInfo, err := shared.SelectBackend(backendSelection.BackendID, runtime.GOOS)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
+		return 1
+	}
 	dnf.ConfigureLogRotation(cfg.LogMaxSizeMB, cfg.LogMaxBackups)
 	if err := dnf.LogInit(paths.RobotLog()); err != nil {
 		fmt.Fprintf(os.Stderr, "init log error: %v\n", err)
@@ -88,6 +100,7 @@ func runMain() int {
 		dnf.LogClose()
 	}()
 	dnf.LogString(fmt.Sprintf("ROBOT_CONFIG path=%s config_dir=%s\n", configPath, cfg.ConfigDir))
+	dnf.LogString(fmt.Sprintf("BACKEND_SELECTED id=%s generation=%d selected_at=%s capabilities=%d\n", backendInfo.ID, backendSelection.ConfigGeneration, backendSelection.SelectedAt.UTC().Format(time.RFC3339), len(backendInfo.Capabilities)))
 	dnf.LogString(fmt.Sprintf("NETWORK_CONFIG game=%s:%d setting=%s login_ip=%s relay=%s:%d auction=%s:%d point=%s:%d service_root=%s run_script=%s\n",
 		cfg.RobotConnectIP, cfg.RobotGamePort, cfg.RobotConnectIPSetting, cfg.RobotInnerIP,
 		cfg.RelayHost, cfg.RelayPort, cfg.AuctionHost, cfg.AuctionPort, cfg.PointHost, cfg.PointPort, cfg.ServiceRoot, cfg.ServiceRunScript))
@@ -217,6 +230,17 @@ func runMain() int {
 
 	logRobotActionf("robot stopping...\n")
 	return 0
+}
+
+func loadBackendSelection(path string) (shared.BackendSelection, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return shared.BackendSelection{BackendID: shared.BackendNative}, nil
+	}
+	if err != nil {
+		return shared.BackendSelection{}, err
+	}
+	return shared.DecodeBackendSelection(data)
 }
 
 func runWebAdmin(robotAddr, webAddr string, configFromStdin bool) error {

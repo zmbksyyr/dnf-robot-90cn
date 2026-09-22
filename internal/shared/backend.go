@@ -1,8 +1,10 @@
 package shared
 
 import (
+	"encoding/json"
 	"fmt"
 	"runtime"
+	"time"
 )
 
 type BackendID string
@@ -32,6 +34,26 @@ type BackendInfo struct {
 	DisplayName  string                                 `json:"display_name"`
 	SupportedOS  []string                               `json:"supported_os"`
 	Capabilities map[BackendCapability]CapabilityStatus `json:"capabilities"`
+}
+
+type BackendSelection struct {
+	BackendID        BackendID `json:"backend_id"`
+	ConfigGeneration uint64    `json:"config_generation"`
+	SelectedAt       time.Time `json:"selected_at"`
+}
+
+func DecodeBackendSelection(data []byte) (BackendSelection, error) {
+	selection := BackendSelection{BackendID: BackendNative}
+	if len(data) == 0 {
+		return selection, nil
+	}
+	if err := json.Unmarshal(data, &selection); err != nil {
+		return BackendSelection{}, fmt.Errorf("invalid backend selection: %w", err)
+	}
+	if selection.BackendID == "" {
+		return BackendSelection{}, fmt.Errorf("backend selection has empty backend_id")
+	}
+	return selection, nil
 }
 
 // KnownBackends is the explicit catalog exposed to composition and entry

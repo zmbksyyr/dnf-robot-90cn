@@ -15,11 +15,7 @@ import (
 	"robot/internal/shared"
 )
 
-type backendSelectionState struct {
-	BackendID        shared.BackendID `json:"backend_id"`
-	ConfigGeneration uint64           `json:"config_generation"`
-	SelectedAt       time.Time        `json:"selected_at"`
-}
+type backendSelectionState = shared.BackendSelection
 
 type backendSelectionPayload struct {
 	OK                 bool                 `json:"ok"`
@@ -96,13 +92,11 @@ func (s *Server) readBackendSelectionLocked() (backendSelectionState, bool, erro
 	if err != nil {
 		return defaultState, false, err
 	}
-	if err := json.Unmarshal(data, &defaultState); err != nil {
-		return defaultState, true, fmt.Errorf("invalid backend selection: %w", err)
+	selection, err := shared.DecodeBackendSelection(data)
+	if err != nil {
+		return defaultState, true, err
 	}
-	if defaultState.BackendID == "" {
-		return defaultState, true, fmt.Errorf("backend selection has empty backend_id")
-	}
-	return defaultState, true, nil
+	return selection, true, nil
 }
 
 func (s *Server) writeBackendSelectionLocked(state backendSelectionState) error {
