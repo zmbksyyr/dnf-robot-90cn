@@ -89,6 +89,39 @@ feeds those events into quest progress; a client-side `SET_TRIGGER` is not a
 substitute for combat. This is another reason to keep dungeon combat and
 settlement outside the current shared capability surface.
 
+## NPC/task interaction boundary
+
+The S4A21 server source does not register a generic "talk to NPC" command in
+the quest command dispatcher. The ordinary quest command path contains only
+`ACCEPT_QUEST`, `GIVEUP_QUEST`, `SET_QUEST_TRIGGER`, and `FINISH_QUEST` (plus
+notification/save helpers). Completion validation then checks the active quest
+and its trigger value; it does not infer an NPC conversation from an arbitrary
+packet.
+
+There is one separate command, `IMAGE_COMMUNICATION_EQUIPMENT_USE` (`0x01DC`),
+whose empty body is accepted by the parser. Its server implementation only
+looks for a configured active `meet npc` quest and returns an NPC index in an
+acknowledgement. It is an item/equipment-specific feature, not a general NPC
+dialogue protocol, and must not be used as a generic quest-progress shortcut.
+
+The server's `QuestClientTriggerAuthority` is the stronger boundary for future
+probes:
+
+- `meet npc` permits client trigger mutation, subject to the normal supported
+  trigger-type check;
+- `seek n meet npc` has a distinct `0x20` mutation channel and recomputation for
+  other trigger types;
+- `seeking` recomputes from the server-observed inventory;
+- server-owned `hunt monster` and `hunt enemy` objectives are echo-only from the
+  client and advance from authoritative dungeon events.
+
+Therefore a future NPC/task experiment may send only a trigger that has been
+observed in a normal client flow for the advertised active quest. It must not
+guess an NPC packet, decrement every task, or treat the special image
+communication command as a universal interaction. Until a complete legal
+capture proves the required trigger and acknowledgement sequence, the adapter
+keeps task automation and dungeon capabilities out of the shared scheduler.
+
 ## Follow-up completion evidence
 
 A second disposable character accepted the same advertised quest, sent
