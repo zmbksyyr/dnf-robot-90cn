@@ -51,12 +51,17 @@ type ProvisionCharacterRequest struct {
 	PasswordHash  string
 	CharacterName string
 	Job           int
+	// RobotUID is robot-owned metadata and is not serialized into a backend
+	// protocol packet. It keeps a successful protocol result linked to the
+	// scheduler's local robot record.
+	RobotUID int
 }
 
 type ProvisionCharacterResult struct {
 	Backend       BackendID
 	CharacterName string
 	Created       bool
+	RobotUID      int
 	// BackendSlot is meaningful for backends whose roster is slot-based.
 	// UID/CID remain unset when the backend does not expose native IDs.
 	BackendSlot *uint16

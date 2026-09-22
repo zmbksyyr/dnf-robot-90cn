@@ -9,7 +9,9 @@ import (
 	"time"
 
 	runtimeinit "robot/internal/bootstrap/runtime"
+	"robot/internal/capability/catalog"
 	"robot/internal/capability/robotconfig"
+	s4a21backend "robot/internal/composition/backend/s4a21"
 	"robot/internal/entry/tcpapi"
 	"robot/internal/entry/webadmin"
 	"robot/internal/foundation/config"
@@ -60,6 +62,12 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 	manager.SetBackendActionTransport(transports.actions)
 	manager.SetBackendSessionTransport(transports.sessions)
 	manager.SetTownMapCatalog(townMaps)
+	nameTemplates := catalog.NameTemplates(paths.Templates)
+	manager.SetBackendRobotCreator(info.ID, s4a21backend.RobotCreator{
+		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
+		BatchStore:  state, IdentityStore: state, Config: rc, Names: nameTemplates, Maps: townMaps,
+		AccountPrefix: "robot", IDStart: rc.RobotUIDStart,
+	})
 	defer func() {
 		if err := manager.Shutdown(); err != nil {
 			foundationlog.Robotf("SIMULATOR_MANAGER_SHUTDOWN_FAILED err=%v\n", err)
