@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"robot/internal/foundation/layout"
@@ -123,5 +124,57 @@ func TestPrepareBackendRuntimeDoesNotCarrySimulatorStateIntoNative(t *testing.T)
 	}
 	if got, err := os.ReadFile(paths.MainConfig()); err != nil || string(got) != "system-config" {
 		t.Fatalf("system config got=%q err=%v", got, err)
+	}
+}
+
+func TestPrepareBackendRuntimeRetriesUntilAppliedMarkerIsWritten(t *testing.T) {
+	root := t.TempDir()
+	paths := layout.New(root)
+	if err := paths.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.RobotConfig(), []byte("old-config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	previous := shared.BackendSelection{BackendID: shared.BackendNative, ConfigGeneration: 1}
+	previousData, err := json.Marshal(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.BackendRuntime(), previousData, 0600); err != nil {
+		t.Fatal(err)
+	}
+	target := shared.BackendSelection{BackendID: shared.BackendS4A21, ConfigGeneration: 2}
+
+	changed, err := PrepareBackendRuntime(paths, target)
+	if err != nil || !changed {
+		t.Fatalf("first preparation changed=%v err=%v", changed, err)
+	}
+	if _, err := os.Stat(paths.RobotConfig()); !os.IsNotExist(err) {
+		t.Fatalf("old robot config unexpectedly survived first preparation: %v", err)
+	}
+	changed, err = PrepareBackendRuntime(paths, target)
+	if err != nil || !changed {
+		t.Fatalf("second preparation changed=%v err=%v", changed, err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	backups := 0
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), backendBackupPrefix) {
+			backups++
+		}
+	}
+	if backups < 2 {
+		t.Fatalf("retry did not create a fresh diagnostic backup, got %d", backups)
+	}
+	if err := MarkBackendRuntimeApplied(paths, target); err != nil {
+		t.Fatal(err)
+	}
+	changed, err = PrepareBackendRuntime(paths, target)
+	if err != nil || changed {
+		t.Fatalf("applied marker did not stop repeated preparation, changed=%v err=%v", changed, err)
 	}
 }
