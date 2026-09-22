@@ -2,6 +2,7 @@ package s4a21
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 
@@ -13,11 +14,31 @@ import (
 // Session creation and lifecycle remain outside this adapter.
 type ActionTransport struct {
 	mu       lockhub.RWLocker
+	factory  shared.SessionFactory
 	sessions map[int]shared.RobotSession
 }
 
-func NewActionTransport() *ActionTransport {
-	return &ActionTransport{sessions: make(map[int]shared.RobotSession)}
+func NewActionTransport(factory ...shared.SessionFactory) *ActionTransport {
+	var sessionFactory shared.SessionFactory
+	if len(factory) > 0 {
+		sessionFactory = factory[0]
+	}
+	return &ActionTransport{factory: sessionFactory, sessions: make(map[int]shared.RobotSession)}
+}
+
+func (t *ActionTransport) Open(ctx context.Context, uid int, request shared.OpenSessionRequest) error {
+	if t == nil || t.factory == nil {
+		return fmt.Errorf("S4A21 session factory is not configured")
+	}
+	session, err := t.factory.OpenSession(ctx, request)
+	if err != nil {
+		return err
+	}
+	if err := t.Attach(uid, session); err != nil {
+		_ = session.Close()
+		return err
+	}
+	return nil
 }
 
 func (t *ActionTransport) Attach(uid int, session shared.RobotSession) error {
@@ -40,6 +61,40 @@ func (t *ActionTransport) Detach(uid int) {
 	t.mu.Lock()
 	delete(t.sessions, uid)
 	t.mu.Unlock()
+}
+
+func (t *ActionTransport) Close(uid int) error {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	session := t.sessions[uid]
+	delete(t.sessions, uid)
+	t.mu.Unlock()
+	if session == nil {
+		return nil
+	}
+	return session.Close()
+}
+
+func (t *ActionTransport) CloseAll() error {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	sessions := make([]shared.RobotSession, 0, len(t.sessions))
+	for uid, session := range t.sessions {
+		delete(t.sessions, uid)
+		sessions = append(sessions, session)
+	}
+	t.mu.Unlock()
+	var closeErr error
+	for _, session := range sessions {
+		if err := session.Close(); err != nil {
+			closeErr = errors.Join(closeErr, err)
+		}
+	}
+	return closeErr
 }
 
 func (t *ActionTransport) session(uid int) (shared.RobotSession, error) {

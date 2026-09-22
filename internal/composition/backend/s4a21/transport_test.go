@@ -8,8 +8,9 @@ import (
 )
 
 type actionTestSession struct {
-	town  shared.TownMoveIntent
-	shout shared.ShoutIntent
+	town   shared.TownMoveIntent
+	shout  shared.ShoutIntent
+	closed bool
 }
 
 func (s *actionTestSession) MoveTown(_ context.Context, intent shared.TownMoveIntent) error {
@@ -21,7 +22,13 @@ func (s *actionTestSession) Shout(_ context.Context, intent shared.ShoutIntent) 
 	s.shout = intent
 	return nil
 }
-func (s *actionTestSession) Close() error { return nil }
+func (s *actionTestSession) Close() error { s.closed = true; return nil }
+
+type actionTestFactory struct{ session *actionTestSession }
+
+func (f actionTestFactory) OpenSession(context.Context, shared.OpenSessionRequest) (shared.RobotSession, error) {
+	return f.session, nil
+}
 
 func TestActionTransportMapsVerifiedTownActions(t *testing.T) {
 	session := &actionTestSession{}
@@ -53,5 +60,16 @@ func TestActionTransportRejectsMissingSessionAndPositionOverflow(t *testing.T) {
 	}
 	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: 9, X: 100000}); err == nil {
 		t.Fatal("overflow position unexpectedly succeeded")
+	}
+}
+
+func TestActionTransportOwnsSessionLifecycle(t *testing.T) {
+	session := &actionTestSession{}
+	transport := NewActionTransport(actionTestFactory{session: session})
+	if err := transport.Open(context.Background(), 7, shared.OpenSessionRequest{AccountName: "acct", CharacterSlot: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := transport.Close(7); err != nil || !session.closed {
+		t.Fatalf("close err=%v closed=%v", err, session.closed)
 	}
 }
