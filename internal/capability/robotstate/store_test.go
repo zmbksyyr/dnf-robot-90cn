@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	robotcap "robot/internal/capability/robot"
+	"robot/internal/shared"
 )
 
 func TestMemoryStoreUpdatesDirectoryAndLocations(t *testing.T) {
@@ -36,5 +37,21 @@ func TestMemoryStoreHonorsCanceledContext(t *testing.T) {
 	_, err := NewMemoryStore(nil).SelectRobots(ctx, robotcap.CommandRequest{})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestMemoryStoreRegistersBackendNeutralIdentity(t *testing.T) {
+	store := NewMemoryStore(nil)
+	slot := uint16(4)
+	identity := Identity{Backend: shared.BackendS4A21, Account: "acct", CharacterName: "robot", Slot: &slot}
+	if err := store.RegisterIdentity(context.Background(), identity); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterIdentity(context.Background(), identity); !errors.Is(err, ErrDuplicateIdentity) {
+		t.Fatalf("duplicate error = %v", err)
+	}
+	identities, err := store.Identities(context.Background(), shared.BackendS4A21)
+	if err != nil || len(identities) != 1 || identities[0].Slot == nil || *identities[0].Slot != slot {
+		t.Fatalf("identities = %+v, err=%v", identities, err)
 	}
 }
