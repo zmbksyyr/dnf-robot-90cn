@@ -53,9 +53,28 @@ func (m *RobotManager) RobotsStatus(req robotcap.CommandRequest) (RobotStatusRes
 	actors := m.actorStatusMap()
 	cleanupPending := m.cleanupPendingSet()
 	villageNames := mapCatalogVillageNames(m.loadMapCatalog())
-	items, total, err := m.schemaRepo().RobotStatusRows(req)
-	if err != nil {
-		return RobotStatusResult{}, err
+	var items []robotcap.StatusItem
+	var total int
+	if m.robotState != nil {
+		robots, err := m.selectRobots(req)
+		if err != nil {
+			return RobotStatusResult{}, err
+		}
+		items = make([]robotcap.StatusItem, 0, len(robots))
+		for _, robot := range robots {
+			items = append(items, robotcap.StatusItem{
+				UID: robot.UID, CID: robot.CID, Name: robot.Name, Level: robot.Level,
+				Job: robot.Job, Grow: robot.Grow, Village: robot.Village, Area: robot.Area,
+				X: robot.X, Y: robot.Y, DBState: robotcap.DBStateExists,
+			})
+		}
+		total = len(items)
+	} else {
+		var err error
+		items, total, err = m.schemaRepo().RobotStatusRows(req)
+		if err != nil {
+			return RobotStatusResult{}, err
+		}
 	}
 
 	out := RobotStatusResult{UpdatedAt: time.Now()}
