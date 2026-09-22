@@ -215,6 +215,8 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 
 任务协议探针确认：`ACCEPT_QUEST (0x001F)` 的请求体在服务端去除前 2 字节 echo 后，至少包含一个 little-endian `uint16 questId`；成功或失败都会返回同 opcode 的 ACK。登录/选角阶段的 `NOTI 0x0015 ACCEPTABLE_QUEST_LIST` body 以角色等级开头，随后是 `uint16` 数量和对应 quest ID 列表。对新建 1 级枪手直接请求故事任务 1844，服务端返回限制错误并记录 `character restrictions`，因此后续只能从服务端实际下发的可接受列表选择任务，不能猜测或伪造任务状态。
 
+已将上述 `ACCEPTABLE_QUEST_LIST` 格式收敛为 S4A21 协议层的纯解析器并加入边界测试；它目前不改变 Session、调度器或 Web 行为，也不代表任务自动化能力已经开放。
+
 随后已实现并真实回归私有 `enterSingleDungeon`：普通/教程分支均只覆盖入口、首图 `START_MAP` 和 `FINISH_LOADING`，教程状态由调用方显式传入，不做猜测。该方法尚未接入 `RobotSession`、调度器或 Web；组队、战斗、结算、回城和 rejoin 仍是后续独立阶段。
 
 在此基础上已增加私有 `moveSingleDungeon`，真实验证了 64 字节 `MOVE_MAP`、第二个 `START_MAP` 和第二次 `FINISH_LOADING`。房间坐标采用 pending 提交语义，只有加载释放成功才更新当前房间；发送失败或超时不会伪造移动成功。该方法同样尚未接入共享能力。
