@@ -203,7 +203,7 @@ S4A21 适配代码不得依赖其整合包使用的数据库类型，也不得�
 
 阶段 7.1 的前置工作已开始：S4A21 协议层已加入经过真实探针验证的
 `ENTER_SELECT_DUNGEON`、`SELECT_DUNGEON`、`CHANGE_TUTORIAL_FLAG` 和
-`FINISH_LOADING` 原语及单元测试，但这些原语尚未接入 `Session.MoveDungeon`、调度器或 Web。正式接入前仍需定义单角色 run/loading 状态边界，并补齐失败、超时和回城处理。
+`FINISH_LOADING` 原语及单元测试；适配层还增加了仅供内部使用的 run phase/generation 状态和已验证回包转换。上述内容尚未接入 `Session.MoveDungeon`、调度器或 Web。正式接入前仍需补齐失败、超时、回城和 Session drain 协调。
 
 ## 验证要求
 
