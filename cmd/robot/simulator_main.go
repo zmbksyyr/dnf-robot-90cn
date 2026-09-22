@@ -55,6 +55,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 	}
 	manager := scheduler.NewRobotManager(nil, cfg, nil)
 	manager.SetNativeKeypairRequired(false)
+	manager.SetBackendRobotCreator(info.ID, nil)
 	manager.SetRobotStateDirectory(state)
 	manager.SetBackendActionTransport(transports.actions)
 	manager.SetBackendSessionTransport(transports.sessions)

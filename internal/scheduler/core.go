@@ -31,6 +31,8 @@ type RobotManager struct {
 	nativeKeypairRequired           bool
 	backendActions                  BackendActionTransport
 	backendSessions                 BackendSessionTransport
+	backendRobotCreator             BackendRobotCreator
+	backendRobotBackend             shared.BackendID
 	worldShout                      WorldShout
 	locks                           *lockhub.Hub
 	startedAt                       time.Time
@@ -129,6 +131,17 @@ type BackendActionTransport interface {
 type BackendSessionTransport interface {
 	Open(context.Context, int, shared.OpenSessionRequest) error
 	Close(int) error
+}
+
+type BackendRobotCreator interface {
+	CreateRobots(context.Context, robotcap.CreateRequest) ([]robotcap.Info, error)
+}
+
+func (m *RobotManager) SetBackendRobotCreator(backend shared.BackendID, creator BackendRobotCreator) {
+	if m != nil {
+		m.backendRobotBackend = backend
+		m.backendRobotCreator = creator
+	}
 }
 
 func (m *RobotManager) SetBackendSessionTransport(transport BackendSessionTransport) {

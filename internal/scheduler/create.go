@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	"robot/internal/capability/catalog"
 	equipcap "robot/internal/capability/equipment"
@@ -29,6 +30,15 @@ func (m *RobotManager) CreateRobots(req robotcap.CreateRequest) ([]robotcap.Info
 	defer func() {
 		finishOperation(fmt.Sprintf("created=%d", len(robots)), opErr)
 	}()
+	if m.backendRobotBackend != "" && m.backendRobotBackend != shared.BackendNative {
+		if m.backendRobotCreator == nil {
+			opErr = shared.UnsupportedCapabilityError{Backend: m.backendRobotBackend, Operation: shared.CapabilityProvision, Reason: "backend robot creator is not configured"}
+			return nil, opErr
+		}
+		robots, err = m.backendRobotCreator.CreateRobots(context.Background(), req)
+		opErr = err
+		return robots, err
+	}
 	robots, err = m.lifecycleCreator().Create(req)
 	opErr = err
 	return robots, err
