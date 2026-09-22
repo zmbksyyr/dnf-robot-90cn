@@ -74,6 +74,9 @@ func (m *RobotManager) UpdateRobotConfig(req robotcap.ConfigUpdateRequest) (robo
 }
 
 func (m *RobotManager) ReloadPartySkills() (catalog.PartySkillCatalogReport, error) {
+	if err := m.requireBackendCapability(shared.CapabilitySkill); err != nil {
+		return catalog.PartySkillCatalogReport{}, err
+	}
 	if m == nil || m.cfg == nil {
 		return catalog.PartySkillCatalogReport{}, fmt.Errorf("missing config")
 	}
