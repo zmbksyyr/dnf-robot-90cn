@@ -122,6 +122,11 @@ func (s MoveService) AutoMove(info robotcap.Info, rc robotconfig.RuntimeConfig, 
 	var targetX, targetY int
 	if follow != nil {
 		targetVillage, targetArea = follow.Village, follow.Area
+		if targetVillage != info.Village || targetArea != info.Area {
+			if !hasUsableMap(maps, targetVillage, targetArea) {
+				return fmt.Errorf("follow target town area %d/%d has no usable movement geometry", targetVillage, targetArea)
+			}
+		}
 		targetInfo := info
 		targetInfo.Village = targetVillage
 		targetInfo.Area = targetArea
@@ -147,6 +152,15 @@ func (s MoveService) AutoMove(info robotcap.Info, rc robotconfig.RuntimeConfig, 
 		}
 	}
 	return nil
+}
+
+func hasUsableMap(maps []shared.MapCatalogItem, village, area int) bool {
+	for _, mp := range maps {
+		if mp.Use && mp.Village == village && mp.Area == area && len(robotspawn.MapRectangles(mp)) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (s MoveService) followTarget(info robotcap.Info, target FollowTarget, rc robotconfig.RuntimeConfig, maps []shared.MapCatalogItem) (int, int) {

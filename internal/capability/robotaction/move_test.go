@@ -126,3 +126,19 @@ func TestAutoMoveRejectsGuildAgitFollowForGuildMember(t *testing.T) {
 		t.Fatalf("unsafe move dispatched steps=%v", env.steps)
 	}
 }
+
+func TestAutoMoveRejectsCrossAreaFollowWithoutUsableGeometry(t *testing.T) {
+	env := &captureMoveEnv{}
+	service := MoveService{Env: env}
+	rc := robotconfig.RuntimeConfig{MoveSteps: 2, MoveSpeedMin: 100, MoveSpeedMax: 100}
+	source := robotcap.Info{UID: 101, Village: 1, Area: 2, X: 10, Y: 10}
+	target := FollowTarget{Village: 3, Area: 4, X: 100, Y: 100}
+
+	err := service.AutoMove(source, rc, []shared.MapCatalogItem{{Village: 3, Area: 4, Use: false}}, &target)
+	if err == nil || err.Error() != "follow target town area 3/4 has no usable movement geometry" {
+		t.Fatalf("error=%v, want missing target geometry error", err)
+	}
+	if len(env.steps) != 0 {
+		t.Fatalf("invalid cross-area follow dispatched steps=%v", env.steps)
+	}
+}
