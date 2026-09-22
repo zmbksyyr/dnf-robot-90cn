@@ -108,7 +108,7 @@ func KnownBackends() []BackendInfo {
 		Capabilities: capabilities,
 	}, {
 		ID: BackendS4A21, DisplayName: "S4A21 Simulator", SupportedOS: []string{"linux", "windows"},
-		Selectable: false, Reason: "scheduler integration is not complete",
+		Selectable:   true,
 		Capabilities: s4a21Capabilities(),
 	}}
 }

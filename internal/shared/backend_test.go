@@ -34,7 +34,7 @@ func TestS4A21MetadataReflectsVerifiedCapabilities(t *testing.T) {
 			break
 		}
 	}
-	if found.ID == "" || found.Selectable {
+	if found.ID == "" || !found.Selectable {
 		t.Fatalf("S4A21 metadata = %+v", found)
 	}
 	for _, capability := range []BackendCapability{CapabilityProvision, CapabilityTownMove, CapabilityShout} {

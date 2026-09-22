@@ -96,6 +96,12 @@ func (s *FileStore) UpdateRobotPositions(ctx context.Context, updates []robotcap
 	}
 	return s.persist()
 }
+func (s *FileStore) RegisterRobots(ctx context.Context, robots []robotcap.Info) error {
+	if err := s.MemoryStore.RegisterRobots(ctx, robots); err != nil {
+		return err
+	}
+	return s.persist()
+}
 func (s *FileStore) RegisterIdentity(ctx context.Context, identity Identity) error {
 	return s.RegisterIdentities(ctx, []Identity{identity})
 }
@@ -139,5 +145,6 @@ func identityKey(identity Identity) string {
 }
 
 var _ Directory = (*FileStore)(nil)
+var _ RobotCatalog = (*FileStore)(nil)
 var _ IdentityDirectory = (*FileStore)(nil)
 var _ BatchDirectory = (*FileStore)(nil)

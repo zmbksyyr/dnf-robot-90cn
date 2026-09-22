@@ -65,7 +65,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 	nameTemplates := catalog.NameTemplates(paths.Templates)
 	manager.SetBackendRobotCreator(info.ID, s4a21backend.RobotCreator{
 		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
-		BatchStore:  state, IdentityStore: state, Config: rc, Names: nameTemplates, Maps: townMaps,
+		BatchStore:  state, IdentityStore: state, RobotCatalog: state, Config: rc, Names: nameTemplates, Maps: townMaps,
 		AccountPrefix: "robot", IDStart: rc.RobotUIDStart,
 	})
 	defer func() {

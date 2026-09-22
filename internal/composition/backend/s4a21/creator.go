@@ -17,6 +17,7 @@ type RobotCreator struct {
 	Provisioner   shared.BatchCharacterProvisioner
 	BatchStore    robotstate.BatchDirectory
 	IdentityStore robotstate.IdentityDirectory
+	RobotCatalog  robotstate.RobotCatalog
 	Config        robotconfig.RuntimeConfig
 	Names         robottemplate.NameTemplates
 	Maps          []shared.MapCatalogItem
@@ -28,7 +29,7 @@ type RobotCreator struct {
 }
 
 func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateRequest) ([]robotcap.Info, error) {
-	if c.Provisioner == nil || c.BatchStore == nil || c.IdentityStore == nil {
+	if c.Provisioner == nil || c.BatchStore == nil || c.IdentityStore == nil || c.RobotCatalog == nil {
 		return nil, fmt.Errorf("S4A21 creator dependencies are incomplete")
 	}
 	if c.IDStart <= 0 {
@@ -58,6 +59,9 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		info := plans[i].Info
 		info.Name = provisioned.CharacterName
 		robots = append(robots, info)
+	}
+	if err := c.RobotCatalog.RegisterRobots(ctx, robots); err != nil {
+		return nil, fmt.Errorf("register S4A21 robot directory: %w", err)
 	}
 	return robots, nil
 }

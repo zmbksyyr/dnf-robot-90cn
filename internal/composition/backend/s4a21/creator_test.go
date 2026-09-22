@@ -24,7 +24,7 @@ func (creatorProvisioner) ProvisionCharacters(_ context.Context, requests []shar
 func TestRobotCreatorBuildsPlansAndRegistersState(t *testing.T) {
 	store := robotstate.NewMemoryStore(nil)
 	creator := RobotCreator{
-		Provisioner: creatorProvisioner{}, BatchStore: store, IdentityStore: store,
+		Provisioner: creatorProvisioner{}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
 		Config: robotconfig.RuntimeConfig{LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{2}, SpawnFallbackVillage: 1, SpawnArea: 3, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200},
 		Names:  robottemplate.NameTemplates{Common: []string{"Alpha", "Beta"}}, IDStart: 17000000, AccountPrefix: "robot",
 	}

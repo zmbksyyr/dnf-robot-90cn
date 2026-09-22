@@ -37,6 +37,10 @@ type Directory interface {
 	UpdateRobotPositions(context.Context, []robotcap.PositionUpdate) error
 }
 
+type RobotCatalog interface {
+	RegisterRobots(context.Context, []robotcap.Info) error
+}
+
 type MemoryStore struct {
 	mu         lockhub.RWLocker
 	robots     map[int]robotcap.Info
@@ -128,6 +132,27 @@ func (s *MemoryStore) SelectRobots(ctx context.Context, req robotcap.CommandRequ
 	return selected, nil
 }
 
+func (s *MemoryStore) RegisterRobots(ctx context.Context, robots []robotcap.Info) error {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, robot := range robots {
+		if robot.UID <= 0 || robot.Name == "" {
+			return errors.New("robot uid and name are required")
+		}
+		if _, exists := s.robots[robot.UID]; exists {
+			return ErrDuplicateIdentity
+		}
+	}
+	for _, robot := range robots {
+		s.robots[robot.UID] = robot
+		s.locations[robot.UID] = shared.MapLocation{Village: robot.Village, Area: robot.Area, X: robot.X, Y: robot.Y}
+	}
+	return nil
+}
+
 func (s *MemoryStore) RobotLocations(ctx context.Context) ([]shared.MapLocation, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
@@ -175,3 +200,4 @@ func contextError(ctx context.Context) error {
 }
 
 var _ Directory = (*MemoryStore)(nil)
+var _ RobotCatalog = (*MemoryStore)(nil)
