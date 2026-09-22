@@ -56,26 +56,48 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	if err := waitFor(ctx, client, protocol.CmdCreateCharacter, 1); err != nil {
 		return result, fmt.Errorf("S4A21 create character: %w", err)
 	}
-	if err := waitFor(ctx, client, protocol.NotiCharacterList, 0); err != nil {
+	packet, err := waitPacket(ctx, client, protocol.NotiCharacterList, 0)
+	if err != nil {
 		return result, fmt.Errorf("S4A21 character list refresh: %w", err)
+	}
+	roster, err := protocol.DecodeCharacterRoster(packet.Body)
+	if err != nil {
+		// Older A21 builds acknowledge the refresh with an empty marker and
+		// expose the roster only on the next login. Creation still succeeded,
+		// but no backend slot can be recorded from that response.
+		if len(packet.Body) > 1 {
+			return result, fmt.Errorf("S4A21 character list decode: %w", err)
+		}
+	}
+	for _, character := range roster {
+		if character.Name == strings.TrimSpace(request.CharacterName) {
+			slot := character.Slot
+			result.BackendSlot = &slot
+			break
+		}
 	}
 	result.Created = true
 	return result, nil
 }
 
 func waitFor(ctx context.Context, client *protocol.Client, typ uint16, command byte) error {
+	_, err := waitPacket(ctx, client, typ, command)
+	return err
+}
+
+func waitPacket(ctx context.Context, client *protocol.Client, typ uint16, command byte) (protocol.Packet, error) {
 	for {
 		packet, err := client.Read(ctx)
 		if err != nil {
-			return err
+			return protocol.Packet{}, err
 		}
 		if packet.Type != typ || packet.Command != command {
 			continue
 		}
 		if command == 1 && (len(packet.Body) == 0 || packet.Body[0] != 1) {
-			return fmt.Errorf("command 0x%04X rejected with body %v", typ, packet.Body)
+			return protocol.Packet{}, fmt.Errorf("command 0x%04X rejected with body %v", typ, packet.Body)
 		}
-		return nil
+		return packet, nil
 	}
 }
 

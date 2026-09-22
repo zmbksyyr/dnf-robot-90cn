@@ -57,6 +57,9 @@ type ProvisionCharacterResult struct {
 	Backend       BackendID
 	CharacterName string
 	Created       bool
+	// BackendSlot is meaningful for backends whose roster is slot-based.
+	// UID/CID remain unset when the backend does not expose native IDs.
+	BackendSlot *uint16
 }
 
 type CharacterProvisioner interface {
