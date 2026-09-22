@@ -85,7 +85,12 @@ func runMain() int {
 	backendInfo, err := shared.SelectBackend(backendSelection.BackendID, runtime.GOOS)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
-		return 1
+		fmt.Fprintln(os.Stderr, "starting Web admin recovery mode; select a backend and restart the robot")
+		if webErr := runWebAdmin("", "", false); webErr != nil {
+			fmt.Fprintf(os.Stderr, "backend recovery Web admin failed: %v\n", webErr)
+			return 1
+		}
+		return 0
 	}
 	backendReinitialized, err := runtimeinit.PrepareBackendRuntime(paths, backendSelection)
 	if err != nil {
