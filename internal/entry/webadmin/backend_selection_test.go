@@ -55,3 +55,29 @@ func TestBackendSelectionRejectsUnsupportedPlatform(t *testing.T) {
 		t.Fatalf("rejected selection must not persist: %v", err)
 	}
 }
+
+func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) {
+	dir := t.TempDir()
+	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
+	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(`{"backend_id":"sim_a21"}`))
+	rec := httptest.NewRecorder()
+	s.handleBackend(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var got backendSelectionPayload
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.OK || got.Selected != shared.BackendS4A21 || !got.Persisted || !got.RestartRequired || !got.ReinitializeNeeded || got.ConfigGeneration != 1 {
+		t.Fatalf("payload = %+v", got)
+	}
+	data, err := os.ReadFile(layout.New(dir).BackendSelection())
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := shared.DecodeBackendSelection(data)
+	if err != nil || selection.BackendID != shared.BackendS4A21 || selection.ConfigGeneration != 1 {
+		t.Fatalf("selection=%+v err=%v", selection, err)
+	}
+}
