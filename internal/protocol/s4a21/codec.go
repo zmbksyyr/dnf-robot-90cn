@@ -13,19 +13,23 @@ const (
 )
 
 const (
-	CmdLogin              uint16 = 0x0001
-	CmdSelectCharacter    uint16 = 0x0004
-	CmdCreateCharacter    uint16 = 0x0005
-	CmdSendMessage        uint16 = 0x0011
-	CmdEnterSelectDungeon uint16 = 0x000F
-	CmdSelectDungeon      uint16 = 0x0010
-	CmdChangeTutorialFlag uint16 = 0x008F
-	CmdFinishLoading      uint16 = 0x0025
-	CmdSetUserPosition    uint16 = 0x0023
-	CmdMoveMap            uint16 = 0x002D
-	CmdCheckConnection    uint16 = 0x04DD
-	NotiCharacterList     uint16 = 0x0002
-	NotiUserPosition      uint16 = 0x0016
+	CmdLogin               uint16 = 0x0001
+	CmdSelectCharacter     uint16 = 0x0004
+	CmdCreateCharacter     uint16 = 0x0005
+	CmdSendMessage         uint16 = 0x0011
+	CmdEnterSelectDungeon  uint16 = 0x000F
+	CmdSelectDungeon       uint16 = 0x0010
+	CmdChangeTutorialFlag  uint16 = 0x008F
+	CmdFinishLoading       uint16 = 0x0025
+	CmdSetUserPosition     uint16 = 0x0023
+	CmdMoveMap             uint16 = 0x002D
+	CmdCheckConnection     uint16 = 0x04DD
+	NotiCharacterList      uint16 = 0x0002
+	NotiUserPosition       uint16 = 0x0016
+	NotiEnterSelectDungeon uint16 = 0x001B
+	NotiDungeonInfo        uint16 = 0x001C
+	NotiStartMap           uint16 = 0x001D
+	NotiFinishLoading      uint16 = 0x001E
 )
 
 type Packet struct {

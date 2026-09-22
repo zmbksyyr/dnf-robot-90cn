@@ -88,12 +88,12 @@ func (s *dungeonRunState) AcceptFinishLoading(body []byte) error {
 
 func (s *dungeonRunState) AcceptPacket(packet protocol.Packet) error {
 	switch packet.Type {
-	case 0x001D: // NOTI START_MAP
+	case protocol.NotiStartMap:
 		if packet.Command != 0 {
 			return fmt.Errorf("S4A21 START_MAP packet is not a notification")
 		}
 		return s.AcceptStartMap(packet.Body)
-	case 0x001E: // NOTI FINISH_LOADING
+	case protocol.NotiFinishLoading:
 		if packet.Command != 0 {
 			return fmt.Errorf("S4A21 FINISH_LOADING packet is not a notification")
 		}

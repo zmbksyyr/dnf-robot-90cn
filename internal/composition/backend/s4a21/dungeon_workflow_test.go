@@ -1,0 +1,138 @@
+package s4a21
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"testing"
+	"time"
+
+	protocol "robot/internal/protocol/s4a21"
+)
+
+func TestEnterSingleDungeonUsesVerifiedOrdinaryPacketSequence(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	session, drainCancel := testSessionWithDrain(clientConn)
+	defer drainCancel()
+	done := make(chan error, 1)
+	go func() {
+		if err := expectDungeonRequest(serverConn, protocol.CmdEnterSelectDungeon, 4); err != nil {
+			done <- err
+			return
+		}
+		if _, err := serverConn.Write(protocol.EncodeResponse(1, protocol.CmdEnterSelectDungeon, []byte{1})); err != nil {
+			done <- err
+			return
+		}
+		if err := expectDungeonRequest(serverConn, protocol.CmdSelectDungeon, 15); err != nil {
+			done <- err
+			return
+		}
+		if _, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiStartMap, []byte{0, 3})); err != nil {
+			done <- err
+			return
+		}
+		if err := expectDungeonRequest(serverConn, protocol.CmdFinishLoading, 0); err != nil {
+			done <- err
+			return
+		}
+		_, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiFinishLoading, []byte{0, 0, 0, 0, 0}))
+		done <- err
+	}()
+
+	snapshot, err := session.enterSingleDungeon(context.Background(), 144, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Phase != uint8(dungeonPhaseReady) || snapshot.DungeonID != 144 || snapshot.RoomX != 0 || snapshot.RoomY != 3 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnterSingleDungeonAddsTutorialFlagOnlyWhenRequested(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	session, drainCancel := testSessionWithDrain(clientConn)
+	defer drainCancel()
+	done := make(chan error, 1)
+	go func() {
+		if err := expectDungeonRequest(serverConn, protocol.CmdEnterSelectDungeon, 4); err != nil {
+			done <- err
+			return
+		}
+		if _, err := serverConn.Write(protocol.EncodeResponse(1, protocol.CmdEnterSelectDungeon, []byte{1})); err != nil {
+			done <- err
+			return
+		}
+		if err := expectDungeonRequest(serverConn, protocol.CmdSelectDungeon, 15); err != nil {
+			done <- err
+			return
+		}
+		if err := expectDungeonRequest(serverConn, protocol.CmdChangeTutorialFlag, 6); err != nil {
+			done <- err
+			return
+		}
+		if _, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiStartMap, []byte{0, 3})); err != nil {
+			done <- err
+			return
+		}
+		if err := expectDungeonRequest(serverConn, protocol.CmdFinishLoading, 0); err != nil {
+			done <- err
+			return
+		}
+		_, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiFinishLoading, []byte{0, 0, 0, 0, 0}))
+		done <- err
+	}()
+
+	if _, err := session.enterSingleDungeon(context.Background(), 144, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnterSingleDungeonReturnsRejectedAckAndTimeout(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	session, drainCancel := testSessionWithDrain(clientConn)
+	defer drainCancel()
+	go func() {
+		_, _ = protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
+		_, _ = serverConn.Write(protocol.EncodeResponse(1, protocol.CmdEnterSelectDungeon, []byte{0}))
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := session.enterSingleDungeon(ctx, 144, false); err == nil {
+		t.Fatal("rejected dungeon ACK unexpectedly succeeded")
+	}
+}
+
+func testSessionWithDrain(clientConn net.Conn) (*Session, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	session := &Session{client: protocol.NewClient(clientConn), done: make(chan struct{})}
+	go session.drain(ctx)
+	return session, func() {
+		cancel()
+		_ = clientConn.Close()
+		<-session.done
+	}
+}
+
+func expectDungeonRequest(conn net.Conn, typ uint16, bodyLength int) error {
+	packet, err := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+	if err != nil {
+		return err
+	}
+	if packet.Type != typ || len(packet.Body) != bodyLength {
+		return fmt.Errorf("request type=0x%04X body=%d want type=0x%04X body=%d", packet.Type, len(packet.Body), typ, bodyLength)
+	}
+	return nil
+}
