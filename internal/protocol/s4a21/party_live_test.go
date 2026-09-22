@@ -135,6 +135,57 @@ func TestLivePartyDungeonSelectionProbe(t *testing.T) {
 	t.Logf("party selection remains partial: leader=%v member=%v", leaderTypes, memberTypes)
 }
 
+func TestLivePartyDungeonTutorialProjectionProbe(t *testing.T) {
+	address := os.Getenv("S4A21_TEST_ADDR")
+	if address == "" || os.Getenv("S4A21_PARTY_DUNGEON_TUTORIAL_LIVE") != "1" {
+		t.Skip("set S4A21_TEST_ADDR and S4A21_PARTY_DUNGEON_TUTORIAL_LIVE=1 to run")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	leader, member, _, _ := establishLiveParty(t, ctx, address, "tutorial")
+	defer leader.Close()
+	defer member.Close()
+
+	if err := leader.EnterSelectDungeon(ctx, 144); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitPartyProbePacket(leader, CmdEnterSelectDungeon, 5*time.Second, "tutorial-enter-ack"); err != nil {
+		t.Fatal(err)
+	}
+	// Drain the pre-flag selection projection before selecting the dungeon.
+	drainPartyProbe(t, leader, 300*time.Millisecond, "tutorial-before-flag-leader")
+	drainPartyProbe(t, member, 300*time.Millisecond, "tutorial-before-flag-member")
+	if err := leader.SelectDungeon(ctx, 144, 0, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	selectPackets := collectPartyProbePackets(t, leader, 1200*time.Millisecond, "tutorial-select-leader")
+	selectAccepted := false
+	for _, packet := range selectPackets {
+		if packet.Type == CmdSelectDungeon && packet.Command == 1 && len(packet.Body) > 0 && packet.Body[0] == 1 {
+			selectAccepted = true
+		}
+	}
+	if !selectAccepted {
+		t.Logf("party SELECT_DUNGEON produced no success ACK; continuing tutorial probe with packets=%v", packetTypes(selectPackets))
+	}
+	if err := leader.ChangeTutorialFlag(ctx, 30, 1); err != nil {
+		t.Fatal(err)
+	}
+	leaderPackets := collectPartyProbePackets(t, leader, 1800*time.Millisecond, "tutorial-after-flag-leader")
+	memberPackets := collectPartyProbePackets(t, member, 1800*time.Millisecond, "tutorial-after-flag-member")
+	leaderTypes := packetTypes(leaderPackets)
+	memberTypes := packetTypes(memberPackets)
+	t.Logf("party tutorial projection: leader=%v member=%v", leaderTypes, memberTypes)
+	if !hasPacket(leaderPackets, CmdChangeTutorialFlag, 1) {
+		t.Fatalf("tutorial flag ACK missing: %v", leaderTypes)
+	}
+	if hasType(leaderPackets, NotiStartMap) != hasType(memberPackets, NotiStartMap) {
+		t.Logf("party tutorial projection is incomplete (expected gate failure): leader=%v member=%v", leaderTypes, memberTypes)
+		return
+	}
+}
+
 func establishLiveParty(t *testing.T, ctx context.Context, address, prefix string) (*Client, *Client, uint16, uint16) {
 	t.Helper()
 	leader, leaderCID := livePartyProbeSession(t, ctx, address, prefix+"-a")
@@ -258,16 +309,46 @@ func waitPartyProbePacket(client *Client, typ uint16, duration time.Duration, la
 }
 
 func collectPartyProbeTypes(t *testing.T, client *Client, duration time.Duration, label string) map[uint16]bool {
+	return packetTypes(collectPartyProbePackets(t, client, duration, label))
+}
+
+func collectPartyProbePackets(t *testing.T, client *Client, duration time.Duration, label string) []Packet {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
-	types := make(map[uint16]bool)
+	packets := make([]Packet, 0, 16)
 	for {
 		packet, err := client.Read(ctx)
 		if err != nil {
-			return types
+			return packets
 		}
-		types[packet.Type] = true
+		packets = append(packets, packet)
 		t.Logf("party probe %s packet type=0x%04X command=%d body=%d %X", label, packet.Type, packet.Command, len(packet.Body), packet.Body)
 	}
+}
+
+func packetTypes(packets []Packet) map[uint16]bool {
+	types := make(map[uint16]bool)
+	for _, packet := range packets {
+		types[packet.Type] = true
+	}
+	return types
+}
+
+func hasType(packets []Packet, typ uint16) bool {
+	for _, packet := range packets {
+		if packet.Type == typ {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPacket(packets []Packet, typ uint16, command byte) bool {
+	for _, packet := range packets {
+		if packet.Type == typ && packet.Command == command {
+			return true
+		}
+	}
+	return false
 }

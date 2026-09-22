@@ -76,3 +76,11 @@ S4A21 的组队能力不是一个单独的“发送邀请包”动作。服务�
 - 探针刻意不发送 `SELECT_DUNGEON`、`CHANGE_TUTORIAL_FLAG` 或 `FINISH_LOADING`，因此没有创建未经验证的 dungeon run。
 
 这说明“组队成功”与“组队副本 selection 已完成”之间仍存在未验证的教程标记、成员投影和 selection cohort 条件。当前 `party`、`dungeon_move` 及所有地下城能力继续保持 `backend_capability_unsupported`。后续若要推进，必须先取得成员投影完成和队伍 `SELECT_DUNGEON` 的真实回包，再研究 run/loading；不能只凭队长 ACK 开放入口。
+
+教程标记探针随后补发了队长的 `SELECT_DUNGEON(144)` 和 `CHANGE_TUTORIAL_FLAG(30,1)`：
+
+- 服务端创建了队长的 dungeon instance/run，并发送队长的 `ENTER_SELECT_DUNGEON`、`DUNGEON_INFO`、`START_MAP`。
+- 成员没有收到对应的 `START_MAP`；服务端日志记录的是 `SELECT_DUNGEON: defer A21 tutorial projection`，随后只对队长建立房间实例。
+- 探针在 `FINISH_LOADING` 前断开，未发送技能、移动、战斗或结算包。
+
+这不是可以绕过的“小缺包”，而是当前整合包中队伍 selection projection 尚未闭合的直接证据。因此必须继续保持地下城和组队能力关闭，等待成员投影、双端 loading 和 run 身份一致性全部验证后再设计适配层入口。
