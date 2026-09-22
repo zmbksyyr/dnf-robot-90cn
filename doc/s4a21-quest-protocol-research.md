@@ -25,3 +25,17 @@ task automation, dungeon settlement, and the public
 The next research step is to identify a legal objective transition for an
 advertised task using only protocol notifications and a disposable character.
 No database mutation or guessed quest ID is permitted.
+
+## Follow-up completion evidence
+
+A second disposable character accepted the same advertised quest, sent
+`SET_QUEST_TRIGGER(quest=1016, type=0, increment=false)`, and observed the
+server log transition `1 -> 0`. `FINISH_QUEST(quest=1016, reward=-1,
+completionCount=1)` then succeeded and returned a non-error reward ACK. The
+server removed the quest from the acceptable list afterward.
+
+This establishes the smallest legal task progression used by the current A21
+server: accept the advertised quest, apply the server-defined trigger mutation,
+then finish with count `1`. It still does not establish a general-purpose task
+engine: trigger types and directions are PVF/task-specific, and no dungeon
+settlement or public scheduler integration follows from this probe.
