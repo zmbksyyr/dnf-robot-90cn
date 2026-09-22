@@ -111,6 +111,15 @@ func (s *Session) Close() error {
 	return err
 }
 
+func (s *Session) Done() <-chan struct{} {
+	if s == nil {
+		closed := make(chan struct{})
+		close(closed)
+		return closed
+	}
+	return s.done
+}
+
 func (s *Session) drain(ctx context.Context) {
 	defer close(s.done)
 	for {

@@ -3,6 +3,7 @@ package s4a21
 import (
 	"context"
 	"testing"
+	"time"
 
 	"robot/internal/shared"
 )
@@ -11,6 +12,7 @@ type actionTestSession struct {
 	town   shared.TownMoveIntent
 	shout  shared.ShoutIntent
 	closed bool
+	done   chan struct{}
 }
 
 func (s *actionTestSession) MoveTown(_ context.Context, intent shared.TownMoveIntent) error {
@@ -22,7 +24,8 @@ func (s *actionTestSession) Shout(_ context.Context, intent shared.ShoutIntent) 
 	s.shout = intent
 	return nil
 }
-func (s *actionTestSession) Close() error { s.closed = true; return nil }
+func (s *actionTestSession) Close() error          { s.closed = true; return nil }
+func (s *actionTestSession) Done() <-chan struct{} { return s.done }
 
 type actionTestFactory struct{ session *actionTestSession }
 
@@ -81,4 +84,24 @@ func TestActionTransportOwnsSessionLifecycle(t *testing.T) {
 	if status := transport.RuntimeStatusMap()[7]; status.StateName != shared.RuntimeStateStop {
 		t.Fatalf("status after close = %+v", status)
 	}
+}
+
+func TestActionTransportReapsUnexpectedSessionEnd(t *testing.T) {
+	session := &actionTestSession{done: make(chan struct{})}
+	transport := NewActionTransport()
+	if err := transport.Attach(7, session); err != nil {
+		t.Fatal(err)
+	}
+	close(session.done)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if status := transport.RuntimeStatusMap()[7]; status.StateName == shared.RuntimeStateStop {
+			if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: 7}); err == nil {
+				t.Fatal("move unexpectedly succeeded after session end")
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("session was not reaped: %+v", transport.RuntimeStatusMap())
 }

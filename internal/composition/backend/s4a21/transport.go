@@ -53,7 +53,23 @@ func (t *ActionTransport) Attach(uid int, session shared.RobotSession) error {
 	}
 	t.sessions[uid] = session
 	t.status[uid] = shared.RuntimeStatus{UID: uid, StateName: shared.RuntimeStateRunning, State: 3}
+	if lifecycle, ok := session.(interface{ Done() <-chan struct{} }); ok {
+		done := lifecycle.Done()
+		if done != nil {
+			go t.watchSession(uid, session, done)
+		}
+	}
 	return nil
+}
+
+func (t *ActionTransport) watchSession(uid int, session shared.RobotSession, done <-chan struct{}) {
+	<-done
+	t.mu.Lock()
+	if t.sessions[uid] == session {
+		delete(t.sessions, uid)
+		t.status[uid] = shared.RuntimeStatus{UID: uid, StateName: shared.RuntimeStateStop}
+	}
+	t.mu.Unlock()
 }
 
 func (t *ActionTransport) Detach(uid int) {
