@@ -45,6 +45,9 @@ func (m *RobotManager) OnlineManaged(req robotcap.CommandRequest) (robotcap.Comm
 func (m *RobotManager) MoveManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
 	m.mutationMu.RLock()
 	defer m.mutationMu.RUnlock()
+	if err := m.requireBackendCapability(shared.CapabilityTownMove); err != nil {
+		return robotcap.CommandResult{}, err
+	}
 	return m.actorCommandManaged(req, actormodel.CommandMove, "move")
 }
 
@@ -55,6 +58,8 @@ func (m *RobotManager) ShoutManaged(req robotcap.CommandRequest, world bool) (ro
 		if err := m.requireBackendCapability(shared.CapabilityWorldShout); err != nil {
 			return robotcap.CommandResult{}, err
 		}
+	} else if err := m.requireBackendCapability(shared.CapabilityShout); err != nil {
+		return robotcap.CommandResult{}, err
 	}
 	if world {
 		return m.actorCommandManaged(req, actormodel.CommandShoutWorld, "shout_world")

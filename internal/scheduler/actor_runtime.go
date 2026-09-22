@@ -92,6 +92,9 @@ func (r *RobotRuntime) ForceClose(uid int) bool {
 
 func (r *RobotRuntime) Move(uid int) robotcap.ActionResult {
 	return r.run(uid, func() robotcap.ActionResult {
+		if err := r.manager.requireBackendCapability(shared.CapabilityTownMove); err != nil {
+			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
+		}
 		res, err := r.manager.moveService().Move(robotcap.CommandRequest{UIDs: []int{uid}}, r.Config())
 		return firstActionResult(uid, res, err)
 	})
@@ -103,6 +106,8 @@ func (r *RobotRuntime) Shout(uid int, world bool) robotcap.ActionResult {
 			if err := r.manager.requireBackendCapability(shared.CapabilityWorldShout); err != nil {
 				return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
 			}
+		} else if err := r.manager.requireBackendCapability(shared.CapabilityShout); err != nil {
+			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
 		}
 		res, err := r.manager.shoutService().ShoutOne(robotcap.CommandRequest{UIDs: []int{uid}}, world)
 		return firstActionResult(uid, res, err)
@@ -118,6 +123,9 @@ func (r *RobotRuntime) Store(uid int) robotcap.ActionResult {
 
 func (r *RobotRuntime) AutoMove(uid int) robotcap.ActionResult {
 	return r.run(uid, func() robotcap.ActionResult {
+		if err := r.manager.requireBackendCapability(shared.CapabilityTownMove); err != nil {
+			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
+		}
 		st, ok := r.Status(uid)
 		if !ok || st.StateName != robotcap.RuntimeStateRunning || st.DisconnectReason != 0 || st.PartyActive || r.PartyActive(uid) {
 			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateOffline}

@@ -71,3 +71,14 @@ func TestSimulatorAutoStoreIsSkippedWithStableCapabilityError(t *testing.T) {
 		t.Fatalf("result = %+v, want skipped unsupported store", result)
 	}
 }
+
+func TestSimulatorVerifiedTownAndLocalShoutRemainAllowed(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	if err := m.requireBackendCapability(shared.CapabilityTownMove); err != nil {
+		t.Fatalf("town move unexpectedly unsupported: %v", err)
+	}
+	if err := m.requireBackendCapability(shared.CapabilityShout); err != nil {
+		t.Fatalf("local shout unexpectedly unsupported: %v", err)
+	}
+}
