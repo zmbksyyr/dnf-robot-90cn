@@ -51,6 +51,18 @@ func TestWebSeparatesLocalAndWorldShoutCapabilities(t *testing.T) {
 	}
 }
 
+func TestWebLabelsMovementAsTownMovement(t *testing.T) {
+	if !strings.Contains(indexHTML, `data-i18n="action.town_move"`) || !strings.Contains(indexHTML, `Town move`) {
+		t.Fatal("movement action is not explicitly labeled as town movement")
+	}
+	if !strings.Contains(i18nJS, "'action.town_move':'Town move'") || !strings.Contains(i18nJS, "'action.town_move':'城镇移动'") {
+		t.Fatal("town movement translations are missing")
+	}
+	if !strings.Contains(appJS, "robotsMove:'Town move'") {
+		t.Fatal("action summary does not distinguish town movement")
+	}
+}
+
 func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
 	for _, want := range []string{
 		"Category unit-price ranges", "分类单价范围",

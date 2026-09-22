@@ -1,7 +1,7 @@
 const selected=new Set();let currentRows=[],busy=false,keyBlocked=false,dbBlocked=false,gameBlocked=false,autoRefreshTimer=null,partyDebugTimer=null,marketKindsTimer=null,marketKindsExpected=null,gameMaxUser=0,lastRobotsRefresh=0,dangerousDeleteToken='';const robotsRefreshMs=30000;
 function byId(id){return document.getElementById(id)}function text(v){return String(v??'')}function escapeHTML(v){return text(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function toast(msg){const t=byId('toast');t.textContent=i18nMessage(msg);t.style.display='block';clearTimeout(t._timer);t._timer=setTimeout(()=>t.style.display='none',3600)}
-function actionName(cmd){return i18nText(({robotsOnlineAsync:'Online',robotsStoreAsync:'Store',robotsLogoutAsync:'Logout',cleanupRobotsAsync:'Cleanup',robotsMove:'Move',robotsShout:'Shout'}[cmd]||cmd))}
+function actionName(cmd){return i18nText(({robotsOnlineAsync:'Online',robotsStoreAsync:'Store',robotsLogoutAsync:'Logout',cleanupRobotsAsync:'Cleanup',robotsMove:'Town move',robotsShout:'Shout'}[cmd]||cmd))}
 function jobGrowName(job,grow){const table=I18N_MESSAGES.zh||{},key='job.'+job+'.'+grow,base='job.'+job+'.0';if(table[key])return table[key];return table[base]?table[base]+' '+text(grow):text(job)+'/'+text(grow)}
 function villageDisplay(a){return a.village_name||text(a.village)}
 function setBusy(v){busy=v;document.querySelectorAll('button').forEach(b=>b.disabled=v);applyKeyGate()}function applyKeyGate(){const blocked=keyBlocked||dbBlocked||gameBlocked;document.querySelectorAll('[data-key-action="1"]').forEach(b=>b.disabled=busy||blocked);const kb=byId('keyButton');if(kb)kb.disabled=busy;const cb=byId('cleanupButton');if(cb)cb.disabled=busy;applyBackendCapabilities()}
