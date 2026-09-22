@@ -51,7 +51,7 @@ func (e shoutActionEnv) RuntimeStatusMap() map[int]robotcap.RuntimeStatus {
 }
 
 func (e shoutActionEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
-	return e.manager.repo().SelectRobots(req)
+	return e.manager.selectRobots(req)
 }
 
 func (e shoutActionEnv) SendLocalShout(_ string, uid int, msg string, msgType int) error {

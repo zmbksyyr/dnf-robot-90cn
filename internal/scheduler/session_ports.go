@@ -128,7 +128,7 @@ func (e sessionActionEnv) RuntimeStatusMapFresh() map[int]robotcap.RuntimeStatus
 }
 
 func (e sessionActionEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
-	return e.manager.repo().SelectRobots(req)
+	return e.manager.selectRobots(req)
 }
 
 func (e sessionActionEnv) PrepareOnlineRobot(info robotcap.Info, rc robotconfig.RuntimeConfig) (robotcap.Info, error) {

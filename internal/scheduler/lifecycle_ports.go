@@ -88,7 +88,7 @@ func (e lifecycleCreateEnv) PetFromCatalog(cid int, rc robotconfig.RuntimeConfig
 }
 
 func (e lifecycleCreateEnv) RobotLocations() ([]shared.MapLocation, error) {
-	return e.manager.schemaRepo().RobotLocations()
+	return e.manager.robotLocations()
 }
 
 func (e lifecycleCreateEnv) PrepareRobotUIDRange(uidStart, uidEnd, uidGuard int) error {

@@ -128,7 +128,7 @@ func (s *RobotSupervisor) acquireUIDs(rc robotconfig.RuntimeConfig, actors []*ac
 	if len(actors) == 0 {
 		return nil
 	}
-	robots, err := s.manager.repo().SelectRobots(robotcap.CommandRequest{Count: rc.MaxOnlineRobots})
+	robots, err := s.manager.selectRobots(robotcap.CommandRequest{Count: rc.MaxOnlineRobots})
 	if err != nil {
 		robotLogf("[RobotSupervisor] select_robots_failed err=%v\n", err)
 		return nil

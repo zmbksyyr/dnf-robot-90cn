@@ -16,7 +16,7 @@ var ErrNotFound = errors.New("robot state not found")
 type Directory interface {
 	SelectRobots(context.Context, robotcap.CommandRequest) ([]robotcap.Info, error)
 	RobotLocations(context.Context) ([]shared.MapLocation, error)
-	UpdatePositions(context.Context, []robotcap.PositionUpdate) error
+	UpdateRobotPositions(context.Context, []robotcap.PositionUpdate) error
 }
 
 type MemoryStore struct {
@@ -75,7 +75,7 @@ func (s *MemoryStore) RobotLocations(ctx context.Context) ([]shared.MapLocation,
 	return locations, nil
 }
 
-func (s *MemoryStore) UpdatePositions(ctx context.Context, updates []robotcap.PositionUpdate) error {
+func (s *MemoryStore) UpdateRobotPositions(ctx context.Context, updates []robotcap.PositionUpdate) error {
 	if err := contextError(ctx); err != nil {
 		return err
 	}

@@ -53,5 +53,5 @@ func (e moveActionEnv) RuntimeStatusMap() map[int]robotcap.RuntimeStatus {
 }
 
 func (e moveActionEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
-	return e.manager.repo().SelectRobots(req)
+	return e.manager.selectRobots(req)
 }

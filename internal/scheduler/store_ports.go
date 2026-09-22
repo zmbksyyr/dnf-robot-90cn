@@ -97,7 +97,7 @@ func (e storeWorkflowEnv) RuntimeStatusMap() map[int]robotcap.RuntimeStatus {
 }
 
 func (e storeWorkflowEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
-	return e.manager.repo().SelectRobots(req)
+	return e.manager.selectRobots(req)
 }
 
 func (e storeWorkflowEnv) SetAreaFrom(uid int, village, area int, x, y int, fromVillage, fromArea int) bool {
@@ -246,7 +246,7 @@ func (e storeMaintenanceEnv) RandomMap(maps []shared.MapCatalogItem, level int) 
 }
 
 func (e storeMaintenanceEnv) RobotLocations() ([]shared.MapLocation, error) {
-	return e.manager.schemaRepo().RobotLocations()
+	return e.manager.robotLocations()
 }
 
 func (e storeMaintenanceEnv) ResetPrivateStore(uid int) {
@@ -264,7 +264,7 @@ func (e storeMaintenanceEnv) RevokeStorePermission(uid, cid int) error {
 }
 
 func (e storeMaintenanceEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
-	return e.manager.repo().SelectRobots(req)
+	return e.manager.selectRobots(req)
 }
 
 func (e storeMaintenanceEnv) SyncCharacterVillage(cid int, village int) (int, error) {

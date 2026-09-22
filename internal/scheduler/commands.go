@@ -159,7 +159,7 @@ func (m *RobotManager) prepareUserActorCommand(req robotcap.CommandRequest, acti
 	if registry == nil {
 		return nil, nil, robotconfig.RuntimeConfig{}, nil, errActorRegistryUnavailable
 	}
-	robots, err := m.repo().SelectRobots(req)
+	robots, err := m.selectRobots(req)
 	if err != nil {
 		return nil, nil, robotconfig.RuntimeConfig{}, nil, err
 	}

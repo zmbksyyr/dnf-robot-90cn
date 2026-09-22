@@ -8,6 +8,7 @@ import (
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	lifecyclecap "robot/internal/capability/robotlifecycle"
+	robotstate "robot/internal/capability/robotstate"
 	robottemplate "robot/internal/capability/robottemplate"
 	storecap "robot/internal/capability/store"
 	"robot/internal/foundation/config"
@@ -24,6 +25,7 @@ type RobotManager struct {
 	mutationMu                      lockhub.RWLocker
 	actorMutationMu                 lockhub.Locker
 	database                        dbstatus.Database
+	robotState                      robotstate.Directory
 	cfg                             *config.SysConfig
 	doll                            Runtime
 	worldShout                      WorldShout
@@ -150,11 +152,38 @@ func NewRobotManager(database dbstatus.Database, cfg *config.SysConfig, doll Run
 	return manager
 }
 
+// SetRobotStateDirectory injects backend-independent robot state. Native
+// callers may leave it unset and continue using the legacy repository.
+func (m *RobotManager) SetRobotStateDirectory(directory robotstate.Directory) {
+	if m == nil {
+		return
+	}
+	m.robotState = directory
+	if m.positionWrites != nil {
+		_ = m.positionWrites.Close()
+	}
+	m.positionWrites = newPositionBatcher(m.positionRepo(), defaultPositionBatchOptions())
+}
+
 func (m *RobotManager) repo() SchedulerRepository {
 	if repository, ok := m.database.(SchedulerRepository); ok {
 		return repository
 	}
 	return missingRepository{}
+}
+
+func (m *RobotManager) selectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
+	if m.robotState != nil {
+		return m.robotState.SelectRobots(context.Background(), req)
+	}
+	return m.repo().SelectRobots(req)
+}
+
+func (m *RobotManager) robotLocations() ([]shared.MapLocation, error) {
+	if m.robotState != nil {
+		return m.robotState.RobotLocations(context.Background())
+	}
+	return m.schemaRepo().RobotLocations()
 }
 
 func (m *RobotManager) schemaRepo() SchemaRepository {
@@ -165,6 +194,9 @@ func (m *RobotManager) schemaRepo() SchemaRepository {
 }
 
 func (m *RobotManager) positionRepo() robotPositionWriter {
+	if m.robotState != nil {
+		return m.robotState
+	}
 	if repository, ok := m.database.(robotPositionWriter); ok {
 		return repository
 	}

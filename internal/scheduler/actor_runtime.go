@@ -194,7 +194,7 @@ const disjointStoreCostGold = 500
 func (r *RobotRuntime) autoDisjointStore(uid int, st robotcap.RuntimeStatus, shouldStop func() bool) robotcap.ActionResult {
 	rc := r.Config()
 	info := robotcap.Info{UID: uid, CID: st.CID, Village: st.Village, Area: st.Area, X: st.X, Y: st.Y, Port: r.manager.cfg.RobotGamePort}
-	if robots, err := r.manager.repo().SelectRobots(robotcap.CommandRequest{UIDs: []int{uid}}); err == nil && len(robots) > 0 {
+	if robots, err := r.manager.selectRobots(robotcap.CommandRequest{UIDs: []int{uid}}); err == nil && len(robots) > 0 {
 		info = robots[0]
 		info.Port = r.manager.cfg.RobotGamePort
 	}
@@ -454,7 +454,7 @@ func (r *RobotRuntime) ExpireStore(uid int) robotcap.ActionResult {
 		}
 		rc := r.Config()
 		info := robotcap.Info{UID: uid, CID: st.CID, Village: st.Village, Area: st.Area, X: st.X, Y: st.Y, Port: r.manager.cfg.RobotGamePort}
-		if robots, err := r.manager.repo().SelectRobots(robotcap.CommandRequest{UIDs: []int{uid}}); err == nil && len(robots) > 0 {
+		if robots, err := r.manager.selectRobots(robotcap.CommandRequest{UIDs: []int{uid}}); err == nil && len(robots) > 0 {
 			info = robots[0]
 			info.Port = r.manager.cfg.RobotGamePort
 		}
