@@ -19,7 +19,7 @@ type backendTransportBundle struct {
 	close    func() error
 }
 
-func openBackendRobotState(info shared.BackendInfo, paths layout.Paths) (robotstate.Directory, error) {
+func openBackendRobotState(info shared.BackendInfo, paths layout.Paths) (*robotstate.FileStore, error) {
 	switch info.ID {
 	case shared.BackendNative:
 		return nil, nil
