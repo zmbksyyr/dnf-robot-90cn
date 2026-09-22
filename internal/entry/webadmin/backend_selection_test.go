@@ -72,6 +72,27 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 	if !got.OK || got.Selected != shared.BackendS4A21 || !got.Persisted || !got.RestartRequired || !got.ReinitializeNeeded || got.ConfigGeneration != 1 {
 		t.Fatalf("payload = %+v", got)
 	}
+	var simulator *shared.BackendInfo
+	for i := range got.Backends {
+		if got.Backends[i].ID == shared.BackendS4A21 {
+			simulator = &got.Backends[i]
+			break
+		}
+	}
+	if simulator == nil {
+		t.Fatal("backend payload does not include S4A21")
+	}
+	for _, capability := range []shared.BackendCapability{shared.CapabilityTownMove, shared.CapabilityShout} {
+		if !simulator.Supports(capability) {
+			t.Fatalf("S4A21 capability %s unexpectedly disabled: %+v", capability, simulator.Capabilities[capability])
+		}
+	}
+	for _, capability := range []shared.BackendCapability{shared.CapabilityDungeonMove, shared.CapabilityWorldShout, shared.CapabilityStore, shared.CapabilityParty, shared.CapabilitySkill} {
+		status := simulator.Capabilities[capability]
+		if status.Enabled || status.Reason == "" {
+			t.Fatalf("S4A21 capability %s must be disabled with a reason: %+v", capability, status)
+		}
+	}
 	data, err := os.ReadFile(layout.New(dir).BackendSelection())
 	if err != nil {
 		t.Fatal(err)
