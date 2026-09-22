@@ -41,6 +41,31 @@ This same adapter-owned reader is the correct starting point for future quest
 and dungeon projections; the shared scheduler must not learn S4A21 PVF tokens or
 reuse the native parser by assumption.
 
+## Quest-chain evidence from the S4A21 PVF
+
+Using the adapter-owned reader against the real S4A21 `Script.pvf` produced the
+following definitions:
+
+- Quest `1841` (`epic_23_old_town_9`) requires quest `2608` and is a meet-NPC
+  task; it does not itself select a dungeon.
+- Quest `1842` (`epic_25_chessboard_1`) requires `1841`, references dungeon
+  `160`, and is a `condition under clear` task with `int data = 160 -1`.
+- Quest `1843` requires `1842` and is another meet-NPC transition.
+- Quest `1844` (`epic_25_chessboard_3`) requires `1843`, references dungeon
+  `160`, and is a `hunt monster` task for monster `63717` (five) and `63718`
+  (six).
+- Quest `1845` requires `1844`, references dungeon `160`, and is a `hunt
+  enemy` task for monster `13099` (three).
+
+This explains why entering dungeon `160` with a new level-1 character did not
+produce a clear condition: the character has neither the required quest chain
+nor the level-17 prerequisite. It also gives a concrete legal verification
+path, but does not authorize fabricating quest state or reporting dungeon
+settlement as supported. The next live experiment must first establish whether
+the server can advance the prerequisite chain through the normal NPC/task
+protocol, then enter dungeon `160` only after the server advertises the active
+quest.
+
 ## Follow-up completion evidence
 
 A second disposable character accepted the same advertised quest, sent
