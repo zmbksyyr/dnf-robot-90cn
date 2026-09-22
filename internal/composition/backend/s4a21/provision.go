@@ -16,6 +16,28 @@ type Provisioner struct {
 	Timeout time.Duration
 }
 
+// ProvisionCharacters executes the same verified network workflow for each
+// request and returns partial results when the batch is interrupted. Account
+// and character state remain entirely server-owned.
+func (p Provisioner) ProvisionCharacters(ctx context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
+	results := make([]shared.ProvisionCharacterResult, 0, len(requests))
+	for _, request := range requests {
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return results, ctx.Err()
+			default:
+			}
+		}
+		result, err := p.ProvisionCharacter(ctx, request)
+		results = append(results, result)
+		if err != nil {
+			return results, err
+		}
+	}
+	return results, nil
+}
+
 func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.ProvisionCharacterRequest) (shared.ProvisionCharacterResult, error) {
 	result := shared.ProvisionCharacterResult{Backend: shared.BackendS4A21, CharacterName: request.CharacterName}
 	if strings.TrimSpace(request.AccountName) == "" {

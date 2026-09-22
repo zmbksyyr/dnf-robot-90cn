@@ -2,6 +2,7 @@ package s4a21
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -54,6 +55,15 @@ func TestProvisionCharacterFollowsProtocolSequence(t *testing.T) {
 	}
 	if !result.Created || result.Backend != shared.BackendS4A21 {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestProvisionCharactersStopsWithPartialResults(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	results, err := (Provisioner{}).ProvisionCharacters(ctx, []shared.ProvisionCharacterRequest{{AccountName: "a", CharacterName: "ab"}})
+	if !errors.Is(err, context.Canceled) || len(results) != 0 {
+		t.Fatalf("results=%+v err=%v", results, err)
 	}
 }
 
