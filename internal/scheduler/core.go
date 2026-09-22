@@ -28,6 +28,7 @@ type RobotManager struct {
 	robotState                      robotstate.Directory
 	cfg                             *config.SysConfig
 	doll                            Runtime
+	backendActions                  BackendActionTransport
 	worldShout                      WorldShout
 	locks                           *lockhub.Hub
 	startedAt                       time.Time
@@ -113,6 +114,20 @@ type RobotManager struct {
 	shuttingDown                    bool
 	shutdownOnce                    sync.Once
 	shutdownErr                     error
+}
+
+// BackendActionTransport is an optional protocol adapter for actions that do
+// not require the native runtime. It is deliberately limited to verified
+// town movement and local shout; dungeon actions remain separate.
+type BackendActionTransport interface {
+	MoveTown(context.Context, shared.RuntimeMoveCommand) error
+	ShoutLocal(context.Context, shared.RuntimeShoutCommand) error
+}
+
+func (m *RobotManager) SetBackendActionTransport(transport BackendActionTransport) {
+	if m != nil {
+		m.backendActions = transport
+	}
 }
 
 // SetTownMapCatalog publishes an immutable backend-projected town map

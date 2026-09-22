@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	robotcap "robot/internal/capability/robot"
 	robotaction "robot/internal/capability/robotaction"
 	robotconfig "robot/internal/capability/robotconfig"
@@ -55,11 +56,15 @@ func (e shoutActionEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.In
 }
 
 func (e shoutActionEnv) SendLocalShout(_ string, uid int, msg string, msgType int) error {
-	return e.manager.doll.Shout(shared.RuntimeShoutCommand{
+	command := shared.RuntimeShoutCommand{
 		UID:     uid,
 		Message: msg,
 		Type:    msgType,
-	})
+	}
+	if e.manager.backendActions != nil {
+		return e.manager.backendActions.ShoutLocal(context.Background(), command)
+	}
+	return e.manager.doll.Shout(command)
 }
 
 func (e shoutActionEnv) SendWorldShout(msg, name string, senderID uint16) error {
