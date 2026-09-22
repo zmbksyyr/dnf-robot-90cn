@@ -10,6 +10,7 @@ import (
 type BackendID string
 
 const BackendNative BackendID = "native"
+const BackendS4A21 BackendID = "sim_a21"
 
 type BackendCapability string
 
@@ -33,6 +34,8 @@ type BackendInfo struct {
 	ID           BackendID                              `json:"id"`
 	DisplayName  string                                 `json:"display_name"`
 	SupportedOS  []string                               `json:"supported_os"`
+	Selectable   bool                                   `json:"selectable"`
+	Reason       string                                 `json:"reason,omitempty"`
 	Capabilities map[BackendCapability]CapabilityStatus `json:"capabilities"`
 }
 
@@ -68,9 +71,25 @@ func KnownBackends() []BackendInfo {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
 	return []BackendInfo{{
-		ID: BackendNative, DisplayName: "Native DNF", SupportedOS: []string{"linux"},
+		ID: BackendNative, DisplayName: "Native DNF", SupportedOS: []string{"linux"}, Selectable: true,
 		Capabilities: capabilities,
+	}, {
+		ID: BackendS4A21, DisplayName: "S4A21 Simulator", SupportedOS: []string{"linux", "windows"},
+		Selectable: false, Reason: "protocol adapter is not integrated yet",
+		Capabilities: unavailableCapabilities("S4A21 protocol adapter is not integrated yet"),
 	}}
+}
+
+func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStatus {
+	capabilities := make(map[BackendCapability]CapabilityStatus)
+	for _, operation := range []BackendCapability{
+		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
+		CapabilityShout, CapabilityStore, CapabilityParty, CapabilitySkill,
+		CapabilityMarket,
+	} {
+		capabilities[operation] = CapabilityStatus{Reason: reason}
+	}
+	return capabilities
 }
 
 func SelectBackend(id BackendID, platform string) (BackendInfo, error) {
@@ -80,6 +99,12 @@ func SelectBackend(id BackendID, platform string) (BackendInfo, error) {
 	for _, info := range KnownBackends() {
 		if info.ID != id {
 			continue
+		}
+		if !info.Selectable {
+			if info.Reason == "" {
+				info.Reason = "backend is not ready"
+			}
+			return BackendInfo{}, fmt.Errorf("backend %s is unavailable: %s", id, info.Reason)
 		}
 		for _, supported := range info.SupportedOS {
 			if supported == platform {
