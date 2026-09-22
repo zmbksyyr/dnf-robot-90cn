@@ -164,6 +164,7 @@ func TestClientPartyProbePrimitives(t *testing.T) {
 		}{
 			{CmdSetPartyInfo, 12},
 			{CmdRequestPeer, 7},
+			{CmdResponsePeer, 7},
 			{CmdLeaveParty, 0},
 			{CmdWalkoutPartyMember, 1},
 		}
@@ -185,6 +186,9 @@ func TestClientPartyProbePrimitives(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := client.RequestPeer(context.Background(), 12, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.AcceptPartyInvite(context.Background(), 12); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.LeaveParty(context.Background()); err != nil {

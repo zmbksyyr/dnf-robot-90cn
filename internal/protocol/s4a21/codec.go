@@ -40,6 +40,7 @@ const (
 	NotiUserArea            uint16 = 0x0017
 	NotiAreaUsers           uint16 = 0x0018
 	NotiPartyInfo           uint16 = 0x0009
+	NotiRequestPeer         uint16 = 0x0007
 	NotiUserUDPIPPort       uint16 = 0x000B
 	NotiPartyRealtimeInfo   uint16 = 0x0099
 	NotiEnterSelectDungeon  uint16 = 0x001B
@@ -342,6 +343,13 @@ func RequestPeerBody(targetUID uint16, requestType byte, peerValue int32) []byte
 	body[2] = requestType
 	binary.LittleEndian.PutUint32(body[3:7], uint32(peerValue))
 	return body
+}
+
+// ResponsePeerBody is the verified type-0 acceptance shape: inviter UID,
+// request type 0, and a four-byte peer value. Refusal has a different 9-byte
+// shape and is intentionally not synthesized by this helper.
+func ResponsePeerBody(inviterUID uint16, peerValue int32) []byte {
+	return RequestPeerBody(inviterUID, 0, peerValue)
 }
 
 func LeavePartyBody() []byte { return nil }

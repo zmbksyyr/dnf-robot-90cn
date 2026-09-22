@@ -163,6 +163,10 @@ func TestPartyProbeBodiesUseVerifiedA21Shapes(t *testing.T) {
 		peer[2] != 0 || int32(binary.LittleEndian.Uint32(peer[3:])) != -7 {
 		t.Fatalf("request peer body = %X", peer)
 	}
+	accepted := ResponsePeerBody(0x1234, 0)
+	if len(accepted) != 7 || binary.LittleEndian.Uint16(accepted[:2]) != 0x1234 || accepted[2] != 0 {
+		t.Fatalf("response peer body = %X", accepted)
+	}
 	if LeavePartyBody() != nil {
 		t.Fatal("leave party body must be empty")
 	}

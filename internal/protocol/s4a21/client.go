@@ -126,6 +126,10 @@ func (c *Client) RequestPeer(ctx context.Context, targetUID uint16, requestType 
 	return c.send(ctx, Encode(1, CmdRequestPeer, RequestPeerBody(targetUID, requestType, peerValue)))
 }
 
+func (c *Client) AcceptPartyInvite(ctx context.Context, inviterUID uint16) error {
+	return c.send(ctx, Encode(1, CmdResponsePeer, ResponsePeerBody(inviterUID, 0)))
+}
+
 func (c *Client) LeaveParty(ctx context.Context) error {
 	return c.send(ctx, Encode(1, CmdLeaveParty, LeavePartyBody()))
 }
