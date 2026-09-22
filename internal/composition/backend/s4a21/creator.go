@@ -38,7 +38,7 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	if c.IDStart <= 0 {
 		return nil, fmt.Errorf("S4A21 creator id start is required")
 	}
-	idStart, nameExists, err := c.nextProvisioningRange(ctx, request.Count)
+	idStart, nameExists, err := c.nextProvisioningRange(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	return robots, nil
 }
 
-func (c RobotCreator) nextProvisioningRange(ctx context.Context, count int) (int, func(string) bool, error) {
+func (c RobotCreator) nextProvisioningRange(ctx context.Context) (int, func(string) bool, error) {
 	idStart := c.IDStart
 	var existing []robotcap.Info
 	if directory, ok := c.RobotCatalog.(robotstate.Directory); ok {
