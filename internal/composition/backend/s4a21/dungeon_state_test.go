@@ -103,3 +103,25 @@ func TestDungeonRunStateRejectsMalformedOrWrongDirectionPackets(t *testing.T) {
 		t.Fatal("truncated START_MAP unexpectedly accepted")
 	}
 }
+
+func TestDungeonRunStateDoesNotCommitPendingRoomBeforeLoadingRelease(t *testing.T) {
+	var state dungeonRunState
+	if err := state.BeginSelection(144); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.BeginEntry(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.StartLoading(0, 3); err != nil {
+		t.Fatal(err)
+	}
+	if got := state.Snapshot(); got.RoomX != 0 || got.RoomY != 0 || got.Phase != uint8(dungeonPhaseLoading) {
+		t.Fatalf("pending room was committed early: %+v", got)
+	}
+	if err := state.FinishLoading(); err != nil {
+		t.Fatal(err)
+	}
+	if got := state.Snapshot(); got.RoomX != 0 || got.RoomY != 3 || got.Phase != uint8(dungeonPhaseReady) {
+		t.Fatalf("released room snapshot = %+v", got)
+	}
+}

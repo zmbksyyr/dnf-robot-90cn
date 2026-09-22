@@ -38,6 +38,22 @@ func TestEnterSingleDungeonUsesVerifiedOrdinaryPacketSequence(t *testing.T) {
 			done <- err
 			return
 		}
+		if _, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiFinishLoading, []byte{0, 0, 0, 0, 0})); err != nil {
+			done <- err
+			return
+		}
+		if err := expectDungeonRequest(serverConn, protocol.CmdMoveMap, 64); err != nil {
+			done <- err
+			return
+		}
+		if _, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiStartMap, []byte{1, 3})); err != nil {
+			done <- err
+			return
+		}
+		if err := expectDungeonRequest(serverConn, protocol.CmdFinishLoading, 0); err != nil {
+			done <- err
+			return
+		}
 		_, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiFinishLoading, []byte{0, 0, 0, 0, 0}))
 		done <- err
 	}()
@@ -48,6 +64,13 @@ func TestEnterSingleDungeonUsesVerifiedOrdinaryPacketSequence(t *testing.T) {
 	}
 	if snapshot.Phase != uint8(dungeonPhaseReady) || snapshot.DungeonID != 144 || snapshot.RoomX != 0 || snapshot.RoomY != 3 {
 		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	moved, err := session.moveSingleDungeon(context.Background(), 1, 3, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.Phase != uint8(dungeonPhaseReady) || moved.RoomX != 1 || moved.RoomY != 3 {
+		t.Fatalf("moved snapshot = %+v", moved)
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)

@@ -43,4 +43,11 @@ func TestLiveS4A21SingleDungeonWorkflow(t *testing.T) {
 	if snapshot.Phase != uint8(dungeonPhaseReady) || snapshot.DungeonID != 144 {
 		t.Fatalf("live dungeon snapshot = %+v", snapshot)
 	}
+	next, err := session.moveSingleDungeon(ctx, 1, 3, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Phase != uint8(dungeonPhaseReady) || next.RoomX != 1 || next.RoomY != 3 {
+		t.Fatalf("live moved dungeon snapshot = %+v", next)
+	}
 }

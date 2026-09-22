@@ -25,6 +25,9 @@ type dungeonRunState struct {
 	dungeonID  uint32
 	roomX      byte
 	roomY      byte
+	pendingX   byte
+	pendingY   byte
+	hasPending bool
 }
 
 type dungeonRunSnapshot struct {
@@ -48,6 +51,7 @@ func (s *dungeonRunState) BeginSelection(dungeonID uint32) error {
 	s.generation++
 	s.dungeonID = dungeonID
 	s.roomX, s.roomY = 0, 0
+	s.pendingX, s.pendingY, s.hasPending = 0, 0, false
 	s.phase = dungeonPhaseSelection
 	return nil
 }
@@ -110,8 +114,18 @@ func (s *dungeonRunState) StartLoading(roomX, roomY byte) error {
 	if s.phase != dungeonPhaseEntry && s.phase != dungeonPhaseReady {
 		return fmt.Errorf("S4A21 map loading requires entry or ready phase")
 	}
-	s.roomX, s.roomY = roomX, roomY
+	s.pendingX, s.pendingY, s.hasPending = roomX, roomY, true
 	s.phase = dungeonPhaseLoading
+	return nil
+}
+
+func (s *dungeonRunState) PrepareMove() error {
+	if s == nil {
+		return fmt.Errorf("S4A21 dungeon state is nil")
+	}
+	if s.phase != dungeonPhaseReady {
+		return fmt.Errorf("S4A21 dungeon move requires ready phase")
+	}
 	return nil
 }
 
@@ -122,6 +136,11 @@ func (s *dungeonRunState) FinishLoading() error {
 	if s.phase != dungeonPhaseLoading {
 		return fmt.Errorf("S4A21 loading completion requires loading phase")
 	}
+	if !s.hasPending {
+		return fmt.Errorf("S4A21 loading completion has no pending room")
+	}
+	s.roomX, s.roomY = s.pendingX, s.pendingY
+	s.pendingX, s.pendingY, s.hasPending = 0, 0, false
 	s.phase = dungeonPhaseReady
 	return nil
 }
@@ -133,6 +152,7 @@ func (s *dungeonRunState) ReturnToTown() {
 	s.phase = dungeonPhaseTown
 	s.dungeonID = 0
 	s.roomX, s.roomY = 0, 0
+	s.pendingX, s.pendingY, s.hasPending = 0, 0, false
 }
 
 func (s dungeonRunState) Snapshot() dungeonRunSnapshot {

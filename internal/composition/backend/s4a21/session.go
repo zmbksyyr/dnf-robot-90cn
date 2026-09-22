@@ -26,6 +26,8 @@ type Session struct {
 	keepaliveDone      chan struct{}
 	packetObserverLock lockhub.RWLocker
 	packetObserver     *packetObserverRegistration
+	dungeonStateGuard  lockhub.Locker
+	dungeonState       *dungeonRunState
 }
 
 type packetObserverRegistration struct {
@@ -117,6 +119,9 @@ func (s *Session) Close() error {
 		return nil
 	}
 	s.cancel()
+	s.dungeonStateGuard.Lock()
+	s.dungeonState = nil
+	s.dungeonStateGuard.Unlock()
 	err := s.client.Close()
 	<-s.done
 	if s.keepaliveDone != nil {
