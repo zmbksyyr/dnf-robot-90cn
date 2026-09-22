@@ -168,6 +168,9 @@ func (r *RobotRuntime) AutoShout(uid int, world bool, msg string) robotcap.Actio
 
 func (r *RobotRuntime) AutoStore(uid int, shouldStop func() bool) robotcap.ActionResult {
 	return r.run(uid, func() robotcap.ActionResult {
+		if err := r.manager.requireBackendCapability(shared.CapabilityStore); err != nil {
+			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
+		}
 		st, ok := r.Status(uid)
 		if !ok || st.StateName != robotcap.RuntimeStateRunning || st.DisconnectReason != 0 || st.PartyActive || r.PartyActive(uid) {
 			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateOffline}

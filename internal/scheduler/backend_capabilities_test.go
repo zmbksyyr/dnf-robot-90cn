@@ -62,3 +62,12 @@ func TestSimulatorWorldShoutIsRejectedBeforeActorWorkflow(t *testing.T) {
 		t.Fatalf("error = %v, missing stable capability code", err)
 	}
 }
+
+func TestSimulatorAutoStoreIsSkippedWithStableCapabilityError(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	result := NewRobotRuntime(m).AutoStore(7, nil)
+	if result.State != robotcap.ActionStateCancelled || !strings.Contains(result.Message, shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("result = %+v, want skipped unsupported store", result)
+	}
+}
