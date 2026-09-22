@@ -126,3 +126,29 @@ func TestActionTransportReapsUnexpectedSessionEnd(t *testing.T) {
 	}
 	t.Fatalf("session was not reaped: %+v", transport.RuntimeStatusMap())
 }
+
+func TestActionTransportReconnectStartsWithFreshTownSnapshot(t *testing.T) {
+	first := &actionTestSession{done: make(chan struct{})}
+	second := &actionTestSession{}
+	transport := NewActionTransport()
+	if err := transport.Attach(7, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{
+		UID: 7, Village: 2, Area: 4, X: 120, Y: 240,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	transport.Detach(7)
+	if err := transport.Attach(7, second); err != nil {
+		t.Fatal(err)
+	}
+	if status := transport.RuntimeStatusMap()[7]; status.StateName != shared.RuntimeStateRunning || status.Village != 0 || status.Area != 0 || status.X != 0 || status.Y != 0 {
+		t.Fatalf("reconnected status = %+v, want fresh running snapshot", status)
+	}
+	close(first.done)
+	time.Sleep(10 * time.Millisecond)
+	if status := transport.RuntimeStatusMap()[7]; status.StateName != shared.RuntimeStateRunning {
+		t.Fatalf("stale session watcher changed new status = %+v", status)
+	}
+}
