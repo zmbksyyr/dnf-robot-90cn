@@ -16,10 +16,13 @@ type SessionFactory struct {
 	Timeout time.Duration
 }
 
+const sessionKeepaliveInterval = 5 * time.Second
+
 type Session struct {
-	client *protocol.Client
-	cancel context.CancelFunc
-	done   chan struct{}
+	client        *protocol.Client
+	cancel        context.CancelFunc
+	done          chan struct{}
+	keepaliveDone chan struct{}
 }
 
 func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSessionRequest) (shared.RobotSession, error) {
@@ -64,8 +67,9 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 		return nil, fmt.Errorf("S4A21 session readiness: %w", err)
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	session := &Session{client: client, cancel: cancel, done: make(chan struct{})}
+	session := &Session{client: client, cancel: cancel, done: make(chan struct{}), keepaliveDone: make(chan struct{})}
 	go session.drain(runCtx)
+	go session.keepalive(runCtx)
 	closeOnError = false
 	return session, nil
 }
@@ -108,6 +112,9 @@ func (s *Session) Close() error {
 	s.cancel()
 	err := s.client.Close()
 	<-s.done
+	if s.keepaliveDone != nil {
+		<-s.keepaliveDone
+	}
 	return err
 }
 
@@ -125,6 +132,30 @@ func (s *Session) drain(ctx context.Context) {
 	for {
 		if _, err := s.client.Read(ctx); err != nil {
 			return
+		}
+	}
+}
+
+func (s *Session) keepalive(ctx context.Context) {
+	if s.keepaliveDone == nil {
+		return
+	}
+	defer close(s.keepaliveDone)
+	ticker := time.NewTicker(sessionKeepaliveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pingCtx, cancel := context.WithTimeout(ctx, sessionKeepaliveInterval/2)
+			err := s.client.CheckConnection(pingCtx)
+			cancel()
+			if err != nil {
+				s.cancel()
+				_ = s.client.Close()
+				return
+			}
 		}
 	}
 }
