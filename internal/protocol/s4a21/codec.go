@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 )
 
 const HeaderSize = 15
@@ -53,6 +54,26 @@ func DecodeFrame(frame []byte) (Packet, error) {
 		Length: uint32(length), Checksum: binary.LittleEndian.Uint32(frame[7:11]),
 		Sequence: binary.LittleEndian.Uint16(frame[11:13]), Extra: frame[14], Body: body,
 	}, nil
+}
+
+func ReadFrame(reader io.Reader, maxLength int) (Packet, error) {
+	if maxLength < HeaderSize {
+		return Packet{}, fmt.Errorf("s4a21 maximum packet length is too small: %d", maxLength)
+	}
+	header := make([]byte, HeaderSize)
+	if _, err := io.ReadFull(reader, header); err != nil {
+		return Packet{}, err
+	}
+	length := int(binary.LittleEndian.Uint32(header[3:7]))
+	if length < HeaderSize || length > maxLength {
+		return Packet{}, fmt.Errorf("s4a21 packet length=%d outside %d..%d", length, HeaderSize, maxLength)
+	}
+	frame := make([]byte, length)
+	copy(frame, header)
+	if _, err := io.ReadFull(reader, frame[HeaderSize:]); err != nil {
+		return Packet{}, err
+	}
+	return DecodeFrame(frame)
 }
 
 func LoginBody(mID, passwordHash string) ([]byte, error) {
