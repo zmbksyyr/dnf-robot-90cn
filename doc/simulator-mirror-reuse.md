@@ -26,3 +26,12 @@
 - 不能确认完整地下城工作流前，`MoveDungeon` 保持稳定的 `backend_capability_unsupported` 占位；
 - 不支持的能力继续由 Web 能力矩阵置灰，并保留稳定错误，便于以后替换 adapter 实现。
 
+## 真实 PVF 回归记录
+
+使用当前工作区可访问的整合包做只读解析：
+
+- S4A21 `DfoServer/Script.pvf`：159 个城镇区域，其中 143 个有可移动几何；
+- S4A21 `DNF/Script.pvf`：159 个城镇区域，其中 143 个有可移动几何；
+- 原生 `DNFClient/Script.pvf`：124 个城镇区域，其中 124 个有可移动几何。
+
+两份 S4A21 PVF 均通过同一 S4A21 adapter 入口解析；原生 PVF 仍走公共 PVF 能力包的原生路径。

@@ -16,7 +16,7 @@ func TestReadTownMapCatalogRejectsMissingArchive(t *testing.T) {
 func TestLiveReadNativeTownMapCatalog(t *testing.T) {
 	path := os.Getenv("NATIVE_TEST_PVF")
 	if path == "" {
-		t.Skip("S4A21_TEST_PVF is not set")
+		t.Skip("NATIVE_TEST_PVF is not set")
 	}
 	maps, err := ReadTownMapCatalog(path)
 	if err != nil {
