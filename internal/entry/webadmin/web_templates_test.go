@@ -63,6 +63,12 @@ func TestWebLabelsMovementAsTownMovement(t *testing.T) {
 	}
 }
 
+func TestWebApiSurfacesPerRobotActionFailure(t *testing.T) {
+	if !strings.Contains(appJS, "function apiErrorMessage(") || !strings.Contains(appJS, "robot&&robot.message") {
+		t.Fatal("web API must surface per-robot action failure messages")
+	}
+}
+
 func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
 	for _, want := range []string{
 		"Category unit-price ranges", "分类单价范围",
