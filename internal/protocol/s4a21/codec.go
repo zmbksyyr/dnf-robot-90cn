@@ -77,7 +77,11 @@ func CreateCharacterBody(job byte, name []byte) ([]byte, error) {
 	return out, nil
 }
 
-func SelectCharacterBody(slot byte) []byte { return []byte{slot} }
+func SelectCharacterBody(slot uint16) []byte {
+	out := make([]byte, 2)
+	binary.LittleEndian.PutUint16(out, slot)
+	return out
+}
 
 func SetUserPositionBody(x, y int16, direction byte, motion uint16) []byte {
 	out := make([]byte, 7)

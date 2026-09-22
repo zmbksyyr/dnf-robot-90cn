@@ -29,6 +29,13 @@ func TestEncodeDecodeFrame(t *testing.T) {
 	}
 }
 
+func TestSelectCharacterBodyUsesTwoByteSlot(t *testing.T) {
+	body := SelectCharacterBody(0x0102)
+	if len(body) != 2 || binary.LittleEndian.Uint16(body) != 0x0102 {
+		t.Fatalf("body = %v", body)
+	}
+}
+
 func TestLoginAndMessageBodiesUseLittleEndianDStrings(t *testing.T) {
 	login, err := LoginBody("robot", "hash")
 	if err != nil {
