@@ -5,6 +5,7 @@ package robotstate
 import (
 	"context"
 	"errors"
+	"sort"
 
 	robotcap "robot/internal/capability/robot"
 	"robot/internal/foundation/lockhub"
@@ -123,11 +124,16 @@ func (s *MemoryStore) SelectRobots(ctx context.Context, req robotcap.CommandRequ
 	if limit <= 0 {
 		limit = 10
 	}
-	for _, robot := range s.robots {
+	uids := make([]int, 0, len(s.robots))
+	for uid := range s.robots {
+		uids = append(uids, uid)
+	}
+	sort.Ints(uids)
+	for _, uid := range uids {
 		if len(selected) >= limit {
 			break
 		}
-		selected = append(selected, robot)
+		selected = append(selected, s.robots[uid])
 	}
 	return selected, nil
 }

@@ -56,6 +56,17 @@ func TestMemoryStoreRegistersBackendNeutralIdentity(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreSelectRobotsUsesStableUIDOrder(t *testing.T) {
+	store := NewMemoryStore([]robotcap.Info{{UID: 30, Name: "c"}, {UID: 10, Name: "a"}, {UID: 20, Name: "b"}})
+	robots, err := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 2})
+	if err != nil || len(robots) != 2 {
+		t.Fatalf("robots=%+v err=%v", robots, err)
+	}
+	if robots[0].UID != 10 || robots[1].UID != 20 {
+		t.Fatalf("robots=%+v, want UID order 10,20", robots)
+	}
+}
+
 func TestMemoryStoreTracksAndRecoversCreateBatch(t *testing.T) {
 	store := NewMemoryStore(nil)
 	batch := CreateBatch{ID: "batch-1", Backend: shared.BackendS4A21}
