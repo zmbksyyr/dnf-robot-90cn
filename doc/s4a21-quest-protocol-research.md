@@ -135,3 +135,22 @@ server: accept the advertised quest, apply the server-defined trigger mutation,
 then finish with count `1`. It still does not establish a general-purpose task
 engine: trigger types and directions are PVF/task-specific, and no dungeon
 settlement or public scheduler integration follows from this probe.
+
+The sequence is now reproducible with the opt-in protocol test
+`TestLiveAdvertisedQuest1016`:
+
+```text
+S4A21_TEST_ADDR=127.0.0.1:10011
+S4A21_QUEST_LIVE=1
+go test ./internal/protocol/s4a21 -run TestLiveAdvertisedQuest1016 -count=1 -v
+```
+
+The test creates a disposable account and character through the wire protocol,
+waits for `ACCEPTABLE_QUEST_LIST`, refuses to proceed unless quest `1016` is
+actually advertised, then performs `ACCEPT_QUEST -> SET_QUEST_TRIGGER(type=0,
+increment=false) -> FINISH_QUEST(count=1)`. It also verifies that the refreshed
+acceptable list no longer contains `1016` and drains the trailing notification
+packets before disconnecting. The service log independently records
+`1 -> 0`, successful completion, and the refreshed list. The test never opens
+or modifies the simulator's SQLite/MySQL files and remains skipped unless both
+environment variables are explicitly supplied.
