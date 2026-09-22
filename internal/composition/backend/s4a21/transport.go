@@ -136,7 +136,19 @@ func (t *ActionTransport) MoveTown(ctx context.Context, command shared.RuntimeMo
 	if command.X < math.MinInt16 || command.X > math.MaxInt16 || command.Y < math.MinInt16 || command.Y > math.MaxInt16 {
 		return fmt.Errorf("S4A21 town position out of range: %d,%d", command.X, command.Y)
 	}
-	return session.MoveTown(ctx, shared.TownMoveIntent{X: int16(command.X), Y: int16(command.Y), Direction: byte(command.MoveType), Motion: uint16(command.Speed)})
+	if err := session.MoveTown(ctx, shared.TownMoveIntent{X: int16(command.X), Y: int16(command.Y), Direction: byte(command.MoveType), Motion: uint16(command.Speed)}); err != nil {
+		return err
+	}
+	t.mu.Lock()
+	status := t.status[command.UID]
+	status.UID = command.UID
+	status.Village = command.Village
+	status.Area = command.Area
+	status.X = command.X
+	status.Y = command.Y
+	t.status[command.UID] = status
+	t.mu.Unlock()
+	return nil
 }
 
 func (t *ActionTransport) ShoutLocal(ctx context.Context, command shared.RuntimeShoutCommand) error {

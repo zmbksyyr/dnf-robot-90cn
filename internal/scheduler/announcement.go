@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"robot/internal/shared"
 )
 
 const (
@@ -88,6 +90,9 @@ func SystemAnnouncementMessageAt(now time.Time, online, auctionKinds int) string
 }
 
 func (m *RobotManager) systemOnlineCount() (int, error) {
+	if m == nil || m.database == nil {
+		return 0, m.nativeDatabaseUnsupported("system online count")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	var online int
@@ -102,6 +107,9 @@ func (m *RobotManager) systemOnlineCount() (int, error) {
 }
 
 func (m *RobotManager) systemAuctionKindCount() (int, error) {
+	if m == nil || m.database == nil {
+		return 0, m.nativeDatabaseUnsupported("auction kind count")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	var kinds int
@@ -113,4 +121,12 @@ func (m *RobotManager) systemAuctionKindCount() (int, error) {
 		kinds = 0
 	}
 	return kinds, nil
+}
+
+func (m *RobotManager) nativeDatabaseUnsupported(operation string) error {
+	backend := shared.BackendNative
+	if m != nil && m.backendRobotBackend != "" {
+		backend = m.backendRobotBackend
+	}
+	return shared.UnsupportedCapabilityError{Backend: backend, Operation: shared.CapabilityMarket, Reason: operation + " requires the native database"}
 }

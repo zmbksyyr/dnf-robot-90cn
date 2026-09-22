@@ -50,7 +50,9 @@ func (s MoveService) Move(req robotcap.CommandRequest, rc robotconfig.RuntimeCon
 	var plans []movePlan
 	for _, robot := range robots {
 		if st, ok := status[robot.UID]; ok && robotcap.ActiveRuntimeStatus(st) {
-			robot.Village, robot.Area, robot.X, robot.Y = st.Village, st.Area, st.X, st.Y
+			if st.Village != 0 || st.Area != 0 || st.X != 0 || st.Y != 0 {
+				robot.Village, robot.Area, robot.X, robot.Y = st.Village, st.Area, st.X, st.Y
+			}
 			if st.RobotType == 2 || st.RobotType == 3 {
 				result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: true, State: robotcap.ActionStateStore, Message: "skip moving store robot"})
 				continue

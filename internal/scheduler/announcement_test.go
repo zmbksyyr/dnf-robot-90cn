@@ -1,8 +1,11 @@
 package scheduler
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	"robot/internal/shared"
 )
 
 func TestSystemAnnouncementMessage(t *testing.T) {
@@ -12,5 +15,15 @@ func TestSystemAnnouncementMessage(t *testing.T) {
 	}
 	if got := SystemAnnouncementMessageAt(now, -1, -2); got != "12:34:56 在线人数0；拍卖行0类" {
 		t.Fatalf("negative message=%q", got)
+	}
+}
+
+func TestSimulatorAnnouncementDoesNotDereferenceNativeDatabase(t *testing.T) {
+	m := NewRobotManager(nil, nil, nil)
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	_, err := m.SystemAnnouncement()
+	var unsupported shared.UnsupportedCapabilityError
+	if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendS4A21 {
+		t.Fatalf("announcement error = %T %v", err, err)
 	}
 }

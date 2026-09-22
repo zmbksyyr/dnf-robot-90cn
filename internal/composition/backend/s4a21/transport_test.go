@@ -36,11 +36,14 @@ func TestActionTransportMapsVerifiedTownActions(t *testing.T) {
 	if err := transport.Attach(7, session); err != nil {
 		t.Fatal(err)
 	}
-	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: 7, X: 120, Y: 240, MoveType: 1, Speed: 30}); err != nil {
+	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: 7, Village: 2, Area: 4, X: 120, Y: 240, MoveType: 1, Speed: 30}); err != nil {
 		t.Fatal(err)
 	}
 	if session.town.X != 120 || session.town.Y != 240 || session.town.Direction != 1 || session.town.Motion != 30 {
 		t.Fatalf("town intent = %+v", session.town)
+	}
+	if status := transport.RuntimeStatusMap()[7]; status.Village != 2 || status.Area != 4 || status.X != 120 || status.Y != 240 {
+		t.Fatalf("runtime status = %+v", status)
 	}
 	if err := transport.ShoutLocal(context.Background(), shared.RuntimeShoutCommand{UID: 7, Message: "hello"}); err != nil {
 		t.Fatal(err)

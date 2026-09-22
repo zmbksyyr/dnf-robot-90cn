@@ -20,6 +20,8 @@ type capturedMoveStep struct {
 type captureMoveEnv struct {
 	steps  []capturedMoveStep
 	failAt int
+	robots []robotcap.Info
+	status map[int]robotcap.RuntimeStatus
 }
 
 func (e *captureMoveEnv) DispatchMoveStep(info robotcap.Info, targetVillage, targetArea, targetX, targetY, _, _, _ int, _ robotconfig.RuntimeConfig) error {
@@ -41,9 +43,28 @@ func (*captureMoveEnv) RandBetween(min, _ int) int              { return min }
 func (*captureMoveEnv) RuntimeStatus(int) (robotcap.RuntimeStatus, bool) {
 	return robotcap.RuntimeStatus{}, false
 }
-func (*captureMoveEnv) RuntimeStatusMap() map[int]robotcap.RuntimeStatus { return nil }
-func (*captureMoveEnv) SelectRobots(robotcap.CommandRequest) ([]robotcap.Info, error) {
-	return nil, nil
+func (e *captureMoveEnv) RuntimeStatusMap() map[int]robotcap.RuntimeStatus { return e.status }
+func (e *captureMoveEnv) SelectRobots(robotcap.CommandRequest) ([]robotcap.Info, error) {
+	return e.robots, nil
+}
+
+func TestMoveKeepsPersistedTownWhenRuntimeHasNoPositionYet(t *testing.T) {
+	robot := robotcap.Info{UID: 101, Village: 1, Area: 2, X: 300, Y: 200}
+	env := &captureMoveEnv{
+		robots: []robotcap.Info{robot},
+		status: map[int]robotcap.RuntimeStatus{101: {UID: 101, StateName: robotcap.RuntimeStateRunning}},
+	}
+	rc := robotconfig.RuntimeConfig{MoveSteps: 2, MoveSpeedMin: 100, MoveSpeedMax: 100}
+	result, err := (MoveService{Env: env}).Move(robotcap.CommandRequest{UIDs: []int{101}}, rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Accepted != 1 || len(env.steps) == 0 {
+		t.Fatalf("result=%+v steps=%+v", result, env.steps)
+	}
+	if env.steps[0].info.Village != robot.Village || env.steps[0].info.Area != robot.Area {
+		t.Fatalf("move source=%+v want village=%d area=%d", env.steps[0].info, robot.Village, robot.Area)
+	}
 }
 
 func TestAutoMovePreservesSourceWhenFollowingAcrossAreas(t *testing.T) {

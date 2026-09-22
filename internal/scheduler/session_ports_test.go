@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	robotcap "robot/internal/capability/robot"
+	robotstate "robot/internal/capability/robotstate"
 	"robot/internal/shared"
 )
 
@@ -81,6 +83,27 @@ func TestBackendSessionTransportRequiresAccount(t *testing.T) {
 	m.SetBackendSessionTransport(backend)
 	if err := (sessionActionEnv{manager: m}).SendOnline([]shared.RuntimeOnlineUser{{UID: 17000001}}); err == nil {
 		t.Fatal("missing backend account unexpectedly succeeded")
+	}
+}
+
+func TestBackendSessionTransportResolvesRobotOwnedIdentity(t *testing.T) {
+	store := robotstate.NewMemoryStore([]robotcap.Info{{UID: 17000001, Name: "sim-robot"}})
+	slot := uint16(3)
+	if err := store.RegisterIdentity(context.Background(), robotstate.Identity{
+		Backend: shared.BackendS4A21, Account: "robot17000001", CharacterName: "sim-robot", Slot: &slot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	m := testRobotManagerWithConfig(t, "")
+	m.SetRobotStateDirectory(store)
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	backend := &backendSessionStub{}
+	m.SetBackendSessionTransport(backend)
+	if err := (sessionActionEnv{manager: m}).SendOnline([]shared.RuntimeOnlineUser{{UID: 17000001}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.opened) != 1 || backend.opened[0].AccountName != "robot17000001" || backend.opened[0].CharacterSlot != slot {
+		t.Fatalf("opened=%+v", backend.opened)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	robotcap "robot/internal/capability/robot"
 	robotaction "robot/internal/capability/robotaction"
 	robotconfig "robot/internal/capability/robotconfig"
+	robotstate "robot/internal/capability/robotstate"
 	"robot/internal/shared"
 )
 
@@ -95,6 +96,11 @@ func (e sessionActionEnv) CountRuntimeRunning() int {
 }
 
 func (e sessionActionEnv) EnsureWorldHornByCID(cid int) error {
+	if e.manager.robotState != nil && e.manager.backendSessions != nil {
+		// Simulated backends do not use the native world-horn inventory table.
+		// Their login protocol owns all required session state.
+		return nil
+	}
 	return e.manager.storePreparer().EnsureWorldHornByCID(cid)
 }
 
@@ -161,6 +167,9 @@ func (e sessionActionEnv) SendLogout(uid int) error {
 
 func (e sessionActionEnv) SendOnline(userinfos []shared.RuntimeOnlineUser) error {
 	if e.manager.backendSessions != nil {
+		if err := e.populateBackendSessionIdentities(userinfos); err != nil {
+			return err
+		}
 		opened := make([]int, 0, len(userinfos))
 		for _, user := range userinfos {
 			if user.AccountName == "" {
@@ -191,6 +200,59 @@ func (e sessionActionEnv) SendOnline(userinfos []shared.RuntimeOnlineUser) error
 	}
 	e.manager.waitSessionRelogin(userinfos)
 	return e.manager.doll.Online(userinfos)
+}
+
+func (e sessionActionEnv) populateBackendSessionIdentities(users []shared.RuntimeOnlineUser) error {
+	if len(users) == 0 {
+		return nil
+	}
+	directory, ok := e.manager.robotState.(robotstate.IdentityDirectory)
+	if !ok {
+		return nil
+	}
+	identities, err := directory.Identities(context.Background(), e.manager.backendRobotBackend)
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]robotstate.Identity, len(identities))
+	for _, identity := range identities {
+		byName[identity.CharacterName] = identity
+	}
+	uids := make([]int, 0, len(users))
+	for _, user := range users {
+		if user.AccountName == "" {
+			uids = append(uids, user.UID)
+		}
+	}
+	if len(uids) == 0 {
+		return nil
+	}
+	robots, err := e.manager.robotState.SelectRobots(context.Background(), robotcap.CommandRequest{UIDs: uids})
+	if err != nil {
+		return err
+	}
+	byUID := make(map[int]robotcap.Info, len(robots))
+	for _, robot := range robots {
+		byUID[robot.UID] = robot
+	}
+	for index := range users {
+		if users[index].AccountName != "" {
+			continue
+		}
+		robot, exists := byUID[users[index].UID]
+		if !exists {
+			continue
+		}
+		identity, exists := byName[robot.Name]
+		if !exists {
+			continue
+		}
+		users[index].AccountName = identity.Account
+		if identity.Slot != nil {
+			users[index].CharacterSlot = int(*identity.Slot)
+		}
+	}
+	return nil
 }
 
 func gateAreaForVillage(maps []shared.MapCatalogItem, village int) (int, bool) {

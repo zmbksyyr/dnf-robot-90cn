@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"time"
 
 	actormodel "robot/internal/actor"
@@ -96,6 +97,17 @@ func (s *RobotSupervisor) actorOwnsUID(uid int) bool {
 }
 
 func (m *RobotManager) aliveRobotUIDs(uids []int) (map[int]bool, error) {
+	if m.robotState != nil {
+		robots, err := m.robotState.SelectRobots(context.Background(), robotcap.CommandRequest{UIDs: append([]int(nil), uids...)})
+		if err != nil {
+			return nil, err
+		}
+		alive := make(map[int]bool, len(robots))
+		for _, robot := range robots {
+			alive[robot.UID] = true
+		}
+		return alive, nil
+	}
 	return m.schemaRepo().AliveRobotUIDs(uids)
 }
 
