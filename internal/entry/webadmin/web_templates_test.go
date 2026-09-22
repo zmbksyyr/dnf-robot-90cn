@@ -69,6 +69,21 @@ func TestWebApiSurfacesPerRobotActionFailure(t *testing.T) {
 	}
 }
 
+func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
+	for _, want := range []string{
+		`cmd.includes("robotsMove")`,
+		`cmd.includes("robotsShoutLocal")`,
+		`cap='world_shout'`,
+		`cmd.includes("robotsStore")`,
+		`cmd.includes("openPartyCompat")`,
+		`cmd.includes("openCleanupDialog")`,
+	} {
+		if !strings.Contains(appJS, want) {
+			t.Fatalf("web capability mapping is missing %q", want)
+		}
+	}
+}
+
 func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
 	for _, want := range []string{
 		"Category unit-price ranges", "分类单价范围",
