@@ -19,13 +19,24 @@ func TestCreateCharacterBodyMatchesA21Layout(t *testing.T) {
 }
 
 func TestEncodeDecodeFrame(t *testing.T) {
-	frame := Encode(1, CmdCreateCharacter, []byte{7, 8, 9})
+	frame := make([]byte, ResponseHeaderSize+3)
+	frame[0] = 1
+	binary.LittleEndian.PutUint16(frame[1:3], CmdCreateCharacter)
+	binary.LittleEndian.PutUint32(frame[3:7], uint32(len(frame)))
+	copy(frame[ResponseHeaderSize:], []byte{7, 8, 9})
 	pkt, err := DecodeFrame(frame)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if pkt.Type != CmdCreateCharacter || string(pkt.Body) != string([]byte{7, 8, 9}) {
 		t.Fatalf("packet = %+v", pkt)
+	}
+}
+
+func TestEncodeUsesFourteenByteClientHeader(t *testing.T) {
+	frame := Encode(1, CmdLogin, []byte{7, 8, 9})
+	if len(frame) != RequestHeaderSize+3 || frame[RequestHeaderSize] != 7 {
+		t.Fatalf("frame length/body = %d/%v", len(frame), frame)
 	}
 }
 

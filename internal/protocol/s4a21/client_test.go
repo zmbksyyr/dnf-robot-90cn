@@ -14,7 +14,7 @@ func TestClientLoginWritesProtocolPacket(t *testing.T) {
 	client := NewClient(clientConn)
 	done := make(chan error, 1)
 	go func() {
-		packet, err := ReadFrame(serverConn, DefaultMaxPacketLength)
+		packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
 		if err == nil && (packet.Type != CmdLogin || string(packet.Body[4:9]) != "robot") {
 			err = fmt.Errorf("unexpected packet: %+v", packet)
 		}
@@ -36,7 +36,7 @@ func TestClientMethodsUseS4A21Widths(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		for i := 0; i < 2; i++ {
-			packet, err := ReadFrame(serverConn, DefaultMaxPacketLength)
+			packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
 			if err != nil {
 				done <- err
 				return

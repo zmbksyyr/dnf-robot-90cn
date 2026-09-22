@@ -7,7 +7,10 @@ import (
 	"io"
 )
 
-const HeaderSize = 15
+const (
+	RequestHeaderSize  = 14
+	ResponseHeaderSize = 15
+)
 
 const (
 	CmdLogin           uint16 = 0x0001
@@ -31,24 +34,24 @@ type Packet struct {
 }
 
 func Encode(command byte, typ uint16, body []byte) []byte {
-	length := HeaderSize + len(body)
+	length := RequestHeaderSize + len(body)
 	out := make([]byte, length)
 	out[0] = command
 	binary.LittleEndian.PutUint16(out[1:3], typ)
 	binary.LittleEndian.PutUint32(out[3:7], uint32(length))
-	copy(out[15:], body)
+	copy(out[RequestHeaderSize:], body)
 	return out
 }
 
 func DecodeFrame(frame []byte) (Packet, error) {
-	if len(frame) < HeaderSize {
+	if len(frame) < ResponseHeaderSize {
 		return Packet{}, fmt.Errorf("s4a21 packet shorter than header: %d", len(frame))
 	}
 	length := int(binary.LittleEndian.Uint32(frame[3:7]))
-	if length < HeaderSize || length != len(frame) {
+	if length < ResponseHeaderSize || length != len(frame) {
 		return Packet{}, fmt.Errorf("s4a21 packet length=%d frame=%d", length, len(frame))
 	}
-	body := append([]byte(nil), frame[HeaderSize:]...)
+	body := append([]byte(nil), frame[ResponseHeaderSize:]...)
 	return Packet{
 		Command: frame[0], Type: binary.LittleEndian.Uint16(frame[1:3]),
 		Length: uint32(length), Checksum: binary.LittleEndian.Uint32(frame[7:11]),
@@ -57,23 +60,39 @@ func DecodeFrame(frame []byte) (Packet, error) {
 }
 
 func ReadFrame(reader io.Reader, maxLength int) (Packet, error) {
-	if maxLength < HeaderSize {
+	return readFrame(reader, ResponseHeaderSize, maxLength)
+}
+
+func ReadRequestFrame(reader io.Reader, maxLength int) (Packet, error) {
+	return readFrame(reader, RequestHeaderSize, maxLength)
+}
+
+func readFrame(reader io.Reader, headerSize, maxLength int) (Packet, error) {
+	if maxLength < headerSize {
 		return Packet{}, fmt.Errorf("s4a21 maximum packet length is too small: %d", maxLength)
 	}
-	header := make([]byte, HeaderSize)
+	header := make([]byte, headerSize)
 	if _, err := io.ReadFull(reader, header); err != nil {
 		return Packet{}, err
 	}
 	length := int(binary.LittleEndian.Uint32(header[3:7]))
-	if length < HeaderSize || length > maxLength {
-		return Packet{}, fmt.Errorf("s4a21 packet length=%d outside %d..%d", length, HeaderSize, maxLength)
+	if length < headerSize || length > maxLength {
+		return Packet{}, fmt.Errorf("s4a21 packet length=%d outside %d..%d", length, headerSize, maxLength)
 	}
 	frame := make([]byte, length)
 	copy(frame, header)
-	if _, err := io.ReadFull(reader, frame[HeaderSize:]); err != nil {
+	if _, err := io.ReadFull(reader, frame[headerSize:]); err != nil {
 		return Packet{}, err
 	}
-	return DecodeFrame(frame)
+	if headerSize == ResponseHeaderSize {
+		return DecodeFrame(frame)
+	}
+	body := append([]byte(nil), frame[RequestHeaderSize:]...)
+	return Packet{
+		Command: frame[0], Type: binary.LittleEndian.Uint16(frame[1:3]),
+		Length: uint32(length), Checksum: binary.LittleEndian.Uint32(frame[7:11]),
+		Sequence: binary.LittleEndian.Uint16(frame[11:13]), Extra: frame[13], Body: body,
+	}, nil
 }
 
 func LoginBody(mID, passwordHash string) ([]byte, error) {
