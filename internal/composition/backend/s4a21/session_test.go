@@ -30,8 +30,10 @@ func TestSessionTranslatesSharedIntents(t *testing.T) {
 	if err := session.Shout(context.Background(), shared.ShoutIntent{Channel: shared.ShoutChannelArea, Message: "测试"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := session.MoveDungeon(context.Background(), shared.DungeonMoveIntent{NextX: 1, NextY: 2}); err != nil {
-		t.Fatal(err)
+	if err := session.MoveDungeon(context.Background(), shared.DungeonMoveIntent{NextX: 1, NextY: 2}); err == nil {
+		t.Fatal("dungeon movement unexpectedly succeeded")
+	} else if _, ok := err.(shared.UnsupportedCapabilityError); !ok {
+		t.Fatalf("dungeon movement error = %T %v", err, err)
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
@@ -81,7 +83,7 @@ func serveSessionSequence(listener net.Listener, done chan<- error) {
 		return
 	}
 	defer conn.Close()
-	want := []uint16{protocol.CmdLogin, protocol.CmdSelectCharacter, protocol.CmdCheckConnection, protocol.CmdSetUserPosition, protocol.CmdSendMessage, protocol.CmdMoveMap}
+	want := []uint16{protocol.CmdLogin, protocol.CmdSelectCharacter, protocol.CmdCheckConnection, protocol.CmdSetUserPosition, protocol.CmdSendMessage}
 	for index, typ := range want {
 		packet, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
 		if readErr != nil {

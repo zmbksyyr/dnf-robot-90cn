@@ -75,10 +75,11 @@ func (s *Session) MoveTown(ctx context.Context, intent shared.TownMoveIntent) er
 }
 
 func (s *Session) MoveDungeon(ctx context.Context, intent shared.DungeonMoveIntent) error {
-	return s.client.MoveMap(ctx, protocol.MoveMapRequest{
-		NextX: intent.NextX, NextY: intent.NextY,
-		PathPositionX: intent.PathX, PathPositionY: intent.PathY,
-	})
+	return shared.UnsupportedCapabilityError{
+		Backend:   shared.BackendS4A21,
+		Operation: shared.CapabilityDungeonMove,
+		Reason:    "dungeon entry workflow is not integrated yet",
+	}
 }
 
 func (s *Session) Shout(ctx context.Context, intent shared.ShoutIntent) error {
