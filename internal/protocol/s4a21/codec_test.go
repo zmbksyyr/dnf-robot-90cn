@@ -40,6 +40,27 @@ func TestEncodeUsesFourteenByteClientHeader(t *testing.T) {
 	}
 }
 
+func TestParseAcceptableQuestList(t *testing.T) {
+	body := []byte{13, 2, 0, 0xF8, 0x03, 0x65, 0x00}
+	list, err := ParseAcceptableQuestList(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list.Level != 13 || len(list.QuestIDs) != 2 || list.QuestIDs[0] != 1016 || list.QuestIDs[1] != 101 {
+		t.Fatalf("list = %+v", list)
+	}
+	list.QuestIDs[0] = 0
+	if body[3] != 0xF8 {
+		t.Fatal("parser did not copy quest IDs")
+	}
+}
+
+func TestParseAcceptableQuestListRejectsInvalidLength(t *testing.T) {
+	if _, err := ParseAcceptableQuestList([]byte{1, 1, 0}); err == nil {
+		t.Fatal("truncated quest list unexpectedly parsed")
+	}
+}
+
 func TestSelectCharacterBodyUsesTwoByteSlot(t *testing.T) {
 	body := SelectCharacterBody(0x0102)
 	if len(body) != 2 || binary.LittleEndian.Uint16(body) != 0x0102 {

@@ -13,23 +13,24 @@ const (
 )
 
 const (
-	CmdLogin               uint16 = 0x0001
-	CmdSelectCharacter     uint16 = 0x0004
-	CmdCreateCharacter     uint16 = 0x0005
-	CmdSendMessage         uint16 = 0x0011
-	CmdEnterSelectDungeon  uint16 = 0x000F
-	CmdSelectDungeon       uint16 = 0x0010
-	CmdChangeTutorialFlag  uint16 = 0x008F
-	CmdFinishLoading       uint16 = 0x0025
-	CmdSetUserPosition     uint16 = 0x0023
-	CmdMoveMap             uint16 = 0x002D
-	CmdCheckConnection     uint16 = 0x04DD
-	NotiCharacterList      uint16 = 0x0002
-	NotiUserPosition       uint16 = 0x0016
-	NotiEnterSelectDungeon uint16 = 0x001B
-	NotiDungeonInfo        uint16 = 0x001C
-	NotiStartMap           uint16 = 0x001D
-	NotiFinishLoading      uint16 = 0x001E
+	CmdLogin                uint16 = 0x0001
+	CmdSelectCharacter      uint16 = 0x0004
+	CmdCreateCharacter      uint16 = 0x0005
+	CmdSendMessage          uint16 = 0x0011
+	CmdEnterSelectDungeon   uint16 = 0x000F
+	CmdSelectDungeon        uint16 = 0x0010
+	CmdChangeTutorialFlag   uint16 = 0x008F
+	CmdFinishLoading        uint16 = 0x0025
+	CmdSetUserPosition      uint16 = 0x0023
+	CmdMoveMap              uint16 = 0x002D
+	CmdCheckConnection      uint16 = 0x04DD
+	NotiCharacterList       uint16 = 0x0002
+	NotiAcceptableQuestList uint16 = 0x0015
+	NotiUserPosition        uint16 = 0x0016
+	NotiEnterSelectDungeon  uint16 = 0x001B
+	NotiDungeonInfo         uint16 = 0x001C
+	NotiStartMap            uint16 = 0x001D
+	NotiFinishLoading       uint16 = 0x001E
 )
 
 type Packet struct {
@@ -40,6 +41,29 @@ type Packet struct {
 	Sequence uint16
 	Extra    byte
 	Body     []byte
+}
+
+// AcceptableQuestList is the verified A21 selection projection: character
+// level, followed by a uint16 count and that many uint16 quest IDs.
+type AcceptableQuestList struct {
+	Level    byte
+	QuestIDs []uint16
+}
+
+func ParseAcceptableQuestList(body []byte) (AcceptableQuestList, error) {
+	if len(body) < 3 {
+		return AcceptableQuestList{}, fmt.Errorf("s4a21 acceptable quest list is truncated")
+	}
+	count := int(binary.LittleEndian.Uint16(body[1:3]))
+	want := 3 + count*2
+	if len(body) != want {
+		return AcceptableQuestList{}, fmt.Errorf("s4a21 acceptable quest list length=%d want=%d", len(body), want)
+	}
+	ids := make([]uint16, count)
+	for i := range ids {
+		ids[i] = binary.LittleEndian.Uint16(body[3+i*2:])
+	}
+	return AcceptableQuestList{Level: body[0], QuestIDs: ids}, nil
 }
 
 func Encode(command byte, typ uint16, body []byte) []byte {
