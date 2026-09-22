@@ -10,6 +10,22 @@ import (
 	"robot/internal/shared"
 )
 
+type backendSessionStub struct {
+	opened []shared.OpenSessionRequest
+	closed []int
+}
+
+func (s *backendSessionStub) Open(_ context.Context, uid int, request shared.OpenSessionRequest) error {
+	s.opened = append(s.opened, request)
+	_ = uid
+	return nil
+}
+
+func (s *backendSessionStub) Close(uid int) error {
+	s.closed = append(s.closed, uid)
+	return nil
+}
+
 type offlineSessionRepository struct {
 	missingSchemaRepository
 	calls int
@@ -37,6 +53,34 @@ func TestSessionReloginWaitsForSameUID(t *testing.T) {
 	m.waitSessionRelogin([]shared.RuntimeOnlineUser{{UID: 17000001}})
 	if elapsed := time.Since(started); elapsed < 30*time.Millisecond {
 		t.Fatalf("same uid relogin waited %s, want at least 30ms", elapsed)
+	}
+}
+
+func TestBackendSessionTransportBypassesNativeOnlinePath(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	backend := &backendSessionStub{}
+	m.SetBackendSessionTransport(backend)
+	users := []shared.RuntimeOnlineUser{{UID: 17000001, AccountName: "acct", PasswordHash: "hash", CharacterSlot: 2}}
+	if err := (sessionActionEnv{manager: m}).SendOnline(users); err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.opened) != 1 || backend.opened[0].AccountName != "acct" || backend.opened[0].CharacterSlot != 2 {
+		t.Fatalf("opened=%+v", backend.opened)
+	}
+	if err := (sessionActionEnv{manager: m}).SendLogout(users[0].UID); err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.closed) != 1 || backend.closed[0] != users[0].UID {
+		t.Fatalf("closed=%v", backend.closed)
+	}
+}
+
+func TestBackendSessionTransportRequiresAccount(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	backend := &backendSessionStub{}
+	m.SetBackendSessionTransport(backend)
+	if err := (sessionActionEnv{manager: m}).SendOnline([]shared.RuntimeOnlineUser{{UID: 17000001}}); err == nil {
+		t.Fatal("missing backend account unexpectedly succeeded")
 	}
 }
 

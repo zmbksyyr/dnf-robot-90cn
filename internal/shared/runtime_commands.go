@@ -11,6 +11,10 @@ type RuntimeOnlineUser struct {
 	Port    int
 	Token   string
 	UID     int
+	// Backend credentials are optional and only consumed by a selected
+	// backend session adapter. Native callers continue using Token.
+	AccountName  string
+	PasswordHash string
 
 	// CID is the database character identity (taiwan_cain.charac_info.charac_no).
 	CID int

@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -144,6 +145,13 @@ func (e sessionActionEnv) PrepareOnlineRobot(info robotcap.Info, rc robotconfig.
 }
 
 func (e sessionActionEnv) SendLogout(uid int) error {
+	if e.manager.backendSessions != nil {
+		err := e.manager.backendSessions.Close(uid)
+		if err == nil {
+			e.manager.markSessionLogout(uid, time.Now())
+		}
+		return err
+	}
 	err := e.manager.doll.Logout(uid)
 	if err == nil {
 		e.manager.markSessionLogout(uid, time.Now())
@@ -152,6 +160,27 @@ func (e sessionActionEnv) SendLogout(uid int) error {
 }
 
 func (e sessionActionEnv) SendOnline(userinfos []shared.RuntimeOnlineUser) error {
+	if e.manager.backendSessions != nil {
+		opened := make([]int, 0, len(userinfos))
+		for _, user := range userinfos {
+			if user.AccountName == "" {
+				for _, uid := range opened {
+					_ = e.manager.backendSessions.Close(uid)
+				}
+				return fmt.Errorf("backend session account is required for uid %d", user.UID)
+			}
+			if err := e.manager.backendSessions.Open(context.Background(), user.UID, shared.OpenSessionRequest{
+				AccountName: user.AccountName, PasswordHash: user.PasswordHash, CharacterSlot: uint16(user.CharacterSlot),
+			}); err != nil {
+				for _, uid := range opened {
+					_ = e.manager.backendSessions.Close(uid)
+				}
+				return err
+			}
+			opened = append(opened, user.UID)
+		}
+		return nil
+	}
 	maps := e.manager.loadMapCatalog()
 	for index := range userinfos {
 		if gateArea, ok := gateAreaForVillage(maps, userinfos[index].BirthVillage); ok {

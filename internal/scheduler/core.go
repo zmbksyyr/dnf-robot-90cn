@@ -29,6 +29,7 @@ type RobotManager struct {
 	cfg                             *config.SysConfig
 	doll                            Runtime
 	backendActions                  BackendActionTransport
+	backendSessions                 BackendSessionTransport
 	worldShout                      WorldShout
 	locks                           *lockhub.Hub
 	startedAt                       time.Time
@@ -122,6 +123,17 @@ type RobotManager struct {
 type BackendActionTransport interface {
 	MoveTown(context.Context, shared.RuntimeMoveCommand) error
 	ShoutLocal(context.Context, shared.RuntimeShoutCommand) error
+}
+
+type BackendSessionTransport interface {
+	Open(context.Context, int, shared.OpenSessionRequest) error
+	Close(int) error
+}
+
+func (m *RobotManager) SetBackendSessionTransport(transport BackendSessionTransport) {
+	if m != nil {
+		m.backendSessions = transport
+	}
 }
 
 func (m *RobotManager) SetBackendActionTransport(transport BackendActionTransport) {
