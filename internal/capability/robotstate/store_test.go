@@ -55,3 +55,24 @@ func TestMemoryStoreRegistersBackendNeutralIdentity(t *testing.T) {
 		t.Fatalf("identities = %+v, err=%v", identities, err)
 	}
 }
+
+func TestMemoryStoreTracksAndRecoversCreateBatch(t *testing.T) {
+	store := NewMemoryStore(nil)
+	batch := CreateBatch{ID: "batch-1", Backend: shared.BackendS4A21}
+	if err := store.BeginCreateBatch(context.Background(), batch); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := store.RecoverIncompleteCreateBatches(context.Background())
+	if err != nil || len(recovered) != 1 || recovered[0].Status != BatchInterrupted {
+		t.Fatalf("recovered=%+v err=%v", recovered, err)
+	}
+	if err := store.CompleteCreateBatch(context.Background(), batch.ID); err == nil {
+		t.Fatal("completed interrupted batch")
+	}
+	if err := store.BeginCreateBatch(context.Background(), CreateBatch{ID: "batch-2", Backend: shared.BackendS4A21}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RollbackCreateBatch(context.Background(), "batch-2"); err != nil {
+		t.Fatal(err)
+	}
+}

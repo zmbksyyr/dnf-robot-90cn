@@ -41,10 +41,11 @@ type MemoryStore struct {
 	robots     map[int]robotcap.Info
 	locations  map[int]shared.MapLocation
 	identities map[string]Identity
+	batches    map[string]CreateBatch
 }
 
 func NewMemoryStore(robots []robotcap.Info) *MemoryStore {
-	store := &MemoryStore{robots: make(map[int]robotcap.Info), locations: make(map[int]shared.MapLocation), identities: make(map[string]Identity)}
+	store := &MemoryStore{robots: make(map[int]robotcap.Info), locations: make(map[int]shared.MapLocation), identities: make(map[string]Identity), batches: make(map[string]CreateBatch)}
 	for _, robot := range robots {
 		store.robots[robot.UID] = robot
 		store.locations[robot.UID] = shared.MapLocation{Village: robot.Village, Area: robot.Area, X: robot.X, Y: robot.Y}
