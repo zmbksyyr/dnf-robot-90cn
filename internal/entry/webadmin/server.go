@@ -38,6 +38,7 @@ type Server struct {
 	serverScriptCancel      func()
 	gameMaxUserMu           lockhub.Locker
 	gameMaxUser             gameMaxUserCache
+	backendSelectionMu      lockhub.Locker
 }
 
 type partySkillFileState struct {
@@ -89,6 +90,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	mux.HandleFunc("/api/party-compat", s.requireAuth(s.handlePartyCompat))
 	mux.HandleFunc("/api/compat", s.requireAuth(s.handleCompat))
 	mux.HandleFunc("/api/diagnostics", s.requireAuth(s.handleDiagnostics))
+	mux.HandleFunc("/api/backend", s.requireAuth(s.handleBackend))
 	mux.HandleFunc("/api/keypair-download", s.requireAuth(s.handleKeypairDownload))
 	server := &http.Server{
 		Addr:              s.webAddr,

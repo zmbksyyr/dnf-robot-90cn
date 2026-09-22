@@ -108,6 +108,7 @@ func (p Paths) MarketLog() string     { return categorizedPath(p.Logs, "market.j
 func (p Paths) StorePointCache() string  { return categorizedPath(p.State, "store_points_cache.json") }
 func (p Paths) StorePointActive() string { return categorizedPath(p.State, "store_points_active.json") }
 func (p Paths) MailNotifyCursor() string { return categorizedPath(p.State, "mail_notify_cursor.json") }
+func (p Paths) BackendSelection() string { return categorizedPath(p.State, "backend_selection.json") }
 
 func categorizedPath(dir, name string) string {
 	if strings.TrimSpace(dir) == "" || !isAbsoluteRoot(dir) {
