@@ -73,6 +73,14 @@ are NPC transitions. The server therefore cannot legitimately advertise `1842`
 for a new level-1 character, and a generic “decrement every trigger” probe
 would be a state bypass rather than a valid workflow test.
 
+The server-side maze selector confirms the same boundary: it first looks for a
+maze whose quest connection is type `0` and whose quest ID is in the active
+quest set; only then does it fall back to cleared-quest connections or an
+ordinary maze. For a condition-under-clear run, the dungeon mechanism waits for
+the active quest trigger to reach zero and then checks the configured passive
+object at the boss map before producing a clear request. Entering the dungeon
+and moving rooms alone is therefore insufficient evidence of settlement.
+
 ## Follow-up completion evidence
 
 A second disposable character accepted the same advertised quest, sent
