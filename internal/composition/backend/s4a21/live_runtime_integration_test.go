@@ -24,7 +24,7 @@ func TestLiveS4A21RuntimeActions(t *testing.T) {
 	count := 2
 	if raw := os.Getenv("S4A21_TEST_SESSION_COUNT"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 || parsed > 50 {
+		if err != nil || parsed <= 0 || parsed > 600 {
 			t.Fatalf("invalid S4A21_TEST_SESSION_COUNT=%q", raw)
 		}
 		count = parsed
