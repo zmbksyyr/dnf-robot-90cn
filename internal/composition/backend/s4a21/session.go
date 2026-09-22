@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"robot/internal/foundation/charset"
+	"robot/internal/foundation/lockhub"
 	protocol "robot/internal/protocol/s4a21"
 	"robot/internal/shared"
 )
@@ -19,10 +20,16 @@ type SessionFactory struct {
 const sessionKeepaliveInterval = 5 * time.Second
 
 type Session struct {
-	client        *protocol.Client
-	cancel        context.CancelFunc
-	done          chan struct{}
-	keepaliveDone chan struct{}
+	client             *protocol.Client
+	cancel             context.CancelFunc
+	done               chan struct{}
+	keepaliveDone      chan struct{}
+	packetObserverLock lockhub.RWLocker
+	packetObserver     *packetObserverRegistration
+}
+
+type packetObserverRegistration struct {
+	fn func(protocol.Packet)
 }
 
 func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSessionRequest) (shared.RobotSession, error) {
@@ -127,12 +134,46 @@ func (s *Session) Done() <-chan struct{} {
 	return s.done
 }
 
+// setPacketObserver is intentionally private to the S4A21 adapter. It gives a
+// future verified dungeon workflow a narrow way to consume packets already
+// owned by the session drain, without exposing raw packets to shared layers.
+func (s *Session) setPacketObserver(observer func(protocol.Packet)) func() {
+	if s == nil {
+		return func() {}
+	}
+	registration := &packetObserverRegistration{fn: observer}
+	s.packetObserverLock.Lock()
+	s.packetObserver = registration
+	s.packetObserverLock.Unlock()
+	return func() {
+		s.packetObserverLock.Lock()
+		if s.packetObserver == registration {
+			s.packetObserver = nil
+		}
+		s.packetObserverLock.Unlock()
+	}
+}
+
+func (s *Session) dispatchPacket(packet protocol.Packet) {
+	if s == nil {
+		return
+	}
+	s.packetObserverLock.RLock()
+	observer := s.packetObserver
+	s.packetObserverLock.RUnlock()
+	if observer != nil && observer.fn != nil {
+		observer.fn(packet)
+	}
+}
+
 func (s *Session) drain(ctx context.Context) {
 	defer close(s.done)
 	for {
-		if _, err := s.client.Read(ctx); err != nil {
+		packet, err := s.client.Read(ctx)
+		if err != nil {
 			return
 		}
+		s.dispatchPacket(packet)
 	}
 }
 
