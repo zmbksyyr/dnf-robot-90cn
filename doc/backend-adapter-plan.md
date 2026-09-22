@@ -209,6 +209,8 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 
 随后已实现并真实回归私有 `enterSingleDungeon`：普通/教程分支均只覆盖入口、首图 `START_MAP` 和 `FINISH_LOADING`，教程状态由调用方显式传入，不做猜测。该方法尚未接入 `RobotSession`、调度器或 Web；组队、战斗、结算、回城和 rejoin 仍是后续独立阶段。
 
+在此基础上已增加私有 `moveSingleDungeon`，真实验证了 64 字节 `MOVE_MAP`、第二个 `START_MAP` 和第二次 `FINISH_LOADING`。房间坐标采用 pending 提交语义，只有加载释放成功才更新当前房间；发送失败或超时不会伪造移动成功。该方法同样尚未接入共享能力。
+
 ## 验证要求
 
 每阶段至少运行相关 Go 测试和 `git diff --check`。后端必须通过统一的契约测试；S4A21 额外验证不得导入数据库驱动、不得访问服务端数据库文件。环境切换测试需覆盖停止旧会话、重建 runtime、能力刷新和失败回滚/保留诊断信息。
