@@ -161,6 +161,13 @@ func runMain() int {
 			dnf.PrintfRed("robot manager shutdown error: %v\n", err)
 		}
 	}()
+	backendState, err := openBackendRobotState(backendInfo, paths)
+	if err != nil {
+		dnf.LogString(fmt.Sprintf("BACKEND_ROBOT_STATE_OPEN_FAILED backend=%s err=%v\n", backendInfo.ID, err))
+		dnf.PrintfRed("backend robot state open failed: %v\n", err)
+		return 1
+	}
+	manager.SetRobotStateDirectory(backendState)
 	transportBundle, err := composeBackendTransports(backendInfo, cfg)
 	if err != nil {
 		dnf.LogString(fmt.Sprintf("BACKEND_TRANSPORT_COMPOSE_FAILED backend=%s err=%v\n", backendInfo.ID, err))
