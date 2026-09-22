@@ -154,3 +154,15 @@ packets before disconnecting. The service log independently records
 `1 -> 0`, successful completion, and the refreshed list. The test never opens
 or modifies the simulator's SQLite/MySQL files and remains skipped unless both
 environment variables are explicitly supplied.
+
+## Current NPC-probe gate
+
+The mirror's `A21TutorialProtocolSelfTest` computes normal mainline quest
+availability only after level-15/16/17 progression and cleared-quest flags;
+the source does not provide a level-1 shortcut to later NPC transitions. The
+live probe therefore deliberately stops at the advertised level-1 task and
+does not guess a later quest ID. A future NPC probe must first use a
+server-advertised task for the disposable character (or establish the full
+level/previous-quest progression through the normal wire workflow), then record
+the observed task type and trigger before sending any mutation. Until that gate
+is met, no NPC command or task scheduler API is added.
