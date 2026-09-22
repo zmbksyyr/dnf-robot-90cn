@@ -71,7 +71,8 @@ func TestLiveSessionTownMoveAndShout(t *testing.T) {
 func TestSessionReturnsUnsupportedWorldShout(t *testing.T) {
 	session := &Session{client: protocol.NewClient(nil)}
 	err := session.Shout(context.Background(), shared.ShoutIntent{Channel: shared.ShoutChannelWorld, Message: "hello"})
-	if _, ok := err.(shared.UnsupportedCapabilityError); !ok {
+	unsupported, ok := err.(shared.UnsupportedCapabilityError)
+	if !ok || unsupported.Operation != shared.CapabilityWorldShout {
 		t.Fatalf("error = %T %v", err, err)
 	}
 }

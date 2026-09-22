@@ -90,7 +90,7 @@ func (s *Session) Shout(ctx context.Context, intent shared.ShoutIntent) error {
 	case shared.ShoutChannelParty:
 		mode = 2
 	case shared.ShoutChannelWorld:
-		return shared.UnsupportedCapabilityError{Backend: shared.BackendS4A21, Operation: shared.CapabilityShout, Reason: "S4A21 has no verified world-shout protocol mode"}
+		return shared.UnsupportedCapabilityError{Backend: shared.BackendS4A21, Operation: shared.CapabilityWorldShout, Reason: "S4A21 has no verified world-shout protocol mode"}
 	default:
 		return fmt.Errorf("unknown shout channel %q", intent.Channel)
 	}
