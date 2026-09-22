@@ -1,9 +1,11 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	actormodel "robot/internal/actor"
 	robotcap "robot/internal/capability/robot"
+	robotstate "robot/internal/capability/robotstate"
 	"robot/internal/foundation/dbstatus"
 	"robot/internal/foundation/process"
 	"robot/internal/shared"
@@ -53,6 +55,7 @@ func (m *RobotManager) RobotsStatus(req robotcap.CommandRequest) (RobotStatusRes
 	actors := m.actorStatusMap()
 	cleanupPending := m.cleanupPendingSet()
 	villageNames := mapCatalogVillageNames(m.loadMapCatalog())
+	accounts := m.robotStateAccounts()
 	var items []robotcap.StatusItem
 	var total int
 	if m.robotState != nil {
@@ -63,7 +66,7 @@ func (m *RobotManager) RobotsStatus(req robotcap.CommandRequest) (RobotStatusRes
 		items = make([]robotcap.StatusItem, 0, len(robots))
 		for _, robot := range robots {
 			items = append(items, robotcap.StatusItem{
-				UID: robot.UID, CID: robot.CID, Name: robot.Name, Level: robot.Level,
+				UID: robot.UID, CID: robot.CID, Name: robot.Name, Account: accounts[robot.Name], Level: robot.Level,
 				Job: robot.Job, Grow: robot.Grow, Village: robot.Village, Area: robot.Area,
 				X: robot.X, Y: robot.Y, DBState: robotcap.DBStateExists,
 			})
@@ -142,6 +145,27 @@ func mapCatalogVillageNames(maps []shared.MapCatalogItem) map[int]string {
 		}
 	}
 	return out
+}
+
+func (m *RobotManager) robotStateAccounts() map[string]string {
+	accounts := map[string]string{}
+	if m == nil || m.robotState == nil {
+		return accounts
+	}
+	directory, ok := m.robotState.(robotstate.IdentityDirectory)
+	if !ok {
+		return accounts
+	}
+	identities, err := directory.Identities(context.Background(), m.backendRobotBackend)
+	if err != nil {
+		return accounts
+	}
+	for _, identity := range identities {
+		if identity.CharacterName != "" && identity.Account != "" {
+			accounts[identity.CharacterName] = identity.Account
+		}
+	}
+	return accounts
 }
 
 func robotStateView(item robotcap.StatusItem, stateName string, onlineDesired bool) shared.RobotState {
