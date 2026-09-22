@@ -17,7 +17,9 @@ func TestSelectNativeOnlyOnLinux(t *testing.T) {
 	if _, err := Select("missing", "linux"); err == nil {
 		t.Fatal("unknown backend must fail closed")
 	}
-	if _, err := Select(shared.BackendS4A21, "linux"); err == nil {
-		t.Fatal("pending S4A21 backend must not be selectable")
+	for _, platform := range []string{"linux", "windows"} {
+		if info, err := Select(shared.BackendS4A21, platform); err != nil || !info.Selectable {
+			t.Fatalf("S4A21 on %s = %+v, %v", platform, info, err)
+		}
 	}
 }
