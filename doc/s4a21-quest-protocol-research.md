@@ -81,6 +81,14 @@ the active quest trigger to reach zero and then checks the configured passive
 object at the boss map before producing a clear request. Entering the dungeon
 and moving rooms alone is therefore insufficient evidence of settlement.
 
+The server's trigger-authority table also separates task progress sources:
+`condition under clear` is client-mutation eligible only after the relevant
+task is active, while ordinary dungeon `hunt monster` progress is projected by
+the server from canonical actor-death events. The `DungeonActorQuestSync` path
+feeds those events into quest progress; a client-side `SET_TRIGGER` is not a
+substitute for combat. This is another reason to keep dungeon combat and
+settlement outside the current shared capability surface.
+
 ## Follow-up completion evidence
 
 A second disposable character accepted the same advertised quest, sent
