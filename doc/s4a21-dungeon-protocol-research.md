@@ -53,6 +53,25 @@ S4A21 将地下城过程拆成多个阶段，不能把 `MOVE_MAP` 当作独立�
 
 整合包现存 `DfoServer/packet_log.txt` 只证明服务器具备抓包日志能力；当前文件没有可验证的完整普通地下城回合，因此不作为地下城开放依据。
 
+## 真实整合包单角色探针（2026-09-23）
+
+使用用户提供的 `A21格蓝迪·风云再起终极版/DfoServer/DfoServer.exe`，通过网络协议创建临时角色并完成登录、选角、握手。探针没有访问任何服务端数据库。
+
+目标 dungeon `144` 走到了首次教程分支，真实观察到：
+
+1. `CMD 0x000F ENTER_SELECT_DUNGEON`，4 字节 body（`uint32 dungeonId=144`）。
+2. 服务端先返回 `NOTI 0x0002 USERINFO`，再返回 `CMD 0x000F` 成功 ACK、`NOTI 0x0003 USER_STATE`、`NOTI 0x001A UDP_HOST`，随后还有该端的初始化通知；此时没有 `START_MAP`。
+3. `CMD 0x0010 SELECT_DUNGEON` 使用 15 字节 body：`uint32 dungeonId=144`、difficulty/flags 为 0、`A21Sentinel=0xFFFF`、6 字节零尾部。服务端日志确认已创建 run，但首次教程会等待教程标记。
+4. `CMD 0x008F CHANGE_TUTORIAL_FLAG` 使用紧凑 6 字节 body `00 1E 00 00 00 01`（flag 30、reward 1）。之后真实收到：
+   - `NOTI 0x001B ENTER_SELECT_DUNGEON`，body 37B；
+   - `NOTI 0x019F TAG_CHARACTER_INFO`，body 2B；
+   - `NOTI 0x001C DUNGEON_INFO`，body 32B；
+   - `NOTI 0x001D START_MAP`，body 86B；
+   - `CMD 0x008F` 成功 ACK，body 2B。
+5. `CMD 0x0025 FINISH_LOADING` 空 body 被接受，随后收到 `NOTI 0x001E FINISH_LOADING`，body 5B（`00 00 00 00 00`）。
+
+该证据证明了“选择/教程标记/地图加载/加载释放”是连续状态机，也证明 `START_MAP` 不是 `ENTER_SELECT_DUNGEON` 的直接结果。它尚未证明普通非教程角色、`MOVE_MAP` 的合法房间目标、战斗或结算流程，因此仍不足以开放地下城能力。
+
 ## 当前阶段结论
 
 当前只开放城镇移动。地下城移动、组队、技能、战斗、结算和地下城回城继续保持占位接口，并返回稳定的 `backend_capability_unsupported`。即使代码中已经存在 `MOVE_MAP` opcode，也不能提前开放调度或 Web 按钮。
