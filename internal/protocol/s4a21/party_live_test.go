@@ -100,6 +100,41 @@ func TestLivePartyMembershipCleanup(t *testing.T) {
 	})
 }
 
+func TestLivePartyDungeonSelectionProbe(t *testing.T) {
+	address := os.Getenv("S4A21_TEST_ADDR")
+	if address == "" || os.Getenv("S4A21_PARTY_DUNGEON_SELECTION_LIVE") != "1" {
+		t.Skip("set S4A21_TEST_ADDR and S4A21_PARTY_DUNGEON_SELECTION_LIVE=1 to run")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	leader, member, _, _ := establishLiveParty(t, ctx, address, "selection")
+	defer leader.Close()
+	defer member.Close()
+
+	if err := leader.EnterSelectDungeon(ctx, 144); err != nil {
+		t.Fatal(err)
+	}
+	ack, err := waitPartyProbePacket(leader, CmdEnterSelectDungeon, 5*time.Second, "selection-leader-ack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ack.Command != 1 || len(ack.Body) == 0 || ack.Body[0] != 1 {
+		t.Fatalf("leader ENTER_SELECT_DUNGEON rejected: command=%d body=%X", ack.Command, ack.Body)
+	}
+	leaderTypes := collectPartyProbeTypes(t, leader, 1200*time.Millisecond, "selection-leader")
+	memberTypes := collectPartyProbeTypes(t, member, 1200*time.Millisecond, "selection-member")
+	// The first-tutorial path intentionally defers NOTI 0x001B until the
+	// tutorial flag is changed. The probe must therefore stop here: observing
+	// a START_MAP/FINISH_LOADING would mean the test accidentally crossed into
+	// an unverified dungeon run.
+	if leaderTypes[NotiStartMap] || leaderTypes[NotiFinishLoading] ||
+		memberTypes[NotiStartMap] || memberTypes[NotiFinishLoading] {
+		t.Fatalf("selection probe unexpectedly entered a dungeon: leader=%v member=%v", leaderTypes, memberTypes)
+	}
+	t.Logf("party selection remains partial: leader=%v member=%v", leaderTypes, memberTypes)
+}
+
 func establishLiveParty(t *testing.T, ctx context.Context, address, prefix string) (*Client, *Client, uint16, uint16) {
 	t.Helper()
 	leader, leaderCID := livePartyProbeSession(t, ctx, address, prefix+"-a")

@@ -66,3 +66,13 @@ S4A21 的组队能力不是一个单独的“发送邀请包”动作。服务�
 - 队长直接断线后，剩余成员收到队伍刷新；服务端完成队长转移和最终清理。
 
 这些结果只证明队伍城镇状态的创建、接受和清理可以复现；它们不等同于副本队伍 selection、run generation、重连或战斗能力已经可用。
+
+## 组队副本选择探针（当前仍未通过开放门槛）
+
+在同一真实整合包中，队伍建立后由队长发送 `ENTER_SELECT_DUNGEON(144)`：
+
+- 队长收到成功 ACK，随后只收到城镇/初始化相关通知；由于是首次教程路径，服务端日志明确记录 `defer A21 tutorial NOTI 27 until CHANGE_TUTORIAL_FLAG`。
+- 成员没有收到可证明 selection 投影完成的 `ENTER_SELECT_DUNGEON` 或 `START_MAP`；只观察到队伍名册、实时信息和 UDP 端点类通知。
+- 探针刻意不发送 `SELECT_DUNGEON`、`CHANGE_TUTORIAL_FLAG` 或 `FINISH_LOADING`，因此没有创建未经验证的 dungeon run。
+
+这说明“组队成功”与“组队副本 selection 已完成”之间仍存在未验证的教程标记、成员投影和 selection cohort 条件。当前 `party`、`dungeon_move` 及所有地下城能力继续保持 `backend_capability_unsupported`。后续若要推进，必须先取得成员投影完成和队伍 `SELECT_DUNGEON` 的真实回包，再研究 run/loading；不能只凭队长 ACK 开放入口。
