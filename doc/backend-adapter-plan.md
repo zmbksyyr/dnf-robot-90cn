@@ -160,6 +160,10 @@ S4A21 适配代码不得依赖其整合包使用的数据库类型，也不得�
 
 - 现有 `scheduler/repository` 同时访问 `d_starsky` robot 表和 `taiwan_cain` 原生游戏表，并依赖 MySQL 专用的 `SHOW COLUMNS`、`information_schema` 和原生清理 SQL。
 - 在 S4A21 启动装配前，先抽出调度真正需要的 robot-owned 状态契约（身份、建号批次、位置快照、在线状态和商店状态）。
+- 第一批拆分范围固定为：机器人目录快照、robot UID/CID 关联、位置快照、在线/运行状态、建号批次状态和 robot-owned 商店状态。
+- `AllocateRobotIDs`、角色名唯一性、角色/装备修复、原生角色清理以及任何 `taiwan_cain`/`d_taiwan` 查询不属于通用 robot store；它们保留在 native backend，S4A21 通过协议实现或返回占位错误。
+- `RobotLocations` 和位置写入只能读写 robot-owned 位置快照；不能为了模拟端复用 `d_starsky.Dummylist` 与原生角色表的 JOIN。
+- 验收标准：S4A21 启动路径不创建原生 MySQL 连接、不执行原生 schema/清理 SQL，仍能维护建号批次、在线目标和城镇位置快照。
 - 原生后端继续提供现有 MySQL repository 实现；S4A21 只使用 robot-owned store，绝不把模拟端数据库作为查询或写入目标。
 - 不在这一阶段复制完整 repository，也不把原生游戏表改造成通用表；只迁移已被公共调度契约实际使用的 robot 状态。
 - 提交：`refactor: separate robot state from native game repository`
