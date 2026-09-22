@@ -37,3 +37,26 @@ func TestRobotCreatorBuildsPlansAndRegistersState(t *testing.T) {
 		t.Fatalf("identities=%+v err=%v", identities, err)
 	}
 }
+
+func TestRobotCreatorContinuesAfterExistingSimulatorBatch(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	creator := RobotCreator{
+		Provisioner: creatorProvisioner{}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{0}, SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200},
+		Names:  robottemplate.NameTemplates{Common: []string{"Alpha", "Beta", "Gamma"}}, IDStart: 17000000, AccountPrefix: "robot",
+	}
+	first, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 2})
+	if err != nil || len(first) != 2 {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	second, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1})
+	if err != nil || len(second) != 1 {
+		t.Fatalf("second=%+v err=%v", second, err)
+	}
+	if second[0].UID != 17000002 {
+		t.Fatalf("second uid=%d, want 17000002", second[0].UID)
+	}
+	if second[0].Name == first[0].Name || second[0].Name == first[1].Name {
+		t.Fatalf("second name=%q collides with first=%+v", second[0].Name, first)
+	}
+}

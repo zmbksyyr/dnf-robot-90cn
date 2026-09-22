@@ -19,6 +19,7 @@ type ProtocolPlanOptions struct {
 	Config        robotconfig.RuntimeConfig
 	Names         robottemplate.NameTemplates
 	Maps          []shared.MapCatalogItem
+	NameExists    func(string) bool
 	RandIntn      func(int) int
 	RandBetween   func(int, int) int
 }
@@ -60,7 +61,7 @@ func BuildProtocolRobotPlans(options ProtocolPlanOptions) ([]ProtocolRobotPlan, 
 		job := chooseInt(options.Config.Jobs, options.RandIntn)
 		grow := chooseInt(options.Config.GrowTypes, options.RandIntn)
 		level := env.RandBetween(levels, levelMax)
-		name := robottemplate.AllocateName(uid, job, grow, used, options.Config, options.Names, nil, options.RandBetween)
+		name := robottemplate.AllocateName(uid, job, grow, used, options.Config, options.Names, options.NameExists, options.RandBetween)
 		info := robotcap.Info{UID: uid, Name: name, Level: level, Job: job, Grow: grow, Port: 0, Village: options.Config.SpawnFallbackVillage, Area: options.Config.SpawnArea, X: options.Config.SpawnXMin, Y: options.Config.SpawnYMin}
 		if mp, ok := robotspawn.RandomMap(env, options.Maps, level); ok {
 			info.Village, info.Area = mp.Village, mp.Area
