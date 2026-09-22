@@ -213,6 +213,8 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 
 源码自测还确认故事副本 160 的 clear condition 来自 PVF maze 与活动任务：maze 2/4/6 才带销毁对象条件，当前新建角色没有对应 active quest 时服务端会选择 maze 1 并同样记录无 clear condition。由于模拟端禁止直接修改游戏数据库，后续若要验证结算，必须通过任务/角色协议建立合法任务状态，或选择无需任务前置且确实带 clear condition 的副本；不能把数据库改写或“强制通关”探针作为适配实现。
 
+任务协议探针确认：`ACCEPT_QUEST (0x001F)` 的请求体在服务端去除前 2 字节 echo 后，至少包含一个 little-endian `uint16 questId`；成功或失败都会返回同 opcode 的 ACK。登录/选角阶段的 `NOTI 0x0015 ACCEPTABLE_QUEST_LIST` body 以角色等级开头，随后是 `uint16` 数量和对应 quest ID 列表。对新建 1 级枪手直接请求故事任务 1844，服务端返回限制错误并记录 `character restrictions`，因此后续只能从服务端实际下发的可接受列表选择任务，不能猜测或伪造任务状态。
+
 随后已实现并真实回归私有 `enterSingleDungeon`：普通/教程分支均只覆盖入口、首图 `START_MAP` 和 `FINISH_LOADING`，教程状态由调用方显式传入，不做猜测。该方法尚未接入 `RobotSession`、调度器或 Web；组队、战斗、结算、回城和 rejoin 仍是后续独立阶段。
 
 在此基础上已增加私有 `moveSingleDungeon`，真实验证了 64 字节 `MOVE_MAP`、第二个 `START_MAP` 和第二次 `FINISH_LOADING`。房间坐标采用 pending 提交语义，只有加载释放成功才更新当前房间；发送失败或超时不会伪造移动成功。该方法同样尚未接入共享能力。
