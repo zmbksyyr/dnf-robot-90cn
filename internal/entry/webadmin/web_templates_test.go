@@ -42,6 +42,15 @@ func TestAutoControlIsNotGatedByMarketCapability(t *testing.T) {
 	}
 }
 
+func TestWebSeparatesLocalAndWorldShoutCapabilities(t *testing.T) {
+	if !strings.Contains(appJS, `cmd.includes("robotsShoutLocal")`) || !strings.Contains(appJS, `cap='world_shout'`) {
+		t.Fatal("web shout actions are not separated by capability")
+	}
+	if !strings.Contains(indexHTML, `data-i18n="action.shout_local"`) {
+		t.Fatal("local shout button is missing")
+	}
+}
+
 func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
 	for _, want := range []string{
 		"Category unit-price ranges", "分类单价范围",

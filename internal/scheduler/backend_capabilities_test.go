@@ -49,3 +49,16 @@ func TestSimulatorPartyAndSkillEntrypointsAreRejectedWithStableCapabilityError(t
 		})
 	}
 }
+
+func TestSimulatorWorldShoutIsRejectedBeforeActorWorkflow(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	_, err := m.ShoutManaged(robotcap.CommandRequest{Count: 1}, true)
+	var unsupported shared.UnsupportedCapabilityError
+	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityWorldShout {
+		t.Fatalf("error = %v, want world shout unsupported", err)
+	}
+	if !strings.Contains(err.Error(), shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("error = %v, missing stable capability code", err)
+	}
+}

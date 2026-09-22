@@ -52,6 +52,11 @@ func (m *RobotManager) ShoutManaged(req robotcap.CommandRequest, world bool) (ro
 	m.mutationMu.RLock()
 	defer m.mutationMu.RUnlock()
 	if world {
+		if err := m.requireBackendCapability(shared.CapabilityWorldShout); err != nil {
+			return robotcap.CommandResult{}, err
+		}
+	}
+	if world {
 		return m.actorCommandManaged(req, actormodel.CommandShoutWorld, "shout_world")
 	}
 	cmd := actormodel.CommandShoutLocal
@@ -62,6 +67,9 @@ func (m *RobotManager) ShoutManaged(req robotcap.CommandRequest, world bool) (ro
 func (m *RobotManager) ShoutBothManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
 	m.mutationMu.RLock()
 	defer m.mutationMu.RUnlock()
+	if err := m.requireBackendCapability(shared.CapabilityWorldShout); err != nil {
+		return robotcap.CommandResult{}, err
+	}
 	registry, robots, _, early, err := m.prepareUserActorCommand(req, "shout", true)
 	if err != nil || early != nil {
 		return resultOrZero(early), err

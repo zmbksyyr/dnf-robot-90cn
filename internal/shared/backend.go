@@ -20,6 +20,7 @@ const (
 	CapabilityTownMove    BackendCapability = "town_move"
 	CapabilityDungeonMove BackendCapability = "dungeon_move"
 	CapabilityShout       BackendCapability = "shout"
+	CapabilityWorldShout  BackendCapability = "world_shout"
 	CapabilityStore       BackendCapability = "store"
 	CapabilityParty       BackendCapability = "party"
 	CapabilitySkill       BackendCapability = "skill"
@@ -98,7 +99,7 @@ func KnownBackends() []BackendInfo {
 	capabilities := make(map[BackendCapability]CapabilityStatus)
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
-		CapabilityShout, CapabilityStore, CapabilityParty, CapabilitySkill,
+		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
 		CapabilityMarket,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
@@ -118,6 +119,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityProvision] = CapabilityStatus{Enabled: true}
 	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true}
 	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area and party channels only; world channel is unverified"}
+	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 world-shout protocol is not verified"}
 	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "dungeon entry workflow is not integrated yet"}
 	return capabilities
 }
@@ -126,7 +128,7 @@ func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStat
 	capabilities := make(map[BackendCapability]CapabilityStatus)
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
-		CapabilityShout, CapabilityStore, CapabilityParty, CapabilitySkill,
+		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
 		CapabilityMarket,
 	} {
 		capabilities[operation] = CapabilityStatus{Reason: reason}
