@@ -62,3 +62,49 @@ func TestClientMethodsUseS4A21Widths(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestClientVerifiedDungeonPrimitives(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	client := NewClient(clientConn)
+	done := make(chan error, 1)
+	go func() {
+		want := []struct {
+			typ uint16
+			len int
+		}{
+			{CmdEnterSelectDungeon, 4},
+			{CmdSelectDungeon, 15},
+			{CmdChangeTutorialFlag, 6},
+			{CmdFinishLoading, 0},
+		}
+		for _, item := range want {
+			packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
+			if err != nil {
+				done <- err
+				return
+			}
+			if packet.Type != item.typ || len(packet.Body) != item.len {
+				done <- fmt.Errorf("dungeon packet type=0x%04X body=%d want type=0x%04X body=%d", packet.Type, len(packet.Body), item.typ, item.len)
+				return
+			}
+		}
+		done <- nil
+	}()
+	if err := client.EnterSelectDungeon(context.Background(), 144); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SelectDungeon(context.Background(), 144, 0, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ChangeTutorialFlag(context.Background(), 30, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.FinishLoading(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

@@ -13,15 +13,19 @@ const (
 )
 
 const (
-	CmdLogin           uint16 = 0x0001
-	CmdSelectCharacter uint16 = 0x0004
-	CmdCreateCharacter uint16 = 0x0005
-	CmdSendMessage     uint16 = 0x0011
-	CmdSetUserPosition uint16 = 0x0023
-	CmdMoveMap         uint16 = 0x002D
-	CmdCheckConnection uint16 = 0x04DD
-	NotiCharacterList  uint16 = 0x0002
-	NotiUserPosition   uint16 = 0x0016
+	CmdLogin              uint16 = 0x0001
+	CmdSelectCharacter    uint16 = 0x0004
+	CmdCreateCharacter    uint16 = 0x0005
+	CmdSendMessage        uint16 = 0x0011
+	CmdEnterSelectDungeon uint16 = 0x000F
+	CmdSelectDungeon      uint16 = 0x0010
+	CmdChangeTutorialFlag uint16 = 0x008F
+	CmdFinishLoading      uint16 = 0x0025
+	CmdSetUserPosition    uint16 = 0x0023
+	CmdMoveMap            uint16 = 0x002D
+	CmdCheckConnection    uint16 = 0x04DD
+	NotiCharacterList     uint16 = 0x0002
+	NotiUserPosition      uint16 = 0x0016
 )
 
 type Packet struct {
@@ -142,6 +146,37 @@ func SetUserPositionBody(x, y int16, direction byte, motion uint16) []byte {
 	binary.LittleEndian.PutUint16(out[5:7], motion)
 	return out
 }
+
+// EnterSelectDungeonBody is the verified A21 four-byte dungeon selection
+// request. Additional trailing bytes are not needed for the observed path.
+func EnterSelectDungeonBody(dungeonID uint32) []byte {
+	body := make([]byte, 4)
+	binary.LittleEndian.PutUint32(body, dungeonID)
+	return body
+}
+
+// SelectDungeonBody is the verified ordinary A21 15-byte request shape:
+// dungeon id, difficulty/flags, 0xFFFF sentinel and six reserved bytes.
+func SelectDungeonBody(dungeonID uint32, difficulty, flag1, flag2 byte) []byte {
+	body := make([]byte, 15)
+	binary.LittleEndian.PutUint32(body[0:4], dungeonID)
+	body[4] = difficulty
+	body[5] = flag1
+	body[6] = flag2
+	binary.LittleEndian.PutUint16(body[7:9], 0xFFFF)
+	return body
+}
+
+// ChangeTutorialFlagBody is the compact six-byte A21 form observed on the
+// live server: mode=0, uint32 flag index, reward flag.
+func ChangeTutorialFlagBody(flagIndex uint32, rewardFlag byte) []byte {
+	body := make([]byte, 6)
+	binary.LittleEndian.PutUint32(body[1:5], flagIndex)
+	body[5] = rewardFlag
+	return body
+}
+
+func FinishLoadingBody() []byte { return nil }
 
 type MoveMapRequest struct {
 	NextX, NextY           byte

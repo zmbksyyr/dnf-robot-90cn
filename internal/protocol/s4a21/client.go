@@ -61,6 +61,25 @@ func (c *Client) CheckConnection(ctx context.Context) error {
 	return c.send(ctx, Encode(1, CmdCheckConnection, nil))
 }
 
+// The dungeon methods expose only verified wire primitives. The backend
+// session deliberately does not call them until the complete dungeon
+// workflow, settlement and recovery gates are implemented.
+func (c *Client) EnterSelectDungeon(ctx context.Context, dungeonID uint32) error {
+	return c.send(ctx, Encode(1, CmdEnterSelectDungeon, EnterSelectDungeonBody(dungeonID)))
+}
+
+func (c *Client) SelectDungeon(ctx context.Context, dungeonID uint32, difficulty, flag1, flag2 byte) error {
+	return c.send(ctx, Encode(1, CmdSelectDungeon, SelectDungeonBody(dungeonID, difficulty, flag1, flag2)))
+}
+
+func (c *Client) ChangeTutorialFlag(ctx context.Context, flagIndex uint32, rewardFlag byte) error {
+	return c.send(ctx, Encode(1, CmdChangeTutorialFlag, ChangeTutorialFlagBody(flagIndex, rewardFlag)))
+}
+
+func (c *Client) FinishLoading(ctx context.Context) error {
+	return c.send(ctx, Encode(1, CmdFinishLoading, FinishLoadingBody()))
+}
+
 func (c *Client) SetUserPosition(ctx context.Context, x, y int16, direction byte, motion uint16) error {
 	return c.send(ctx, Encode(1, CmdSetUserPosition, SetUserPositionBody(x, y, direction, motion)))
 }

@@ -57,6 +57,25 @@ func TestMoveMapBodyIsFixedWidth(t *testing.T) {
 	}
 }
 
+func TestVerifiedDungeonRequestBodies(t *testing.T) {
+	enter := EnterSelectDungeonBody(144)
+	if len(enter) != 4 || binary.LittleEndian.Uint32(enter) != 144 {
+		t.Fatalf("enter body = %X", enter)
+	}
+	selectBody := SelectDungeonBody(144, 0, 0, 0)
+	if len(selectBody) != 15 || binary.LittleEndian.Uint32(selectBody[0:4]) != 144 ||
+		binary.LittleEndian.Uint16(selectBody[7:9]) != 0xFFFF {
+		t.Fatalf("select body = %X", selectBody)
+	}
+	change := ChangeTutorialFlagBody(30, 1)
+	if len(change) != 6 || change[0] != 0 || binary.LittleEndian.Uint32(change[1:5]) != 30 || change[5] != 1 {
+		t.Fatalf("tutorial body = %X", change)
+	}
+	if FinishLoadingBody() != nil {
+		t.Fatal("finish loading body must be empty")
+	}
+}
+
 func TestLoginAndMessageBodiesUseLittleEndianDStrings(t *testing.T) {
 	login, err := LoginBody("robot", "hash")
 	if err != nil {
