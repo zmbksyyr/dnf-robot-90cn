@@ -209,6 +209,8 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 
 本阶段对地下城结算与恢复的源码研究结论：普通副本通关至少还需要服务端通知 `ENABLE_CLEAR_DUNGEON (0x001F)`、客户端请求 `SET_PLAY_RESULT (0x002E)` 以及随后结算/回城通知；`SET_PLAY_RESULT` 的通用 A21 处理会读取 body 偏移 10 的客户端评级字段，但这不足以推断完整请求体或奖励语义。断线恢复使用独立的 `REJOIN_DUNGEON (0x02E0)`，请求体固定为 8 字节（partyId 与目标参与者 ID），并依赖服务端保留的副本/队伍状态；单角色、重启后和无 party 场景尚未形成可复现证据。因此当前实现不添加结算、奖励、回城或 rejoin 的共享能力，继续保持 `backend_capability_unsupported`，待真实抓包和端到端回归后再拆分接入。
 
+本轮真实探针还验证了 `DIE_MONSTER (0x0027)` 的最小两字节 local index 请求以及 `BOSS_DIE_CHECK (0x0075)` 的四字节请求形状，服务端分别回发 `DIE_MONSTER (0x0026)` 并记录 boss 检查。但整合包中普通副本 144、145 的服务端日志均明确记录 `has no [clear condition]`，即使房间移动和击杀上报成功，也不会产生 `ENABLE_CLEAR_DUNGEON`。因此不能用这两个副本推断通关结算协议；下一步应先找到带有效 clear condition 的副本/任务状态，再进行真实结算回归。
+
 随后已实现并真实回归私有 `enterSingleDungeon`：普通/教程分支均只覆盖入口、首图 `START_MAP` 和 `FINISH_LOADING`，教程状态由调用方显式传入，不做猜测。该方法尚未接入 `RobotSession`、调度器或 Web；组队、战斗、结算、回城和 rejoin 仍是后续独立阶段。
 
 在此基础上已增加私有 `moveSingleDungeon`，真实验证了 64 字节 `MOVE_MAP`、第二个 `START_MAP` 和第二次 `FINISH_LOADING`。房间坐标采用 pending 提交语义，只有加载释放成功才更新当前房间；发送失败或超时不会伪造移动成功。该方法同样尚未接入共享能力。
