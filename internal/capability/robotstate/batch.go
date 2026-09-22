@@ -12,10 +12,9 @@ import (
 type BatchStatus string
 
 const (
-	BatchRunning     BatchStatus = "running"
-	BatchComplete    BatchStatus = "complete"
-	BatchRolledBack  BatchStatus = "rolled_back"
-	BatchInterrupted BatchStatus = "interrupted"
+	BatchRunning    BatchStatus = "running"
+	BatchComplete   BatchStatus = "complete"
+	BatchRolledBack BatchStatus = "rolled_back"
 )
 
 var ErrDuplicateBatch = errors.New("robot creation batch already exists")
@@ -77,7 +76,7 @@ func (s *MemoryStore) RecoverIncompleteCreateBatches(ctx context.Context) ([]Cre
 		if batch.Status != BatchRunning {
 			continue
 		}
-		batch.Status, batch.UpdatedAt = BatchInterrupted, now
+		batch.Status, batch.UpdatedAt = BatchRolledBack, now
 		s.batches[id] = batch
 		result = append(result, cloneBatch(batch))
 	}

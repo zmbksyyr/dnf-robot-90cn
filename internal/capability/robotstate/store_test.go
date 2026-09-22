@@ -63,7 +63,7 @@ func TestMemoryStoreTracksAndRecoversCreateBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	recovered, err := store.RecoverIncompleteCreateBatches(context.Background())
-	if err != nil || len(recovered) != 1 || recovered[0].Status != BatchInterrupted {
+	if err != nil || len(recovered) != 1 || recovered[0].Status != BatchRolledBack {
 		t.Fatalf("recovered=%+v err=%v", recovered, err)
 	}
 	if err := store.CompleteCreateBatch(context.Background(), batch.ID); err == nil {
