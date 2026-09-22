@@ -66,6 +66,13 @@ the server can advance the prerequisite chain through the normal NPC/task
 protocol, then enter dungeon `160` only after the server advertises the active
 quest.
 
+The preceding PVF chain is also explicit: `1833 -> 1834 -> 1835 -> 1836 ->
+1837 -> 1838 -> 1840 -> 2608 -> 1841 -> 1842`. Quests `1835`, `1836`, `1837`,
+`1840`, and `2608` reference dungeon `159`, while `1834`, `1838`, and `1841`
+are NPC transitions. The server therefore cannot legitimately advertise `1842`
+for a new level-1 character, and a generic “decrement every trigger” probe
+would be a state bypass rather than a valid workflow test.
+
 ## Follow-up completion evidence
 
 A second disposable character accepted the same advertised quest, sent
