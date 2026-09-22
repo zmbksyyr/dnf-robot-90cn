@@ -87,6 +87,11 @@ func runMain() int {
 		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
 		return 1
 	}
+	backendReinitialized, err := runtimeinit.PrepareBackendRuntime(paths, backendSelection)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "backend runtime preparation error: %v\n", err)
+		return 1
+	}
 	dnf.ConfigureLogRotation(cfg.LogMaxSizeMB, cfg.LogMaxBackups)
 	if err := dnf.LogInit(paths.RobotLog()); err != nil {
 		fmt.Fprintf(os.Stderr, "init log error: %v\n", err)
@@ -101,16 +106,24 @@ func runMain() int {
 	}()
 	dnf.LogString(fmt.Sprintf("ROBOT_CONFIG path=%s config_dir=%s\n", configPath, cfg.ConfigDir))
 	dnf.LogString(fmt.Sprintf("BACKEND_SELECTED id=%s generation=%d selected_at=%s capabilities=%d\n", backendInfo.ID, backendSelection.ConfigGeneration, backendSelection.SelectedAt.UTC().Format(time.RFC3339), len(backendInfo.Capabilities)))
+	if backendReinitialized {
+		dnf.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
+	}
 	dnf.LogString(fmt.Sprintf("NETWORK_CONFIG game=%s:%d setting=%s login_ip=%s relay=%s:%d auction=%s:%d point=%s:%d service_root=%s run_script=%s\n",
 		cfg.RobotConnectIP, cfg.RobotGamePort, cfg.RobotConnectIPSetting, cfg.RobotInnerIP,
 		cfg.RelayHost, cfg.RelayPort, cfg.AuctionHost, cfg.AuctionPort, cfg.PointHost, cfg.PointPort, cfg.ServiceRoot, cfg.ServiceRunScript))
 	if backendInfo.ID != shared.BackendNative {
-		return runSimulatorBackend(cfg, paths, backendInfo)
+		return runSimulatorBackend(cfg, paths, backendInfo, backendSelection)
 	}
 
 	if err := runtimeinit.Init(cfg); err != nil {
 		dnf.LogString(fmt.Sprintf("ROBOT_RUNTIME_INIT_FAILED err=%v\n", err))
 		dnf.PrintfRed("runtime init failed: %v\n", err)
+		return 1
+	}
+	if err := runtimeinit.MarkBackendRuntimeApplied(paths, backendSelection); err != nil {
+		dnf.LogString(fmt.Sprintf("BACKEND_RUNTIME_MARK_FAILED err=%v\n", err))
+		dnf.PrintfRed("backend runtime marker failed: %v\n", err)
 		return 1
 	}
 	robotRuntimeConfig, err := loadRequiredRobotConfig(paths.RobotConfig())
