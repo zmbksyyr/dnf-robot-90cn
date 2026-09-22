@@ -72,6 +72,16 @@ func TestActionTransportRejectsMissingSessionAndPositionOverflow(t *testing.T) {
 	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: 9, X: 100000}); err == nil {
 		t.Fatal("overflow position unexpectedly succeeded")
 	}
+	for _, command := range []shared.RuntimeMoveCommand{
+		{UID: 9, MoveType: -1},
+		{UID: 9, MoveType: 256},
+		{UID: 9, Speed: -1},
+		{UID: 9, Speed: 65536},
+	} {
+		if err := transport.MoveTown(context.Background(), command); err == nil {
+			t.Fatalf("out-of-range town command unexpectedly succeeded: %+v", command)
+		}
+	}
 }
 
 func TestActionTransportDoesNotCommitTownStatusWhenSendFails(t *testing.T) {

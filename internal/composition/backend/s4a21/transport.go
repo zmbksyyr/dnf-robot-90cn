@@ -152,6 +152,12 @@ func (t *ActionTransport) MoveTown(ctx context.Context, command shared.RuntimeMo
 	if command.X < math.MinInt16 || command.X > math.MaxInt16 || command.Y < math.MinInt16 || command.Y > math.MaxInt16 {
 		return fmt.Errorf("S4A21 town position out of range: %d,%d", command.X, command.Y)
 	}
+	if command.MoveType < 0 || command.MoveType > math.MaxUint8 {
+		return fmt.Errorf("S4A21 town move type out of range: %d", command.MoveType)
+	}
+	if command.Speed < 0 || command.Speed > math.MaxUint16 {
+		return fmt.Errorf("S4A21 town move speed out of range: %d", command.Speed)
+	}
 	if err := session.MoveTown(ctx, shared.TownMoveIntent{X: int16(command.X), Y: int16(command.Y), Direction: byte(command.MoveType), Motion: uint16(command.Speed)}); err != nil {
 		return err
 	}
