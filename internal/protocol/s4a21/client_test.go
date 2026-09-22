@@ -150,3 +150,50 @@ func TestClientVerifiedQuestPrimitives(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestClientPartyProbePrimitives(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	client := NewClient(clientConn)
+	done := make(chan error, 1)
+	go func() {
+		want := []struct {
+			typ uint16
+			len int
+		}{
+			{CmdSetPartyInfo, 12},
+			{CmdRequestPeer, 7},
+			{CmdLeaveParty, 0},
+			{CmdWalkoutPartyMember, 1},
+		}
+		for _, item := range want {
+			packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
+			if err != nil {
+				done <- err
+				return
+			}
+			if packet.Type != item.typ || len(packet.Body) != item.len {
+				done <- fmt.Errorf("party packet type=0x%04X body=%d want type=0x%04X body=%d", packet.Type, len(packet.Body), item.typ, item.len)
+				return
+			}
+		}
+		done <- nil
+	}()
+	settings := []byte{0, 0, 4, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
+	if err := client.SetPartyInfo(context.Background(), settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RequestPeer(context.Background(), 12, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.LeaveParty(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.WalkoutPartyMember(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

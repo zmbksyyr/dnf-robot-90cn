@@ -111,6 +111,29 @@ func (c *Client) SendMessage(ctx context.Context, mode byte, targetUID uint16, t
 	return c.send(ctx, Encode(1, CmdSendMessage, body))
 }
 
+// Party methods are protocol-probe primitives only. They are intentionally
+// not exposed through the backend session until the complete party lifecycle
+// and dungeon-selection gates are verified.
+func (c *Client) SetPartyInfo(ctx context.Context, settings []byte) error {
+	body, err := SetPartyInfoBody(settings)
+	if err != nil {
+		return err
+	}
+	return c.send(ctx, Encode(1, CmdSetPartyInfo, body))
+}
+
+func (c *Client) RequestPeer(ctx context.Context, targetUID uint16, requestType byte, peerValue int32) error {
+	return c.send(ctx, Encode(1, CmdRequestPeer, RequestPeerBody(targetUID, requestType, peerValue)))
+}
+
+func (c *Client) LeaveParty(ctx context.Context) error {
+	return c.send(ctx, Encode(1, CmdLeaveParty, LeavePartyBody()))
+}
+
+func (c *Client) WalkoutPartyMember(ctx context.Context, slot byte) error {
+	return c.send(ctx, Encode(1, CmdWalkoutPartyMember, WalkoutPartyMemberBody(slot)))
+}
+
 func (c *Client) MoveMap(ctx context.Context, request MoveMapRequest) error {
 	return c.send(ctx, Encode(1, CmdMoveMap, MoveMapBody(request)))
 }
