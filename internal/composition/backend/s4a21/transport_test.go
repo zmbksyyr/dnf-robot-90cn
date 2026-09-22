@@ -69,7 +69,13 @@ func TestActionTransportOwnsSessionLifecycle(t *testing.T) {
 	if err := transport.Open(context.Background(), 7, shared.OpenSessionRequest{AccountName: "acct", CharacterSlot: 2}); err != nil {
 		t.Fatal(err)
 	}
+	if status := transport.RuntimeStatusMap()[7]; status.StateName != shared.RuntimeStateRunning {
+		t.Fatalf("status after open = %+v", status)
+	}
 	if err := transport.Close(7); err != nil || !session.closed {
 		t.Fatalf("close err=%v closed=%v", err, session.closed)
+	}
+	if status := transport.RuntimeStatusMap()[7]; status.StateName != shared.RuntimeStateStop {
+		t.Fatalf("status after close = %+v", status)
 	}
 }

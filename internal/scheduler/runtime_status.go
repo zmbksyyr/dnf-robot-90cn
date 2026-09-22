@@ -113,6 +113,13 @@ func (m *RobotManager) runtimeStatusMapFresh() map[int]robotcap.RuntimeStatus {
 }
 
 func (m *RobotManager) loadRuntimeStatusMap() map[int]robotcap.RuntimeStatus {
+	if provider, ok := m.backendActions.(runtimeStatusMapProvider); ok {
+		status := provider.RuntimeStatusMap()
+		if status == nil {
+			return make(map[int]robotcap.RuntimeStatus)
+		}
+		return status
+	}
 	if provider, ok := m.doll.(runtimeStatusMapProvider); ok {
 		status := provider.RuntimeStatusMap()
 		if status == nil {
