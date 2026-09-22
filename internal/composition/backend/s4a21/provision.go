@@ -124,3 +124,4 @@ func waitPacket(ctx context.Context, client *protocol.Client, typ uint16, comman
 }
 
 var _ shared.CharacterProvisioner = Provisioner{}
+var _ shared.BatchCharacterProvisioner = Provisioner{}

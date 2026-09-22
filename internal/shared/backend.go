@@ -66,6 +66,13 @@ type CharacterProvisioner interface {
 	ProvisionCharacter(context.Context, ProvisionCharacterRequest) (ProvisionCharacterResult, error)
 }
 
+// BatchCharacterProvisioner is optional. Callers can use it when a backend
+// can provision several characters through its own protocol workflow while
+// preserving partial results on interruption.
+type BatchCharacterProvisioner interface {
+	ProvisionCharacters(context.Context, []ProvisionCharacterRequest) ([]ProvisionCharacterResult, error)
+}
+
 func DecodeBackendSelection(data []byte) (BackendSelection, error) {
 	selection := BackendSelection{BackendID: BackendNative}
 	if len(data) == 0 {
