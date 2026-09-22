@@ -72,6 +72,15 @@ S4A21 将地下城过程拆成多个阶段，不能把 `MOVE_MAP` 当作独立�
 
 该证据证明了“选择/教程标记/地图加载/加载释放”是连续状态机，也证明 `START_MAP` 不是 `ENTER_SELECT_DUNGEON` 的直接结果。它尚未证明普通非教程角色、`MOVE_MAP` 的合法房间目标、战斗或结算流程，因此仍不足以开放地下城能力。
 
+随后通过同一服务端仅使用协议发送教程完成标记 `CHANGE_TUTORIAL_FLAG(flag=31)`，断开并重新登录同一临时角色，取得了普通路径证据：
+
+- 普通 `ENTER_SELECT_DUNGEON` 的顺序为 `USERINFO → success(0x000F) → USER_STATE → UDP_HOST → ENTER_SELECT_DUNGEON(0x001B) → 初始化通知`。
+- 普通 `SELECT_DUNGEON` 随后返回 `TAG_CHARACTER_INFO(0x019F)`、`DUNGEON_INFO(0x001C, 32B)`、`START_MAP(0x001D, 86B)`。
+- 空 body 的 `FINISH_LOADING(0x0025)` 随后得到 `FINISH_LOADING(0x001E, 5B)`。
+- 教程完成回城本身还返回 `USER_STATE(0x0003)`、`USER_AREA(0x0017)`、`AREA_USERS(0x0018)` 和 `0x00CA`，说明教程结束与普通回城共享一部分城镇恢复投影。
+
+这已经满足阶段 7.0 的单角色入口/加载观察目标，但仍没有发送或验证合法 `MOVE_MAP` 房间目标，也没有验证战斗、结算、断线重连。因此阶段 7.1 仍不得开始，`dungeon_move` 继续保持占位不支持。
+
 ## 当前阶段结论
 
 当前只开放城镇移动。地下城移动、组队、技能、战斗、结算和地下城回城继续保持占位接口，并返回稳定的 `backend_capability_unsupported`。即使代码中已经存在 `MOVE_MAP` opcode，也不能提前开放调度或 Web 按钮。
