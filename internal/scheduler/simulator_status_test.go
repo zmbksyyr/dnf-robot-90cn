@@ -37,6 +37,16 @@ func TestRobotsStatusUsesSimulatorRobotStateWithoutSchemaRepository(t *testing.T
 	}
 }
 
+func TestSimulatorShoutNameUsesRobotStateWithoutSchemaRepository(t *testing.T) {
+	store := robotstate.NewMemoryStore([]robotcap.Info{{UID: 7, Name: "sim-robot"}})
+	manager := NewRobotManager(nil, nil, nil)
+	manager.SetRobotStateDirectory(store)
+	manager.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	if got := (shoutActionEnv{manager: manager}).LookupRobotName(7); got != "sim-robot" {
+		t.Fatalf("name=%q, want sim-robot", got)
+	}
+}
+
 func TestFileStoreRobotRegistrationSurvivesReload(t *testing.T) {
 	path := t.TempDir() + "/robot_state.json"
 	store, err := robotstate.OpenFileStore(path)

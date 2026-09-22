@@ -35,6 +35,13 @@ func (e shoutActionEnv) Config() robotconfig.RuntimeConfig {
 }
 
 func (e shoutActionEnv) LookupRobotName(uid int) string {
+	if e.manager != nil && e.manager.robotState != nil {
+		robots, err := e.manager.robotState.SelectRobots(context.Background(), robotcap.CommandRequest{UIDs: []int{uid}})
+		if err == nil && len(robots) > 0 {
+			return robots[0].Name
+		}
+		return ""
+	}
 	name, _ := e.manager.schemaRepo().RobotCharacterName(uid)
 	return name
 }
