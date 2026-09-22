@@ -92,6 +92,47 @@ func SetUserPositionBody(x, y int16, direction byte, motion uint16) []byte {
 	return out
 }
 
+type MoveMapRequest struct {
+	NextX, NextY           byte
+	PathPositionX          uint32
+	PathPositionY          uint32
+	MoveMode               byte
+	TrapBits               uint16
+	MemberMapClearValues   [8]uint16
+	MemberMapElapsedValues [8]uint32
+	ClientTimingToken      uint16
+	ClientStateFlag        byte
+}
+
+func MoveMapBody(request MoveMapRequest) []byte {
+	out := make([]byte, 64)
+	offset := 0
+	out[offset] = request.NextX
+	offset++
+	out[offset] = request.NextY
+	offset++
+	binary.LittleEndian.PutUint32(out[offset:offset+4], request.PathPositionX)
+	offset += 4
+	binary.LittleEndian.PutUint32(out[offset:offset+4], request.PathPositionY)
+	offset += 4
+	out[offset] = request.MoveMode
+	offset++
+	binary.LittleEndian.PutUint16(out[offset:offset+2], request.TrapBits)
+	offset += 2
+	for _, value := range request.MemberMapClearValues {
+		binary.LittleEndian.PutUint16(out[offset:offset+2], value)
+		offset += 2
+	}
+	for _, value := range request.MemberMapElapsedValues {
+		binary.LittleEndian.PutUint32(out[offset:offset+4], value)
+		offset += 4
+	}
+	binary.LittleEndian.PutUint16(out[offset:offset+2], request.ClientTimingToken)
+	offset += 2
+	out[offset] = request.ClientStateFlag
+	return out
+}
+
 func SendMessageBody(mode byte, targetUID uint16, targetCharacterID uint32, message []byte) ([]byte, error) {
 	if len(message) == 0 || len(message) > 256 {
 		return nil, fmt.Errorf("message must be 1..256 bytes")

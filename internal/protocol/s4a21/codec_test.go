@@ -36,6 +36,16 @@ func TestSelectCharacterBodyUsesTwoByteSlot(t *testing.T) {
 	}
 }
 
+func TestMoveMapBodyIsFixedWidth(t *testing.T) {
+	body := MoveMapBody(MoveMapRequest{NextX: 2, NextY: 3, PathPositionX: 100, PathPositionY: 200})
+	if len(body) != 64 || body[0] != 2 || body[1] != 3 {
+		t.Fatalf("body length/content = %d/%v", len(body), body[:2])
+	}
+	if binary.LittleEndian.Uint32(body[2:6]) != 100 || binary.LittleEndian.Uint32(body[6:10]) != 200 {
+		t.Fatalf("path positions = %v", body[2:10])
+	}
+}
+
 func TestLoginAndMessageBodiesUseLittleEndianDStrings(t *testing.T) {
 	login, err := LoginBody("robot", "hash")
 	if err != nil {
