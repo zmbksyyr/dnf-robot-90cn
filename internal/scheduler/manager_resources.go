@@ -220,10 +220,30 @@ func (m *RobotManager) waitCleanupQuiescence(uids []int, timeout time.Duration) 
 }
 
 func (m *RobotManager) loadMapCatalog() []shared.MapCatalogItem {
+	if m != nil {
+		m.townMapCatalogMu.RLock()
+		maps := cloneTownMapCatalog(m.townMapCatalog)
+		m.townMapCatalogMu.RUnlock()
+		if len(maps) > 0 {
+			return maps
+		}
+	}
 	if m.cfg == nil {
 		return nil
 	}
 	return catalog.ViewMaps(layout.New(m.cfg.ConfigDir).PVF)
+}
+
+func cloneTownMapCatalog(maps []shared.MapCatalogItem) []shared.MapCatalogItem {
+	if len(maps) == 0 {
+		return nil
+	}
+	out := make([]shared.MapCatalogItem, len(maps))
+	copy(out, maps)
+	for i := range out {
+		out[i].Rectangles = append([]shared.MapRectangle(nil), maps[i].Rectangles...)
+	}
+	return out
 }
 
 func (m *RobotManager) robotConnectIP() string {

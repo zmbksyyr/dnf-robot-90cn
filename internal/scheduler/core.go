@@ -95,6 +95,8 @@ type RobotManager struct {
 	storeTitlePathSnapshot          atomic.Pointer[storeTitlePathValue]
 	storeTitlePath                  string
 	storeTitlesLoaded               bool
+	townMapCatalogMu                lockhub.RWLocker
+	townMapCatalog                  []shared.MapCatalogItem
 	positionWrites                  *positionBatcher
 	characterCacheInvalidate        func(uid int) error
 	mailNotifier                    MailNotifier
@@ -109,6 +111,18 @@ type RobotManager struct {
 	shuttingDown                    bool
 	shutdownOnce                    sync.Once
 	shutdownErr                     error
+}
+
+// SetTownMapCatalog publishes an immutable backend-projected town map
+// snapshot. An empty snapshot restores the runtime-file fallback.
+func (m *RobotManager) SetTownMapCatalog(maps []shared.MapCatalogItem) {
+	if m == nil {
+		return
+	}
+	copyMaps := cloneTownMapCatalog(maps)
+	m.townMapCatalogMu.Lock()
+	m.townMapCatalog = copyMaps
+	m.townMapCatalogMu.Unlock()
 }
 
 type storeTitlePathValue struct {
