@@ -62,12 +62,19 @@ func TestBackendSessionTransportBypassesNativeOnlinePath(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	backend := &backendSessionStub{}
 	m.SetBackendSessionTransport(backend)
-	users := []shared.RuntimeOnlineUser{{UID: 17000001, AccountName: "acct", PasswordHash: "hash", CharacterSlot: 2}}
+	users := []shared.RuntimeOnlineUser{{
+		UID: 17000001, AccountName: "acct", PasswordHash: "hash", CharacterSlot: 2,
+		BirthVillage: 3, BirthArea: 4, BirthX: 120, BirthY: 240,
+	}}
 	if err := (sessionActionEnv{manager: m}).SendOnline(users); err != nil {
 		t.Fatal(err)
 	}
 	if len(backend.opened) != 1 || backend.opened[0].AccountName != "acct" || backend.opened[0].CharacterSlot != 2 {
 		t.Fatalf("opened=%+v", backend.opened)
+	}
+	opened := backend.opened[0]
+	if !opened.InitialTownKnown || opened.InitialVillage != 3 || opened.InitialArea != 4 || opened.InitialX != 120 || opened.InitialY != 240 {
+		t.Fatalf("initial town metadata=%+v", opened)
 	}
 	if err := (sessionActionEnv{manager: m}).SendLogout(users[0].UID); err != nil {
 		t.Fatal(err)

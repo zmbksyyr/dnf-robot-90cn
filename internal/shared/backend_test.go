@@ -42,6 +42,9 @@ func TestS4A21MetadataReflectsVerifiedCapabilities(t *testing.T) {
 			t.Fatalf("verified capability %s is disabled", capability)
 		}
 	}
+	if found.Capabilities[CapabilityTownMove].Reason == "" {
+		t.Fatalf("town movement must describe its same-area boundary: %+v", found.Capabilities[CapabilityTownMove])
+	}
 	if found.Supports(CapabilityWorldShout) || found.Capabilities[CapabilityWorldShout].Reason == "" {
 		t.Fatalf("world shout must remain disabled with reason: %+v", found.Capabilities[CapabilityWorldShout])
 	}

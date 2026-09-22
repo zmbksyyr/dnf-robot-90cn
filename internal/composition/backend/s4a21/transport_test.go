@@ -61,6 +61,40 @@ func TestActionTransportMapsVerifiedTownActions(t *testing.T) {
 	}
 }
 
+func TestActionTransportRejectsUnverifiedTownAreaTransition(t *testing.T) {
+	session := &actionTestSession{}
+	transport := NewActionTransport(actionTestFactory{session: session})
+	if err := transport.Open(context.Background(), 7, shared.OpenSessionRequest{
+		AccountName:      "acct",
+		InitialTownKnown: true,
+		InitialVillage:   1,
+		InitialArea:      2,
+		InitialX:         100,
+		InitialY:         200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{
+		UID: 7, Village: 1, Area: 3, X: 120, Y: 240,
+	})
+	var unsupported shared.UnsupportedCapabilityError
+	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityTownMove {
+		t.Fatalf("cross-area error = %v", err)
+	}
+	if session.town != (shared.TownMoveIntent{}) {
+		t.Fatalf("cross-area move sent position packet: %+v", session.town)
+	}
+	status := transport.RuntimeStatusMap()[7]
+	if status.Village != 1 || status.Area != 2 || status.X != 100 || status.Y != 200 {
+		t.Fatalf("cross-area move changed status: %+v", status)
+	}
+	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{
+		UID: 7, Village: 1, Area: 2, X: 120, Y: 240,
+	}); err != nil {
+		t.Fatalf("same-area move: %v", err)
+	}
+}
+
 func TestActionTransportRejectsMissingSessionAndPositionOverflow(t *testing.T) {
 	transport := NewActionTransport()
 	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: 9}); err == nil {
