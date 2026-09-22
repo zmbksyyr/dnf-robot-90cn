@@ -17,6 +17,12 @@ const (
 	CmdSelectCharacter      uint16 = 0x0004
 	CmdCreateCharacter      uint16 = 0x0005
 	CmdSendMessage          uint16 = 0x0011
+	CmdRequestPeer          uint16 = 0x000A
+	CmdResponsePeer         uint16 = 0x000B
+	CmdSetPartyInfo         uint16 = 0x000C
+	CmdLeaveParty           uint16 = 0x000D
+	CmdWalkoutPartyMember   uint16 = 0x000E
+	CmdSetUDPIPPort         uint16 = 0x0002
 	CmdAcceptQuest          uint16 = 0x001F
 	CmdSetQuestTrigger      uint16 = 0x0021
 	CmdFinishQuest          uint16 = 0x0022
@@ -33,6 +39,9 @@ const (
 	NotiUserPosition        uint16 = 0x0016
 	NotiUserArea            uint16 = 0x0017
 	NotiAreaUsers           uint16 = 0x0018
+	NotiPartyInfo           uint16 = 0x0009
+	NotiUserUDPIPPort       uint16 = 0x000B
+	NotiPartyRealtimeInfo   uint16 = 0x0099
 	NotiEnterSelectDungeon  uint16 = 0x001B
 	NotiDungeonInfo         uint16 = 0x001C
 	NotiStartMap            uint16 = 0x001D
@@ -312,6 +321,32 @@ func SendMessageBody(mode byte, targetUID uint16, targetCharacterID uint32, mess
 	copy(out[11:], message)
 	return out, nil
 }
+
+// SetPartyInfoBody returns the captured 12-byte A21 party-settings form.
+// The edit form contains an additional title dstring and is deliberately not
+// synthesized here until a complete client request path is verified.
+func SetPartyInfoBody(settings []byte) ([]byte, error) {
+	if len(settings) != 12 {
+		return nil, fmt.Errorf("party settings must be exactly 12 bytes")
+	}
+	return append([]byte(nil), settings...), nil
+}
+
+// RequestPeerBody is the verified fixed request shape used by the ordinary
+// party invite/accept probe: target user id, request type, and a peer value.
+// The service accepts request type 0 for ordinary party operations. Other
+// request types belong to separate protocols and must not be inferred here.
+func RequestPeerBody(targetUID uint16, requestType byte, peerValue int32) []byte {
+	body := make([]byte, 7)
+	binary.LittleEndian.PutUint16(body[0:2], targetUID)
+	body[2] = requestType
+	binary.LittleEndian.PutUint32(body[3:7], uint32(peerValue))
+	return body
+}
+
+func LeavePartyBody() []byte { return nil }
+
+func WalkoutPartyMemberBody(slot byte) []byte { return []byte{slot} }
 
 func writeDString(out *bytes.Buffer, value []byte) error {
 	if len(value) > 256 {

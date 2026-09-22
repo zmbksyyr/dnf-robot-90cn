@@ -143,3 +143,30 @@ func TestLoginAndMessageBodiesUseLittleEndianDStrings(t *testing.T) {
 		t.Fatalf("message body = %v err=%v", message, err)
 	}
 }
+
+func TestPartyProbeBodiesUseVerifiedA21Shapes(t *testing.T) {
+	settings := []byte{0, 0, 4, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
+	body, err := SetPartyInfoBody(settings)
+	if err != nil || len(body) != 12 || string(body) != string(settings) {
+		t.Fatalf("party settings body = %X err=%v", body, err)
+	}
+	body[0] = 9
+	if settings[0] != 0 {
+		t.Fatal("party settings builder did not copy input")
+	}
+	if _, err := SetPartyInfoBody(settings[:11]); err == nil {
+		t.Fatal("short party settings unexpectedly accepted")
+	}
+
+	peer := RequestPeerBody(0x1234, 0, -7)
+	if len(peer) != 7 || binary.LittleEndian.Uint16(peer[:2]) != 0x1234 ||
+		peer[2] != 0 || int32(binary.LittleEndian.Uint32(peer[3:])) != -7 {
+		t.Fatalf("request peer body = %X", peer)
+	}
+	if LeavePartyBody() != nil {
+		t.Fatal("leave party body must be empty")
+	}
+	if got := WalkoutPartyMemberBody(3); len(got) != 1 || got[0] != 3 {
+		t.Fatalf("walkout body = %X", got)
+	}
+}
