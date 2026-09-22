@@ -53,6 +53,88 @@ func TestLivePartyProbe(t *testing.T) {
 	drainPartyProbe(t, right, 1200*time.Millisecond, "accepted-target")
 }
 
+func TestLivePartyMembershipCleanup(t *testing.T) {
+	address := os.Getenv("S4A21_TEST_ADDR")
+	if address == "" || os.Getenv("S4A21_PARTY_LIVE") != "1" {
+		t.Skip("set S4A21_TEST_ADDR and S4A21_PARTY_LIVE=1 to run")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	t.Run("leader-kicks-member", func(t *testing.T) {
+		leader, member, _, _ := establishLiveParty(t, ctx, address, "kick")
+		defer leader.Close()
+		defer member.Close()
+		if err := leader.WalkoutPartyMember(ctx, 1); err != nil {
+			t.Fatal(err)
+		}
+		types := collectPartyProbeTypes(t, leader, 1200*time.Millisecond, "kick-leader")
+		if !types[NotiPartyInfo] {
+			t.Fatalf("leader did not receive PARTY_INFO after kick: %v", types)
+		}
+	})
+
+	t.Run("member-leaves", func(t *testing.T) {
+		leader, member, _, _ := establishLiveParty(t, ctx, address, "leave")
+		defer leader.Close()
+		defer member.Close()
+		if err := member.LeaveParty(ctx); err != nil {
+			t.Fatal(err)
+		}
+		types := collectPartyProbeTypes(t, leader, 1200*time.Millisecond, "leave-leader")
+		if !types[NotiPartyInfo] {
+			t.Fatalf("leader did not receive PARTY_INFO after leave: %v", types)
+		}
+	})
+
+	t.Run("leader-disconnects", func(t *testing.T) {
+		leader, member, _, _ := establishLiveParty(t, ctx, address, "drop")
+		defer member.Close()
+		if err := leader.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := waitPartyProbePacket(member, NotiPartyInfo, 1800*time.Millisecond, "disconnect-member"); err != nil {
+			t.Fatalf("member did not receive PARTY_INFO after leader disconnect: %v", err)
+		}
+	})
+}
+
+func establishLiveParty(t *testing.T, ctx context.Context, address, prefix string) (*Client, *Client, uint16, uint16) {
+	t.Helper()
+	leader, leaderCID := livePartyProbeSession(t, ctx, address, prefix+"-a")
+	member, memberCID := livePartyProbeSession(t, ctx, address, prefix+"-b")
+	settings := []byte{0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
+	if err := leader.SetPartyInfo(ctx, settings); err != nil {
+		leader.Close()
+		member.Close()
+		t.Fatal(err)
+	}
+	drainPartyProbe(t, leader, 400*time.Millisecond, prefix+"-create")
+	if err := leader.RequestPeer(ctx, memberCID, 0, 0); err != nil {
+		leader.Close()
+		member.Close()
+		t.Fatal(err)
+	}
+	if _, err := waitPartyProbePacket(member, NotiRequestPeer, 1200*time.Millisecond, prefix+"-invite"); err != nil {
+		leader.Close()
+		member.Close()
+		t.Fatal(err)
+	}
+	if err := member.AcceptPartyInvite(ctx, leaderCID); err != nil {
+		leader.Close()
+		member.Close()
+		t.Fatal(err)
+	}
+	types := collectPartyProbeTypes(t, leader, 1000*time.Millisecond, prefix+"-accept")
+	if !types[NotiPartyInfo] {
+		leader.Close()
+		member.Close()
+		t.Fatalf("party setup did not publish PARTY_INFO: %v", types)
+	}
+	return leader, member, leaderCID, memberCID
+}
+
 func livePartyProbeSession(t *testing.T, ctx context.Context, address, prefix string) (*Client, uint16) {
 	t.Helper()
 	suffix := time.Now().UnixNano() % 100000000
