@@ -161,6 +161,13 @@ func runMain() int {
 			dnf.PrintfRed("robot manager shutdown error: %v\n", err)
 		}
 	}()
+	townMaps, err := loadBackendTownMapCatalog(context.Background(), backendInfo, cfg)
+	if err != nil {
+		dnf.LogString(fmt.Sprintf("BACKEND_TOWN_MAP_CATALOG_FAILED backend=%s err=%v\n", backendInfo.ID, err))
+		dnf.PrintfRed("backend town map catalog failed: %v\n", err)
+		return 1
+	}
+	manager.SetTownMapCatalog(townMaps)
 	manager.SetPartyAccountRangeSink(dnf.ConfigurePartyRobotAccountRange)
 	cacheInvalidator, err := nocache.NewClient(cfg.RobotConnectIP, cfg.RobotGamePort, cfg.GameServerGroup)
 	if err != nil {
