@@ -61,6 +61,19 @@ func TestParseAcceptableQuestListRejectsInvalidLength(t *testing.T) {
 	}
 }
 
+func TestQuestCommandBodiesUseVerifiedEchoAndSentinel(t *testing.T) {
+	accept := AcceptQuestBody(1016)
+	if len(accept) != 4 || binary.LittleEndian.Uint16(accept[2:]) != 1016 {
+		t.Fatalf("accept body = %X", accept)
+	}
+	finish := FinishQuestBody(1016, -1, 0)
+	if len(finish) != 10 || binary.LittleEndian.Uint16(finish[2:4]) != 1016 ||
+		binary.LittleEndian.Uint16(finish[4:6]) != 0xFFFF ||
+		binary.LittleEndian.Uint16(finish[8:10]) != 0xFFFF {
+		t.Fatalf("finish body = %X", finish)
+	}
+}
+
 func TestSelectCharacterBodyUsesTwoByteSlot(t *testing.T) {
 	body := SelectCharacterBody(0x0102)
 	if len(body) != 2 || binary.LittleEndian.Uint16(body) != 0x0102 {

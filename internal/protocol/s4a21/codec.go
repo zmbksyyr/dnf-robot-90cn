@@ -17,6 +17,8 @@ const (
 	CmdSelectCharacter      uint16 = 0x0004
 	CmdCreateCharacter      uint16 = 0x0005
 	CmdSendMessage          uint16 = 0x0011
+	CmdAcceptQuest          uint16 = 0x001F
+	CmdFinishQuest          uint16 = 0x0022
 	CmdEnterSelectDungeon   uint16 = 0x000F
 	CmdSelectDungeon        uint16 = 0x0010
 	CmdChangeTutorialFlag   uint16 = 0x008F
@@ -64,6 +66,29 @@ func ParseAcceptableQuestList(body []byte) (AcceptableQuestList, error) {
 		ids[i] = binary.LittleEndian.Uint16(body[3+i*2:])
 	}
 	return AcceptableQuestList{Level: body[0], QuestIDs: ids}, nil
+}
+
+// AcceptQuestBody is the A21 wire form: a two-byte echo prefix followed by
+// the little-endian quest ID consumed by the server quest parser.
+func AcceptQuestBody(questID uint16) []byte {
+	body := make([]byte, 4)
+	binary.LittleEndian.PutUint16(body[2:], questID)
+	return body
+}
+
+// FinishQuestBody is the A21 wire form. A reward selection of -1 means the
+// client did not choose a reward branch and is encoded as 0xFFFF.
+func FinishQuestBody(questID uint16, rewardSelection int16, completionCount uint16) []byte {
+	body := make([]byte, 10)
+	binary.LittleEndian.PutUint16(body[2:4], questID)
+	if rewardSelection < 0 {
+		binary.LittleEndian.PutUint16(body[4:6], 0xFFFF)
+	} else {
+		binary.LittleEndian.PutUint16(body[4:6], uint16(rewardSelection))
+	}
+	binary.LittleEndian.PutUint16(body[6:8], completionCount)
+	binary.LittleEndian.PutUint16(body[8:10], 0xFFFF)
+	return body
 }
 
 func Encode(command byte, typ uint16, body []byte) []byte {
