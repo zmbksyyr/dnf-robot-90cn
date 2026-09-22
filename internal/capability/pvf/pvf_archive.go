@@ -362,9 +362,13 @@ func parseRecipeTargetID(body string) int {
 }
 
 func extractMapList(a *pvfArchive, listPath, prefix string) []shared.MapCatalogItem {
+	return extractMapListFromText(a.text, listPath, prefix)
+}
+
+func extractMapListFromText(readText func(string) string, listPath, prefix string) []shared.MapCatalogItem {
 	var out []shared.MapCatalogItem
-	for _, entry := range parsePVFList(a.text(listPath)) {
-		_, body := a.textWithExt(prefix+entry.Path, ".twn", ".map")
+	for _, entry := range parsePVFList(readText(listPath)) {
+		_, body := textWithExt(readText, prefix+entry.Path, ".twn", ".map")
 		if body == "" {
 			continue
 		}
@@ -380,7 +384,7 @@ func extractMapList(a *pvfArchive, listPath, prefix string) []shared.MapCatalogI
 			}
 		}
 		for _, area := range parseTownAreas(body) {
-			mapBody := a.townMapText(townMapArchivePath(area.MapPath))
+			mapBody := townMapText(readText, townMapArchivePath(area.MapPath))
 			rectangles := townMapMovableRectangles(mapBody)
 			xMin, xMax, yMin, yMax, coordinateReady := townMapMovableBounds(mapBody)
 			normalEligible := coordinateReady && area.Kind != "pvp"
@@ -400,6 +404,35 @@ func extractMapList(a *pvfArchive, listPath, prefix string) []shared.MapCatalogI
 		return out[i].Village < out[j].Village
 	})
 	return out
+}
+
+func townMapText(readText func(string) string, path string) string {
+	path = normalizePVFPath(path)
+	if text := readText(path); text != "" {
+		return text
+	}
+	slash := strings.LastIndex(path, "/")
+	if slash < 0 {
+		return ""
+	}
+	return readText(path[:slash+1] + "(r)" + path[slash+1:])
+}
+
+func textWithExt(readText func(string) string, path string, exts ...string) (string, string) {
+	path = normalizePVFPath(path)
+	if text := readText(path); text != "" {
+		return path, text
+	}
+	for _, ext := range exts {
+		if strings.HasSuffix(path, ext) {
+			continue
+		}
+		candidate := path + ext
+		if text := readText(candidate); text != "" {
+			return candidate, text
+		}
+	}
+	return "", ""
 }
 
 func boolPointer(value bool) *bool {
