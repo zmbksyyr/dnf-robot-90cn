@@ -93,9 +93,18 @@ func KnownBackends() []BackendInfo {
 		Capabilities: capabilities,
 	}, {
 		ID: BackendS4A21, DisplayName: "S4A21 Simulator", SupportedOS: []string{"linux", "windows"},
-		Selectable: false, Reason: "protocol adapter is not integrated yet",
-		Capabilities: unavailableCapabilities("S4A21 protocol adapter is not integrated yet"),
+		Selectable: false, Reason: "scheduler integration is not complete",
+		Capabilities: s4a21Capabilities(),
 	}}
+}
+
+func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
+	capabilities := unavailableCapabilities("S4A21 protocol operation is not implemented yet")
+	capabilities[CapabilityProvision] = CapabilityStatus{Enabled: true}
+	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true}
+	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area and party channels only; world channel is unverified"}
+	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "dungeon entry workflow is not integrated yet"}
+	return capabilities
 }
 
 func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStatus {

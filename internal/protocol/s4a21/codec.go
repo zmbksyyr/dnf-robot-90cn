@@ -19,6 +19,7 @@ const (
 	CmdSendMessage     uint16 = 0x0011
 	CmdSetUserPosition uint16 = 0x0023
 	CmdMoveMap         uint16 = 0x002D
+	CmdCheckConnection uint16 = 0x04DD
 	NotiCharacterList  uint16 = 0x0002
 	NotiUserPosition   uint16 = 0x0016
 )

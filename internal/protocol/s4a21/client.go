@@ -57,6 +57,10 @@ func (c *Client) SelectCharacter(ctx context.Context, slot uint16) error {
 	return c.send(ctx, Encode(1, CmdSelectCharacter, SelectCharacterBody(slot)))
 }
 
+func (c *Client) CheckConnection(ctx context.Context) error {
+	return c.send(ctx, Encode(1, CmdCheckConnection, nil))
+}
+
 func (c *Client) SetUserPosition(ctx context.Context, x, y int16, direction byte, motion uint16) error {
 	return c.send(ctx, Encode(1, CmdSetUserPosition, SetUserPositionBody(x, y, direction, motion)))
 }
@@ -90,6 +94,7 @@ func (c *Client) Read(ctx context.Context) (Packet, error) {
 	}()
 	packet, err := ReadFrame(c.conn, c.maxSize)
 	close(stop)
+	_ = c.conn.SetReadDeadline(time.Time{})
 	if err != nil && ctx.Err() != nil {
 		return Packet{}, ctx.Err()
 	}
