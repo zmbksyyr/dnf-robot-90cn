@@ -119,8 +119,8 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities := unavailableCapabilities("S4A21 protocol operation is not implemented yet")
 	capabilities[CapabilityProvision] = CapabilityStatus{Enabled: true}
 	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true, Reason: "coordinates and verified town-area transitions"}
-	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area and party channels only; world channel is unverified"}
-	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 world-shout protocol is not verified"}
+	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area and party channels only; generic world recipients are not exposed"}
+	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
 	capabilities[CapabilityCleanup] = CapabilityStatus{Reason: "S4A21 character deletion protocol is not integrated"}
 	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "dungeon entry workflow is not integrated yet"}
 	return capabilities
