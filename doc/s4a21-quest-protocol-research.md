@@ -26,6 +26,21 @@ The next research step is to identify a legal objective transition for an
 advertised task using only protocol notifications and a disposable character.
 No database mutation or guessed quest ID is permitted.
 
+## PVF parser boundary
+
+The S4A21 mirror already contains the corresponding implementation in
+`Tool/PvfLib` (`PvfArchive`, `PvfDecryptor`, `QuestFile`, and related model
+parsers). Its encrypted header/body layout is not compatible with the native
+parser in `internal/capability/pvf`: opening the S4A21 `Script.pvf` with the
+native reader fails at the header boundary. The robot therefore keeps the
+S4A21 archive reader in `internal/composition/backend/s4a21` and projects only
+the shared town-map model upward. The live S4A21 archive currently parses 159
+town entries, 143 with usable movement geometry.
+
+This same adapter-owned reader is the correct starting point for future quest
+and dungeon projections; the shared scheduler must not learn S4A21 PVF tokens or
+reuse the native parser by assumption.
+
 ## Follow-up completion evidence
 
 A second disposable character accepted the same advertised quest, sent
