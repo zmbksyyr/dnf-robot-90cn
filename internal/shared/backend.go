@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"runtime"
@@ -43,6 +44,23 @@ type BackendSelection struct {
 	BackendID        BackendID `json:"backend_id"`
 	ConfigGeneration uint64    `json:"config_generation"`
 	SelectedAt       time.Time `json:"selected_at"`
+}
+
+type ProvisionCharacterRequest struct {
+	AccountName   string
+	PasswordHash  string
+	CharacterName string
+	Job           int
+}
+
+type ProvisionCharacterResult struct {
+	Backend       BackendID
+	CharacterName string
+	Created       bool
+}
+
+type CharacterProvisioner interface {
+	ProvisionCharacter(context.Context, ProvisionCharacterRequest) (ProvisionCharacterResult, error)
 }
 
 func DecodeBackendSelection(data []byte) (BackendSelection, error) {

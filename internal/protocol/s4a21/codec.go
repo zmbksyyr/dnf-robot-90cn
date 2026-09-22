@@ -43,6 +43,16 @@ func Encode(command byte, typ uint16, body []byte) []byte {
 	return out
 }
 
+func EncodeResponse(command byte, typ uint16, body []byte) []byte {
+	length := ResponseHeaderSize + len(body)
+	out := make([]byte, length)
+	out[0] = command
+	binary.LittleEndian.PutUint16(out[1:3], typ)
+	binary.LittleEndian.PutUint32(out[3:7], uint32(length))
+	copy(out[ResponseHeaderSize:], body)
+	return out
+}
+
 func DecodeFrame(frame []byte) (Packet, error) {
 	if len(frame) < ResponseHeaderSize {
 		return Packet{}, fmt.Errorf("s4a21 packet shorter than header: %d", len(frame))

@@ -19,6 +19,14 @@ func EncodeBig5String(s string) ([]byte, error) {
 	return encoded, nil
 }
 
+func EncodeGBKString(s string) ([]byte, error) {
+	encoded, _, err := transform.Bytes(simplifiedchinese.GBK.NewEncoder(), []byte(s))
+	if err != nil {
+		return nil, fmt.Errorf("encode GBK: %w", err)
+	}
+	return encoded, nil
+}
+
 type textCodec struct {
 	name   string
 	encode *encoding.Encoder
