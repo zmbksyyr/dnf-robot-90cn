@@ -74,6 +74,17 @@ func TestQuestCommandBodiesUseVerifiedEchoAndSentinel(t *testing.T) {
 	}
 }
 
+func TestSetQuestTriggerBodyUsesVerifiedFields(t *testing.T) {
+	body := SetQuestTriggerBody(1016, 2, true)
+	if len(body) != 6 || binary.LittleEndian.Uint16(body[2:4]) != 1016 || body[4] != 2 || body[5] != 1 {
+		t.Fatalf("set trigger body = %v", body)
+	}
+	body = SetQuestTriggerBody(1016, 2, false)
+	if body[5] != 0 {
+		t.Fatalf("non-increment trigger flag = %d", body[5])
+	}
+}
+
 func TestSelectCharacterBodyUsesTwoByteSlot(t *testing.T) {
 	body := SelectCharacterBody(0x0102)
 	if len(body) != 2 || binary.LittleEndian.Uint16(body) != 0x0102 {

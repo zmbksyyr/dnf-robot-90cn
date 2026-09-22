@@ -18,6 +18,7 @@ const (
 	CmdCreateCharacter      uint16 = 0x0005
 	CmdSendMessage          uint16 = 0x0011
 	CmdAcceptQuest          uint16 = 0x001F
+	CmdSetQuestTrigger      uint16 = 0x0021
 	CmdFinishQuest          uint16 = 0x0022
 	CmdEnterSelectDungeon   uint16 = 0x000F
 	CmdSelectDungeon        uint16 = 0x0010
@@ -73,6 +74,19 @@ func ParseAcceptableQuestList(body []byte) (AcceptableQuestList, error) {
 func AcceptQuestBody(questID uint16) []byte {
 	body := make([]byte, 4)
 	binary.LittleEndian.PutUint16(body[2:], questID)
+	return body
+}
+
+// SetQuestTriggerBody is the verified A21 wire form. The first two bytes are
+// the client echo/reserved prefix removed by the server before parsing; the
+// remaining fields are quest id, trigger type and an increment flag.
+func SetQuestTriggerBody(questID uint16, triggerType byte, increment bool) []byte {
+	body := make([]byte, 6)
+	binary.LittleEndian.PutUint16(body[2:4], questID)
+	body[4] = triggerType
+	if increment {
+		body[5] = 1
+	}
 	return body
 }
 

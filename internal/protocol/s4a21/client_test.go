@@ -108,3 +108,45 @@ func TestClientVerifiedDungeonPrimitives(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestClientVerifiedQuestPrimitives(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	client := NewClient(clientConn)
+	done := make(chan error, 1)
+	go func() {
+		want := []struct {
+			typ uint16
+			len int
+		}{
+			{CmdAcceptQuest, 4},
+			{CmdSetQuestTrigger, 6},
+			{CmdFinishQuest, 10},
+		}
+		for _, item := range want {
+			packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
+			if err != nil {
+				done <- err
+				return
+			}
+			if packet.Type != item.typ || len(packet.Body) != item.len {
+				done <- fmt.Errorf("quest packet type=0x%04X body=%d want type=0x%04X body=%d", packet.Type, len(packet.Body), item.typ, item.len)
+				return
+			}
+		}
+		done <- nil
+	}()
+	if err := client.AcceptQuest(context.Background(), 1016); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SetQuestTrigger(context.Background(), 1016, 2, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.FinishQuest(context.Background(), 1016, -1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

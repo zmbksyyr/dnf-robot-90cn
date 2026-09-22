@@ -61,6 +61,21 @@ func (c *Client) CheckConnection(ctx context.Context) error {
 	return c.send(ctx, Encode(1, CmdCheckConnection, nil))
 }
 
+// Quest methods expose only verified wire primitives. They are intentionally
+// not part of shared scheduling until a complete legal task workflow has been
+// proven against the target server.
+func (c *Client) AcceptQuest(ctx context.Context, questID uint16) error {
+	return c.send(ctx, Encode(1, CmdAcceptQuest, AcceptQuestBody(questID)))
+}
+
+func (c *Client) SetQuestTrigger(ctx context.Context, questID uint16, triggerType byte, increment bool) error {
+	return c.send(ctx, Encode(1, CmdSetQuestTrigger, SetQuestTriggerBody(questID, triggerType, increment)))
+}
+
+func (c *Client) FinishQuest(ctx context.Context, questID uint16, rewardSelection int16, completionCount uint16) error {
+	return c.send(ctx, Encode(1, CmdFinishQuest, FinishQuestBody(questID, rewardSelection, completionCount)))
+}
+
 // The dungeon methods expose only verified wire primitives. The backend
 // session deliberately does not call them until the complete dungeon
 // workflow, settlement and recovery gates are implemented.
