@@ -10,6 +10,16 @@ S4A21 将地下城过程拆成多个阶段，不能把 `MOVE_MAP` 当作独立�
 - 服务端通知：`ENTER_SELECT_DUNGEON=0x001B`、`DUNGEON_INFO=0x001C`、`START_MAP=0x001D`、`FINISH_LOADING=0x001E`、`ENABLE_CLEAR_DUNGEON=0x001F`、`PLAY_RESULT=0x0022`、`CLEAR_DUNGEON_REWARD=0x0023`、`MOVE_MAP=0x00F5`。
 - 队伍/战斗相关通知还包括 `CREATE_GROUP=0x016A`、`SKILL_INIT=0x01AA`；它们不是进入地下城前可以省略的通用替代包。
 
+### 静态确认的请求体边界
+
+这些边界来自 S4A21 服务端的 parser，而不是 dnf-robot 的猜测：
+
+- `ENTER_SELECT_DUNGEON`：至少 4 字节，小端 `uint32 dungeonId`；后续字节允许存在，但只被记录为尾部，不能据此推断语义。
+- `SELECT_DUNGEON`：至少 9 字节，小端 `uint32 dungeonId`，随后为 `difficulty`、`flag1`、`flag2`、小端 `uint16 A21Sentinel`；当前 parser 默认 sentinel 为 `0xFFFF`，尾部仍可能存在。
+- `MOVE_MAP`：固定至少/实际解析 64 字节：`nextX`、`nextY`、`pathPositionX(uint32)`、`pathPositionY(uint32)`、`moveMode`、`trapBits(uint16)`、8 个 `uint16 memberMapClearValues`、8 个 `uint32 memberMapElapsedValues`、`clientTimingToken(uint16)`、`clientStateFlag`。服务端还会校验当前 run、迷宫拓扑、死亡/清除/机制状态。
+
+因此，未来适配层即使实现地下城，也不能复用城镇移动的坐标请求结构；必须单独定义 `DungeonMoveRequest` 和 run/loading 状态。
+
 ## 当前可以确认的最小顺序
 
 从 `DungeonEntryHandler`、`DungeonMapHandler`、`DungeonLoadingCoordinator`、`DungeonSettlementHandler`、`DungeonTownReturnCoordinator` 及 A21 自测代码可以确认以下状态顺序：
@@ -38,6 +48,10 @@ S4A21 将地下城过程拆成多个阶段，不能把 `MOVE_MAP` 当作独立�
 - `CREATE_GROUP`、`SKILL_INIT` 是否对目标整合包的普通地下城必需，以及其动态 body 的最小合法值。
 - 怪物死亡、技能释放、拾取、结算卡牌与奖励的最小可运行闭环。
 - 断线重连、放弃、超时、重新加入地下城的真实恢复包序。
+
+源码可以确认普通首张地图的 `START_MAP` body 会包含房间坐标、随机种子、模式/房间状态、地图 id、怪物/对象投影和接收者队伍 slot；但其动态对象列表依赖具体 PVF、地下城和运行时种子，不能用固定样例伪造。
+
+整合包现存 `DfoServer/packet_log.txt` 只证明服务器具备抓包日志能力；当前文件没有可验证的完整普通地下城回合，因此不作为地下城开放依据。
 
 ## 当前阶段结论
 
