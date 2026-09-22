@@ -77,6 +77,15 @@ func TestSessionReturnsUnsupportedWorldShout(t *testing.T) {
 	}
 }
 
+func TestSessionReturnsUnsupportedPartyShout(t *testing.T) {
+	session := &Session{client: protocol.NewClient(nil)}
+	err := session.Shout(context.Background(), shared.ShoutIntent{Channel: shared.ShoutChannelParty, Message: "hello"})
+	unsupported, ok := err.(shared.UnsupportedCapabilityError)
+	if !ok || unsupported.Operation != shared.CapabilityShout {
+		t.Fatalf("error = %T %v", err, err)
+	}
+}
+
 func serveSessionSequence(listener net.Listener, done chan<- error) {
 	conn, err := listener.Accept()
 	if err != nil {

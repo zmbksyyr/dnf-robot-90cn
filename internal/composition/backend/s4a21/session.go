@@ -143,7 +143,7 @@ func (s *Session) Shout(ctx context.Context, intent shared.ShoutIntent) error {
 	case shared.ShoutChannelArea:
 		mode = 3
 	case shared.ShoutChannelParty:
-		mode = 2
+		return shared.UnsupportedCapabilityError{Backend: shared.BackendS4A21, Operation: shared.CapabilityShout, Reason: "S4A21 party membership workflow is not integrated yet"}
 	case shared.ShoutChannelWorld:
 		return shared.UnsupportedCapabilityError{Backend: shared.BackendS4A21, Operation: shared.CapabilityWorldShout, Reason: "S4A21 has no verified world-shout protocol mode"}
 	default:
