@@ -11,6 +11,37 @@ import (
 	"robot/internal/shared"
 )
 
+func TestRobotCreatorBuildsSixHundredRobotsInOneProtocolBatch(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	creator := RobotCreator{
+		Provisioner: creatorProvisioner{}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{0},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+			NameASCIIFallback: true, NameASCIIPrefix: "batch",
+		},
+		Names: robottemplate.NameTemplates{}, IDStart: 18000000, AccountPrefix: "robot",
+	}
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 600})
+	if err != nil || len(robots) != 600 {
+		t.Fatalf("robots=%d err=%v", len(robots), err)
+	}
+	seenNames := make(map[string]struct{}, len(robots))
+	for index, robot := range robots {
+		if robot.UID != 18000000+index {
+			t.Fatalf("robot[%d] uid=%d", index, robot.UID)
+		}
+		if _, exists := seenNames[robot.Name]; exists {
+			t.Fatalf("duplicate name %q", robot.Name)
+		}
+		seenNames[robot.Name] = struct{}{}
+	}
+	identities, err := store.Identities(context.Background(), shared.BackendS4A21)
+	if err != nil || len(identities) != 600 {
+		t.Fatalf("identities=%d err=%v", len(identities), err)
+	}
+}
+
 type creatorProvisioner struct{}
 
 func (creatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
