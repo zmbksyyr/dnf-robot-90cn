@@ -35,6 +35,29 @@ func TestBackendSelectionDefaultsWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestBackendCatalogDisablesPlatformUnsupportedBackends(t *testing.T) {
+	windows := backendCatalogForPlatform("windows")
+	linux := backendCatalogForPlatform("linux")
+	find := func(backends []shared.BackendInfo, id shared.BackendID) shared.BackendInfo {
+		for _, backend := range backends {
+			if backend.ID == id {
+				return backend
+			}
+		}
+		t.Fatalf("backend %s missing", id)
+		return shared.BackendInfo{}
+	}
+	if native := find(windows, shared.BackendNative); native.Selectable || native.Reason == "" {
+		t.Fatalf("native backend must be disabled on Windows: %+v", native)
+	}
+	if simulator := find(windows, shared.BackendS4A21); !simulator.Selectable {
+		t.Fatalf("S4A21 unexpectedly disabled on Windows: %+v", simulator)
+	}
+	if native := find(linux, shared.BackendNative); !native.Selectable {
+		t.Fatalf("native unexpectedly disabled on Linux: %+v", native)
+	}
+}
+
 func TestBackendSelectionRejectsUnsupportedPlatform(t *testing.T) {
 	dir := t.TempDir()
 	s := New(&config.SysConfig{ConfigDir: dir}, "", "")

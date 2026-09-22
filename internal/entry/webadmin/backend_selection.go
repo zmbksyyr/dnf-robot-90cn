@@ -36,7 +36,7 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 	defer s.backendSelectionMu.Unlock()
 	state, persisted, err := s.readBackendSelectionLocked()
 	if err != nil {
-		writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: shared.KnownBackends(), Error: err.Error()})
+		writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
 		return
 	}
 	switch r.Method {
@@ -47,12 +47,12 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 			BackendID shared.BackendID `json:"backend_id"`
 		}
 		if err := config.DecodeJSONLimit(r.Body, 64*1024, &req); err != nil {
-			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Error: err.Error()})
+			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
 			return
 		}
 		info, err := shared.SelectBackend(req.BackendID, runtime.GOOS)
 		if err != nil {
-			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: shared.KnownBackends(), Error: err.Error()})
+			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
 			return
 		}
 		if state.BackendID == info.ID {
@@ -63,7 +63,7 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 		state.ConfigGeneration++
 		state.SelectedAt = time.Now().UTC()
 		if err := s.writeBackendSelectionLocked(state); err != nil {
-			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Error: err.Error()})
+			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
 			return
 		}
 		payload := backendSelectionResponse(state, true, "backend selected; stop robot, back up and reinitialize runtime/config before restart")
@@ -76,7 +76,28 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 }
 
 func backendSelectionResponse(state backendSelectionState, persisted bool, message string) backendSelectionPayload {
-	return backendSelectionPayload{OK: true, Selected: state.BackendID, ConfigGeneration: state.ConfigGeneration, SelectedAt: state.SelectedAt, Persisted: persisted, Platform: runtime.GOOS, Backends: shared.KnownBackends(), Message: message}
+	return backendSelectionPayload{OK: true, Selected: state.BackendID, ConfigGeneration: state.ConfigGeneration, SelectedAt: state.SelectedAt, Persisted: persisted, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Message: message}
+}
+
+func backendCatalogForPlatform(platform string) []shared.BackendInfo {
+	backends := shared.KnownBackends()
+	for i := range backends {
+		if !backends[i].Selectable {
+			continue
+		}
+		supported := false
+		for _, candidate := range backends[i].SupportedOS {
+			if candidate == platform {
+				supported = true
+				break
+			}
+		}
+		if !supported {
+			backends[i].Selectable = false
+			backends[i].Reason = fmt.Sprintf("backend does not support %s", platform)
+		}
+	}
+	return backends
 }
 
 func (s *Server) readBackendSelectionLocked() (backendSelectionState, bool, error) {
