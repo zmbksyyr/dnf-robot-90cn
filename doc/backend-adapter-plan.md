@@ -219,6 +219,8 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 
 随后进行的真实验证从服务端实际列表中选择 quest `1016`，通过 `ACCEPT_QUEST (0x001F)` 成功建立活动任务，收到成功 ACK `01 F8 03 01 00 00 00 00`，并再次收到更新后的可接受任务列表。由此确认后续可以沿正常任务协议推进角色状态；仍不得猜测 quest ID、直接改数据库或把任务自动化提前暴露为公共能力。
 
+协议层已补充经源码验证的 `ACCEPT_QUEST` / `FINISH_QUEST` 常量和 body 构造器（包含两字节 echo 与 `0xFFFF` 哨兵），仅作为后续适配器工作流的封包原语，当前没有连接 Session 或调度流程。
+
 随后已实现并真实回归私有 `enterSingleDungeon`：普通/教程分支均只覆盖入口、首图 `START_MAP` 和 `FINISH_LOADING`，教程状态由调用方显式传入，不做猜测。该方法尚未接入 `RobotSession`、调度器或 Web；组队、战斗、结算、回城和 rejoin 仍是后续独立阶段。
 
 在此基础上已增加私有 `moveSingleDungeon`，真实验证了 64 字节 `MOVE_MAP`、第二个 `START_MAP` 和第二次 `FINISH_LOADING`。房间坐标采用 pending 提交语义，只有加载释放成功才更新当前房间；发送失败或超时不会伪造移动成功。该方法同样尚未接入共享能力。
