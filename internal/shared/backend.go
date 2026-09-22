@@ -118,7 +118,7 @@ func KnownBackends() []BackendInfo {
 func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities := unavailableCapabilities("S4A21 protocol operation is not implemented yet")
 	capabilities[CapabilityProvision] = CapabilityStatus{Enabled: true}
-	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true, Reason: "same-area coordinates only; S4A21 area transition is unverified"}
+	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true, Reason: "coordinates and verified town-area transitions"}
 	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area and party channels only; world channel is unverified"}
 	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 world-shout protocol is not verified"}
 	capabilities[CapabilityCleanup] = CapabilityStatus{Reason: "S4A21 character deletion protocol is not integrated"}

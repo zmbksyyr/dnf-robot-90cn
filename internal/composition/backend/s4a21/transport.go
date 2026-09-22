@@ -180,14 +180,20 @@ func (t *ActionTransport) MoveTown(ctx context.Context, command shared.RuntimeMo
 	status := t.status[command.UID]
 	t.mu.RUnlock()
 	if known && (status.Village != command.Village || status.Area != command.Area) {
-		return shared.UnsupportedCapabilityError{
-			Backend:   shared.BackendS4A21,
-			Operation: shared.CapabilityTownMove,
-			Reason:    "S4A21 area transition protocol is not integrated yet",
+		areaMover, ok := session.(interface {
+			MoveTownArea(context.Context, shared.TownAreaMoveIntent) error
+		})
+		if !ok {
+			return shared.UnsupportedCapabilityError{Backend: shared.BackendS4A21, Operation: shared.CapabilityTownMove, Reason: "S4A21 area transition protocol is not available on this session"}
+		}
+		if err := areaMover.MoveTownArea(ctx, shared.TownAreaMoveIntent{Village: command.Village, Area: command.Area, X: int16(command.X), Y: int16(command.Y)}); err != nil {
+			return err
 		}
 	}
-	if err := session.MoveTown(ctx, shared.TownMoveIntent{X: int16(command.X), Y: int16(command.Y), Direction: byte(command.MoveType), Motion: uint16(command.Speed)}); err != nil {
-		return err
+	if !known || status.Village == command.Village && status.Area == command.Area {
+		if err := session.MoveTown(ctx, shared.TownMoveIntent{X: int16(command.X), Y: int16(command.Y), Direction: byte(command.MoveType), Motion: uint16(command.Speed)}); err != nil {
+			return err
+		}
 	}
 	t.mu.Lock()
 	updated := t.status[command.UID]

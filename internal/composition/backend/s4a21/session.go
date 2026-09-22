@@ -2,6 +2,7 @@ package s4a21
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ type SessionFactory struct {
 }
 
 const sessionKeepaliveInterval = 5 * time.Second
+const townAreaTransitionTimeout = 5 * time.Second
 
 type Session struct {
 	client             *protocol.Client
@@ -85,6 +87,46 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 
 func (s *Session) MoveTown(ctx context.Context, intent shared.TownMoveIntent) error {
 	return s.client.SetUserPosition(ctx, intent.X, intent.Y, intent.Direction, intent.Motion)
+}
+
+func (s *Session) MoveTownArea(ctx context.Context, intent shared.TownAreaMoveIntent) error {
+	if intent.Village < 0 || intent.Village > 255 || intent.Area < 0 || intent.Area > 255 {
+		return fmt.Errorf("S4A21 town area out of range: %d/%d", intent.Village, intent.Area)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, townAreaTransitionTimeout)
+		defer cancel()
+	}
+	confirmed := make(chan struct{}, 1)
+	cleanup := s.setPacketObserver(func(packet protocol.Packet) {
+		if packet.Type != protocol.NotiUserArea || len(packet.Body) < 8 ||
+			int(packet.Body[2]) != intent.Village ||
+			int(packet.Body[3]) != intent.Area ||
+			int16(binary.LittleEndian.Uint16(packet.Body[4:6])) != intent.X ||
+			int16(binary.LittleEndian.Uint16(packet.Body[6:8])) != intent.Y {
+			return
+		}
+		select {
+		case confirmed <- struct{}{}:
+		default:
+		}
+	})
+	defer cleanup()
+	if err := s.client.SetUserArea(ctx, byte(intent.Village), byte(intent.Area), intent.X, intent.Y); err != nil {
+		return err
+	}
+	select {
+	case <-confirmed:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.Done():
+		return fmt.Errorf("S4A21 session ended during town area transition")
+	}
 }
 
 func (s *Session) MoveDungeon(ctx context.Context, intent shared.DungeonMoveIntent) error {

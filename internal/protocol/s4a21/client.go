@@ -99,6 +99,10 @@ func (c *Client) SetUserPosition(ctx context.Context, x, y int16, direction byte
 	return c.send(ctx, Encode(1, CmdSetUserPosition, SetUserPositionBody(x, y, direction, motion)))
 }
 
+func (c *Client) SetUserArea(ctx context.Context, town, area byte, x, y int16) error {
+	return c.send(ctx, Encode(1, CmdSetUserArea, SetUserAreaBody(town, area, x, y)))
+}
+
 func (c *Client) SendMessage(ctx context.Context, mode byte, targetUID uint16, targetCharacterID uint32, message []byte) error {
 	body, err := SendMessageBody(mode, targetUID, targetCharacterID, message)
 	if err != nil {

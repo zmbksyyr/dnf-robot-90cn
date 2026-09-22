@@ -51,7 +51,11 @@ func TestLiveS4A21RuntimeActions(t *testing.T) {
 	factory := SessionFactory{Address: address, Timeout: 20 * time.Second}
 	transport := NewActionTransport(factory)
 	for _, robot := range robots {
-		if err := transport.Open(context.Background(), robot.UID, shared.OpenSessionRequest{AccountName: fmt.Sprintf("%s%d", prefix, robot.UID), CharacterSlot: 0}); err != nil {
+		if err := transport.Open(context.Background(), robot.UID, shared.OpenSessionRequest{
+			AccountName: fmt.Sprintf("%s%d", prefix, robot.UID), CharacterSlot: 0,
+			InitialTownKnown: true, InitialVillage: robot.Village, InitialArea: robot.Area,
+			InitialX: robot.X, InitialY: robot.Y,
+		}); err != nil {
 			_ = transport.CloseAll()
 			t.Fatalf("open uid=%d: %v", robot.UID, err)
 		}
@@ -64,11 +68,14 @@ func TestLiveS4A21RuntimeActions(t *testing.T) {
 		if err := transport.ShoutLocal(context.Background(), shared.RuntimeShoutCommand{UID: robot.UID, Message: "live runtime test"}); err != nil {
 			t.Fatalf("shout uid=%d: %v", robot.UID, err)
 		}
+		if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: robot.UID, Village: robot.Village, Area: 1, X: 520, Y: 240, MoveType: 5, Speed: 100}); err != nil {
+			t.Fatalf("area move uid=%d: %v", robot.UID, err)
+		}
 	}
 	statuses := transport.RuntimeStatusMap()
 	for _, robot := range robots {
 		status := statuses[robot.UID]
-		if status.X != robot.X+20 || status.Y != robot.Y+10 || status.Village != robot.Village || status.Area != robot.Area {
+		if status.X != 520 || status.Y != 240 || status.Village != robot.Village || status.Area != 1 {
 			t.Fatalf("status uid=%d = %+v", robot.UID, status)
 		}
 	}

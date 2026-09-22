@@ -22,6 +22,13 @@ type TownMoveIntent struct {
 	Motion    uint16
 }
 
+type TownAreaMoveIntent struct {
+	Village int
+	Area    int
+	X       int16
+	Y       int16
+}
+
 type DungeonMoveIntent struct {
 	NextX, NextY byte
 	PathX, PathY uint32

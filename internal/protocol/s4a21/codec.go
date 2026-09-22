@@ -25,11 +25,14 @@ const (
 	CmdChangeTutorialFlag   uint16 = 0x008F
 	CmdFinishLoading        uint16 = 0x0025
 	CmdSetUserPosition      uint16 = 0x0023
+	CmdSetUserArea          uint16 = 0x0024
 	CmdMoveMap              uint16 = 0x002D
 	CmdCheckConnection      uint16 = 0x04DD
 	NotiCharacterList       uint16 = 0x0002
 	NotiAcceptableQuestList uint16 = 0x0015
 	NotiUserPosition        uint16 = 0x0016
+	NotiUserArea            uint16 = 0x0017
+	NotiAreaUsers           uint16 = 0x0018
 	NotiEnterSelectDungeon  uint16 = 0x001B
 	NotiDungeonInfo         uint16 = 0x001C
 	NotiStartMap            uint16 = 0x001D
@@ -212,6 +215,17 @@ func SetUserPositionBody(x, y int16, direction byte, motion uint16) []byte {
 	out[4] = direction
 	binary.LittleEndian.PutUint16(out[5:7], motion)
 	return out
+}
+
+// SetUserAreaBody is the verified A21 town-transition request: town, area,
+// followed by little-endian x and y. The server requires six bytes.
+func SetUserAreaBody(town, area byte, x, y int16) []byte {
+	body := make([]byte, 6)
+	body[0] = town
+	body[1] = area
+	binary.LittleEndian.PutUint16(body[2:4], uint16(x))
+	binary.LittleEndian.PutUint16(body[4:6], uint16(y))
+	return body
 }
 
 // EnterSelectDungeonBody is the verified A21 four-byte dungeon selection

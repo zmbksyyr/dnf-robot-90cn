@@ -85,6 +85,15 @@ func TestSetQuestTriggerBodyUsesVerifiedFields(t *testing.T) {
 	}
 }
 
+func TestSetUserAreaBodyUsesSixByteTownTransitionLayout(t *testing.T) {
+	body := SetUserAreaBody(1, 2, 0x0123, 0x0045)
+	if len(body) != 6 || body[0] != 1 || body[1] != 2 ||
+		binary.LittleEndian.Uint16(body[2:4]) != 0x0123 ||
+		binary.LittleEndian.Uint16(body[4:6]) != 0x0045 {
+		t.Fatalf("set user area body = %X", body)
+	}
+}
+
 func TestSelectCharacterBodyUsesTwoByteSlot(t *testing.T) {
 	body := SelectCharacterBody(0x0102)
 	if len(body) != 2 || binary.LittleEndian.Uint16(body) != 0x0102 {

@@ -17,6 +17,16 @@ type actionTestSession struct {
 	done    chan struct{}
 }
 
+type areaActionTestSession struct {
+	actionTestSession
+	area shared.TownAreaMoveIntent
+}
+
+func (s *areaActionTestSession) MoveTownArea(_ context.Context, intent shared.TownAreaMoveIntent) error {
+	s.area = intent
+	return nil
+}
+
 func (s *actionTestSession) MoveTown(_ context.Context, intent shared.TownMoveIntent) error {
 	if s.moveErr != nil {
 		return s.moveErr
@@ -32,7 +42,7 @@ func (s *actionTestSession) Shout(_ context.Context, intent shared.ShoutIntent) 
 func (s *actionTestSession) Close() error          { s.closed = true; return nil }
 func (s *actionTestSession) Done() <-chan struct{} { return s.done }
 
-type actionTestFactory struct{ session *actionTestSession }
+type actionTestFactory struct{ session shared.RobotSession }
 
 func (f actionTestFactory) OpenSession(context.Context, shared.OpenSessionRequest) (shared.RobotSession, error) {
 	return f.session, nil
@@ -61,8 +71,8 @@ func TestActionTransportMapsVerifiedTownActions(t *testing.T) {
 	}
 }
 
-func TestActionTransportRejectsUnverifiedTownAreaTransition(t *testing.T) {
-	session := &actionTestSession{}
+func TestActionTransportRoutesVerifiedTownAreaTransition(t *testing.T) {
+	session := &areaActionTestSession{}
 	transport := NewActionTransport(actionTestFactory{session: session})
 	if err := transport.Open(context.Background(), 7, shared.OpenSessionRequest{
 		AccountName:      "acct",
@@ -77,21 +87,38 @@ func TestActionTransportRejectsUnverifiedTownAreaTransition(t *testing.T) {
 	err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{
 		UID: 7, Village: 1, Area: 3, X: 120, Y: 240,
 	})
-	var unsupported shared.UnsupportedCapabilityError
-	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityTownMove {
+	if err != nil {
 		t.Fatalf("cross-area error = %v", err)
 	}
+	if session.area != (shared.TownAreaMoveIntent{Village: 1, Area: 3, X: 120, Y: 240}) {
+		t.Fatalf("cross-area intent = %+v", session.area)
+	}
 	if session.town != (shared.TownMoveIntent{}) {
-		t.Fatalf("cross-area move sent position packet: %+v", session.town)
+		t.Fatalf("cross-area move also sent position packet: %+v", session.town)
 	}
 	status := transport.RuntimeStatusMap()[7]
-	if status.Village != 1 || status.Area != 2 || status.X != 100 || status.Y != 200 {
-		t.Fatalf("cross-area move changed status: %+v", status)
+	if status.Village != 1 || status.Area != 3 || status.X != 120 || status.Y != 240 {
+		t.Fatalf("cross-area move did not update status: %+v", status)
 	}
 	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{
 		UID: 7, Village: 1, Area: 2, X: 120, Y: 240,
 	}); err != nil {
 		t.Fatalf("same-area move: %v", err)
+	}
+}
+
+func TestActionTransportRejectsAreaTransitionWithoutBackendPrimitive(t *testing.T) {
+	session := &actionTestSession{}
+	transport := NewActionTransport(actionTestFactory{session: session})
+	if err := transport.Open(context.Background(), 7, shared.OpenSessionRequest{
+		AccountName: "acct", InitialTownKnown: true, InitialVillage: 1, InitialArea: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: 7, Village: 1, Area: 3})
+	var unsupported shared.UnsupportedCapabilityError
+	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityTownMove {
+		t.Fatalf("area primitive error = %v", err)
 	}
 }
 
