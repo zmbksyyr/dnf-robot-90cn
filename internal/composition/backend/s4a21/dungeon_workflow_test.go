@@ -138,6 +138,48 @@ func TestEnterSingleDungeonReturnsRejectedAckAndTimeout(t *testing.T) {
 	}
 }
 
+func TestMoveSingleDungeonTimeoutPreservesReadyRoom(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	session, drainCancel := testSessionWithDrain(clientConn)
+	defer drainCancel()
+
+	state := &dungeonRunState{}
+	if err := state.BeginSelection(144); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.BeginEntry(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.StartLoading(2, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.FinishLoading(); err != nil {
+		t.Fatal(err)
+	}
+	session.dungeonState = state
+
+	requestRead := make(chan error, 1)
+	go func() {
+		_, err := protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
+		requestRead <- err
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := session.moveSingleDungeon(ctx, 1, 3, 0, 0); err == nil {
+		t.Fatal("timed out dungeon move unexpectedly succeeded")
+	}
+	if err := <-requestRead; err != nil {
+		t.Fatal(err)
+	}
+	snapshot := state.Snapshot()
+	if snapshot.Phase != uint8(dungeonPhaseReady) || snapshot.RoomX != 2 || snapshot.RoomY != 3 {
+		t.Fatalf("state changed after timed out move: %+v", snapshot)
+	}
+}
+
 func testSessionWithDrain(clientConn net.Conn) (*Session, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &Session{client: protocol.NewClient(clientConn), done: make(chan struct{})}
