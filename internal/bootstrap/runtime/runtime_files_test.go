@@ -24,6 +24,16 @@ func TestInitRejectsEmptyRuntimeDirectory(t *testing.T) {
 	}
 }
 
+func TestInitConfigOnlyDoesNotRequirePVF(t *testing.T) {
+	dir := t.TempDir()
+	if err := InitConfigOnly(&config.SysConfig{ConfigDir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(layout.New(dir).RobotConfig()); err != nil {
+		t.Fatalf("robot config was not initialized: %v", err)
+	}
+}
+
 func TestReleaseDefaultsCoversCanonicalRuntimeAssets(t *testing.T) {
 	paths := layout.New(t.TempDir())
 	if err := paths.Ensure(); err != nil {

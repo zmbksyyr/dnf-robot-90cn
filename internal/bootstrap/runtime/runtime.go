@@ -57,6 +57,23 @@ func Init(cfg *config.SysConfig) error {
 	return nil
 }
 
+// InitConfigOnly prepares robot-owned configuration and templates without
+// parsing or exporting a backend PVF. Simulated backends use their own PVF
+// adapter and must not inherit native runtime initialization.
+func InitConfigOnly(cfg *config.SysConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("nil config")
+	}
+	if cfg.ConfigDir == "" {
+		return fmt.Errorf("empty runtime config directory")
+	}
+	paths := layout.New(cfg.ConfigDir)
+	if err := paths.Ensure(); err != nil {
+		return err
+	}
+	return ensureConfigRuntimeFiles(paths)
+}
+
 type runtimeManifest struct {
 	CheckedAt         string                       `json:"checked_at"`
 	DFGameR           runtimeFileStatus            `json:"df_game_r"`
