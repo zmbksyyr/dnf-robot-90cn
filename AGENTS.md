@@ -35,6 +35,11 @@ surface and persisted as runtime state. Startup must not silently infer or
 switch between native and simulated servers from paths, processes, file
 extensions, ports, or operating system.
 
+If the persisted selection is unavailable on the current platform, startup
+may enter Web-only recovery mode so the operator can choose a valid backend.
+Recovery mode must not initialize a backend, actors, sessions, or simulated
+server state; the selected backend takes effect only after an explicit restart.
+
 Switching environments is a destructive runtime transition: stop robot actors,
 sessions, and schedulers; preserve an auditable backup; rebuild the robot
 runtime/config directories for the selected backend; then initialize and start
