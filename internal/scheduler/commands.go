@@ -5,6 +5,7 @@ import (
 	actormodel "robot/internal/actor"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
+	"robot/internal/shared"
 	"time"
 )
 
@@ -101,6 +102,9 @@ func (m *RobotManager) ShoutBothManaged(req robotcap.CommandRequest) (robotcap.C
 func (m *RobotManager) StoreManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
 	m.mutationMu.RLock()
 	defer m.mutationMu.RUnlock()
+	if err := m.requireBackendCapability(shared.CapabilityStore); err != nil {
+		return robotcap.CommandResult{}, err
+	}
 	return m.actorCommandManaged(req, actormodel.CommandStore, "store")
 }
 
