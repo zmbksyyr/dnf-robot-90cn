@@ -91,3 +91,37 @@ func TestPrepareBackendRuntimeDoesNotResetWithoutAppliedMarker(t *testing.T) {
 		t.Fatalf("robot config was unexpectedly reset: %v", err)
 	}
 }
+
+func TestPrepareBackendRuntimeDoesNotCarrySimulatorStateIntoNative(t *testing.T) {
+	root := t.TempDir()
+	paths := layout.New(root)
+	if err := paths.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.MainConfig(), []byte("system-config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(paths.State, "robot_state.json"), []byte(`{"backend":"sim_a21"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	previous := shared.BackendSelection{BackendID: shared.BackendS4A21, ConfigGeneration: 4}
+	previousData, err := json.Marshal(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.BackendRuntime(), previousData, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	target := shared.BackendSelection{BackendID: shared.BackendNative, ConfigGeneration: 5}
+	changed, err := PrepareBackendRuntime(paths, target)
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if _, err := os.Stat(filepath.Join(paths.State, "robot_state.json")); !os.IsNotExist(err) {
+		t.Fatalf("simulator robot state survived native switch: %v", err)
+	}
+	if got, err := os.ReadFile(paths.MainConfig()); err != nil || string(got) != "system-config" {
+		t.Fatalf("system config got=%q err=%v", got, err)
+	}
+}
