@@ -82,3 +82,16 @@ func TestSimulatorVerifiedTownAndLocalShoutRemainAllowed(t *testing.T) {
 		t.Fatalf("local shout unexpectedly unsupported: %v", err)
 	}
 }
+
+func TestSimulatorCleanupIsRejectedWithStableCapabilityError(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	_, err := m.CleanupRobots(robotcap.CleanupRequest{UIDs: []int{7}, Force: true})
+	var unsupported shared.UnsupportedCapabilityError
+	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityCleanup {
+		t.Fatalf("error = %v, want cleanup unsupported", err)
+	}
+	if !strings.Contains(err.Error(), shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("error = %v, missing stable capability code", err)
+	}
+}

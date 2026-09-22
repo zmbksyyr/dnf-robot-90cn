@@ -25,6 +25,7 @@ const (
 	CapabilityParty       BackendCapability = "party"
 	CapabilitySkill       BackendCapability = "skill"
 	CapabilityMarket      BackendCapability = "market"
+	CapabilityCleanup     BackendCapability = "cleanup"
 )
 
 type CapabilityStatus struct {
@@ -100,7 +101,7 @@ func KnownBackends() []BackendInfo {
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket,
+		CapabilityMarket, CapabilityCleanup,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
@@ -120,6 +121,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true}
 	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area and party channels only; world channel is unverified"}
 	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 world-shout protocol is not verified"}
+	capabilities[CapabilityCleanup] = CapabilityStatus{Reason: "S4A21 character deletion protocol is not integrated"}
 	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "dungeon entry workflow is not integrated yet"}
 	return capabilities
 }
@@ -129,7 +131,7 @@ func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStat
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket,
+		CapabilityMarket, CapabilityCleanup,
 	} {
 		capabilities[operation] = CapabilityStatus{Reason: reason}
 	}

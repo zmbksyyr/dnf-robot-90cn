@@ -228,6 +228,9 @@ func (m *RobotManager) actorStatusMap() map[int]actormodel.Snapshot {
 }
 
 func (m *RobotManager) CleanupRobots(req robotcap.CleanupRequest) (robotcap.CleanupResult, error) {
+	if err := m.requireBackendCapability(shared.CapabilityCleanup); err != nil {
+		return robotcap.CleanupResult{}, err
+	}
 	return m.cleanupRobots(req)
 }
 
