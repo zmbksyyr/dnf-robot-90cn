@@ -33,6 +33,15 @@ func TestEmbeddedWebAssetsContainRequiredContent(t *testing.T) {
 	}
 }
 
+func TestAutoControlIsNotGatedByMarketCapability(t *testing.T) {
+	if !strings.Contains(appJS, `async function openAutoDialog`) {
+		t.Fatal("auto control is missing from the web asset")
+	}
+	if strings.Contains(appJS, `cmd.includes("openMaxDialog")||cmd.includes("openScriptDialog")||cmd.includes("openAutoDialog")`) {
+		t.Fatal("auto control is incorrectly gated by market capability")
+	}
+}
+
 func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
 	for _, want := range []string{
 		"Category unit-price ranges", "分类单价范围",
