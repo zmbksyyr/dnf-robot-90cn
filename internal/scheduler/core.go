@@ -28,6 +28,7 @@ type RobotManager struct {
 	robotState                      robotstate.Directory
 	cfg                             *config.SysConfig
 	doll                            Runtime
+	nativeKeypairRequired           bool
 	backendActions                  BackendActionTransport
 	backendSessions                 BackendSessionTransport
 	worldShout                      WorldShout
@@ -136,6 +137,18 @@ func (m *RobotManager) SetBackendSessionTransport(transport BackendSessionTransp
 	}
 }
 
+// SetNativeKeypairRequired controls only the native RSA gate in the command
+// entrypoint. It defaults to true; protocol backends explicitly disable it.
+func (m *RobotManager) SetNativeKeypairRequired(required bool) {
+	if m != nil {
+		m.nativeKeypairRequired = required
+	}
+}
+
+func (m *RobotManager) NativeKeypairRequired() bool {
+	return m == nil || m.nativeKeypairRequired
+}
+
 func (m *RobotManager) SetBackendActionTransport(transport BackendActionTransport) {
 	if m != nil {
 		m.backendActions = transport
@@ -163,17 +176,18 @@ func NewRobotManager(database dbstatus.Database, cfg *config.SysConfig, doll Run
 		doll = noopRuntime{}
 	}
 	manager := &RobotManager{
-		database:            database,
-		cfg:                 cfg,
-		doll:                doll,
-		worldShout:          noopWorldShout{},
-		locks:               lockhub.New(),
-		startedAt:           time.Now(),
-		rand:                rand.New(rand.NewSource(time.Now().UnixNano())),
-		cleanupPendingUIDs:  make(map[int]time.Time),
-		sessionLastLogout:   make(map[int]time.Time),
-		sessionReloginDelay: 15 * time.Second,
-		worldHornCache:      storecap.NewWorldHornCache(),
+		database:              database,
+		cfg:                   cfg,
+		doll:                  doll,
+		nativeKeypairRequired: true,
+		worldShout:            noopWorldShout{},
+		locks:                 lockhub.New(),
+		startedAt:             time.Now(),
+		rand:                  rand.New(rand.NewSource(time.Now().UnixNano())),
+		cleanupPendingUIDs:    make(map[int]time.Time),
+		sessionLastLogout:     make(map[int]time.Time),
+		sessionReloginDelay:   15 * time.Second,
+		worldHornCache:        storecap.NewWorldHornCache(),
 	}
 	manager.positionWrites = newPositionBatcher(manager.positionRepo(), defaultPositionBatchOptions())
 	return manager

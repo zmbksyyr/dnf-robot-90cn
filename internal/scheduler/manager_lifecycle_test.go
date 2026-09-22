@@ -7,6 +7,17 @@ import (
 	"robot/internal/foundation/config"
 )
 
+func TestNativeKeypairRequirementDefaultsOnAndCanBeDisabled(t *testing.T) {
+	m := NewRobotManager(nil, nil, nil)
+	if !m.NativeKeypairRequired() {
+		t.Fatal("native keypair gate is not enabled by default")
+	}
+	m.SetNativeKeypairRequired(false)
+	if m.NativeKeypairRequired() {
+		t.Fatal("native keypair gate was not disabled")
+	}
+}
+
 func TestManagerShutdownWaitsForRegisteredBackgroundWork(t *testing.T) {
 	manager := NewRobotManager(nil, &config.SysConfig{}, nil)
 	finish, ok := manager.BeginBackgroundWork()

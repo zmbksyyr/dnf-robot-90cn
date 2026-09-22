@@ -53,7 +53,7 @@ func handleProtocolCommand(cmd string) (string, bool) {
 }
 
 func requireValidKeypair(cmd string, manager *scheduler.RobotManager) error {
-	if !RequiresValidKeypair(cmd) {
+	if !RequiresValidKeypair(cmd) || !manager.NativeKeypairRequired() {
 		return nil
 	}
 	st := manager.KeypairStatus()
