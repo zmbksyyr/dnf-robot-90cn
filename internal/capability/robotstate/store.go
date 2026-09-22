@@ -27,6 +27,7 @@ type Identity struct {
 
 type IdentityDirectory interface {
 	RegisterIdentity(context.Context, Identity) error
+	RegisterIdentities(context.Context, []Identity) error
 	Identities(context.Context, shared.BackendID) ([]Identity, error)
 }
 
@@ -54,19 +55,33 @@ func NewMemoryStore(robots []robotcap.Info) *MemoryStore {
 }
 
 func (s *MemoryStore) RegisterIdentity(ctx context.Context, identity Identity) error {
+	return s.RegisterIdentities(ctx, []Identity{identity})
+}
+
+func (s *MemoryStore) RegisterIdentities(ctx context.Context, identities []Identity) error {
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if identity.Backend == "" || identity.Account == "" || identity.CharacterName == "" {
-		return errors.New("backend, account, and character name are required")
-	}
-	key := string(identity.Backend) + "\x00" + identity.Account + "\x00" + identity.CharacterName
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.identities[key]; exists {
-		return ErrDuplicateIdentity
+	keys := make(map[string]struct{}, len(identities))
+	for _, identity := range identities {
+		if identity.Backend == "" || identity.Account == "" || identity.CharacterName == "" {
+			return errors.New("backend, account, and character name are required")
+		}
+		key := string(identity.Backend) + "\x00" + identity.Account + "\x00" + identity.CharacterName
+		if _, exists := s.identities[key]; exists {
+			return ErrDuplicateIdentity
+		}
+		if _, exists := keys[key]; exists {
+			return ErrDuplicateIdentity
+		}
+		keys[key] = struct{}{}
 	}
-	s.identities[key] = identity
+	for _, identity := range identities {
+		key := string(identity.Backend) + "\x00" + identity.Account + "\x00" + identity.CharacterName
+		s.identities[key] = identity
+	}
 	return nil
 }
 

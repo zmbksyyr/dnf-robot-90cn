@@ -46,6 +46,7 @@ func ProvisionProtocolBatch(
 	}
 	result, err := provisioner.ProvisionCharacters(ctx, requests)
 	createdCount := 0
+	registered := make([]robotstate.Identity, 0, len(result))
 	for _, provisioned := range result {
 		if !provisioned.Created {
 			continue
@@ -69,9 +70,7 @@ func ProvisionProtocolBatch(
 			err = errors.Join(err, fmt.Errorf("provisioned character %q has no matching request", provisioned.CharacterName))
 			continue
 		}
-		if registerErr := identityStore.RegisterIdentity(ctx, identity); registerErr != nil {
-			err = errors.Join(err, fmt.Errorf("register provisioned character %q: %w", identity.CharacterName, registerErr))
-		}
+		registered = append(registered, identity)
 	}
 	if err != nil || len(result) != len(requests) || createdCount != len(requests) {
 		if rollbackErr := batchStore.RollbackCreateBatch(ctx, batchID); rollbackErr != nil {
@@ -81,6 +80,10 @@ func ProvisionProtocolBatch(
 			err = fmt.Errorf("protocol batch stopped after %d of %d requests", createdCount, len(requests))
 		}
 		return ProtocolBatchResult{Results: result}, err
+	}
+	if err := identityStore.RegisterIdentities(ctx, registered); err != nil {
+		_ = batchStore.RollbackCreateBatch(ctx, batchID)
+		return ProtocolBatchResult{Results: result}, fmt.Errorf("register protocol batch identities: %w", err)
 	}
 	if err := batchStore.CompleteCreateBatch(ctx, batchID); err != nil {
 		return ProtocolBatchResult{Results: result}, fmt.Errorf("complete protocol batch: %w", err)
