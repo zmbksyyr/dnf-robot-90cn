@@ -156,6 +156,14 @@ S4A21 适配代码不得依赖其整合包使用的数据库类型，也不得�
 - 完成协议建号/建角能力验证；缺口保留为显式错误。
 - 提交：`feat: route robot scheduling through backend capabilities`
 
+#### 阶段 5.1：拆分 robot 自有状态与原生游戏查询
+
+- 现有 `scheduler/repository` 同时访问 `d_starsky` robot 表和 `taiwan_cain` 原生游戏表，并依赖 MySQL 专用的 `SHOW COLUMNS`、`information_schema` 和原生清理 SQL。
+- 在 S4A21 启动装配前，先抽出调度真正需要的 robot-owned 状态契约（身份、建号批次、位置快照、在线状态和商店状态）。
+- 原生后端继续提供现有 MySQL repository 实现；S4A21 只使用 robot-owned store，绝不把模拟端数据库作为查询或写入目标。
+- 不在这一阶段复制完整 repository，也不把原生游戏表改造成通用表；只迁移已被公共调度契约实际使用的 robot 状态。
+- 提交：`refactor: separate robot state from native game repository`
+
 ### 阶段 6：600+ 批量建号和公共城镇行为
 
 - 复用现有角色生成、名称、装备和装扮策略，通过 S4A21 协议完成 600+ 机器人账号/角色准备。
