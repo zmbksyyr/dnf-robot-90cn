@@ -2,6 +2,7 @@ package s4a21
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,13 +10,17 @@ import (
 )
 
 type actionTestSession struct {
-	town   shared.TownMoveIntent
-	shout  shared.ShoutIntent
-	closed bool
-	done   chan struct{}
+	town    shared.TownMoveIntent
+	shout   shared.ShoutIntent
+	moveErr error
+	closed  bool
+	done    chan struct{}
 }
 
 func (s *actionTestSession) MoveTown(_ context.Context, intent shared.TownMoveIntent) error {
+	if s.moveErr != nil {
+		return s.moveErr
+	}
 	s.town = intent
 	return nil
 }
@@ -66,6 +71,22 @@ func TestActionTransportRejectsMissingSessionAndPositionOverflow(t *testing.T) {
 	}
 	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{UID: 9, X: 100000}); err == nil {
 		t.Fatal("overflow position unexpectedly succeeded")
+	}
+}
+
+func TestActionTransportDoesNotCommitTownStatusWhenSendFails(t *testing.T) {
+	session := &actionTestSession{moveErr: errors.New("town move rejected")}
+	transport := NewActionTransport()
+	if err := transport.Attach(9, session); err != nil {
+		t.Fatal(err)
+	}
+	if err := transport.MoveTown(context.Background(), shared.RuntimeMoveCommand{
+		UID: 9, Village: 3, Area: 4, X: 120, Y: 240,
+	}); err == nil || err.Error() != "town move rejected" {
+		t.Fatalf("move error = %v", err)
+	}
+	if status := transport.RuntimeStatusMap()[9]; status.Village != 0 || status.Area != 0 || status.X != 0 || status.Y != 0 {
+		t.Fatalf("failed town move committed status = %+v", status)
 	}
 }
 
