@@ -207,6 +207,8 @@ S4A21 适配代码不得依赖其整合包使用的数据库类型，也不得�
 
 Session drain 协调的第一步已完成：S4A21 session 现在提供私有、可替换且可安全清理的 packet observer，单元测试覆盖真实 drain 转发和旧 observer cleanup；它仍不向共享层暴露原始封包，也不自动推进地下城能力。
 
+随后已实现并真实回归私有 `enterSingleDungeon`：普通/教程分支均只覆盖入口、首图 `START_MAP` 和 `FINISH_LOADING`，教程状态由调用方显式传入，不做猜测。该方法尚未接入 `RobotSession`、调度器或 Web；组队、战斗、结算、回城和 rejoin 仍是后续独立阶段。
+
 ## 验证要求
 
 每阶段至少运行相关 Go 测试和 `git diff --check`。后端必须通过统一的契约测试；S4A21 额外验证不得导入数据库驱动、不得访问服务端数据库文件。环境切换测试需覆盖停止旧会话、重建 runtime、能力刷新和失败回滚/保留诊断信息。
