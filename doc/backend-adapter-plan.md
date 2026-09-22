@@ -211,6 +211,8 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 
 本轮真实探针还验证了 `DIE_MONSTER (0x0027)` 的最小两字节 local index 请求以及 `BOSS_DIE_CHECK (0x0075)` 的四字节请求形状，服务端分别回发 `DIE_MONSTER (0x0026)` 并记录 boss 检查。但整合包中普通副本 144、145 的服务端日志均明确记录 `has no [clear condition]`，即使房间移动和击杀上报成功，也不会产生 `ENABLE_CLEAR_DUNGEON`。因此不能用这两个副本推断通关结算协议；下一步应先找到带有效 clear condition 的副本/任务状态，再进行真实结算回归。
 
+源码自测还确认故事副本 160 的 clear condition 来自 PVF maze 与活动任务：maze 2/4/6 才带销毁对象条件，当前新建角色没有对应 active quest 时服务端会选择 maze 1 并同样记录无 clear condition。由于模拟端禁止直接修改游戏数据库，后续若要验证结算，必须通过任务/角色协议建立合法任务状态，或选择无需任务前置且确实带 clear condition 的副本；不能把数据库改写或“强制通关”探针作为适配实现。
+
 随后已实现并真实回归私有 `enterSingleDungeon`：普通/教程分支均只覆盖入口、首图 `START_MAP` 和 `FINISH_LOADING`，教程状态由调用方显式传入，不做猜测。该方法尚未接入 `RobotSession`、调度器或 Web；组队、战斗、结算、回城和 rejoin 仍是后续独立阶段。
 
 在此基础上已增加私有 `moveSingleDungeon`，真实验证了 64 字节 `MOVE_MAP`、第二个 `START_MAP` 和第二次 `FINISH_LOADING`。房间坐标采用 pending 提交语义，只有加载释放成功才更新当前房间；发送失败或超时不会伪造移动成功。该方法同样尚未接入共享能力。
