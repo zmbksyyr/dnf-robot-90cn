@@ -2,6 +2,8 @@ package s4a21
 
 import "testing"
 
+import protocol "robot/internal/protocol/s4a21"
+
 func TestDungeonRunStateFollowsVerifiedSingleRoleWorkflow(t *testing.T) {
 	var state dungeonRunState
 	if err := state.BeginSelection(144); err != nil {
@@ -66,5 +68,44 @@ func TestDungeonRunStateGenerationSurvivesReturnAndRejectsOldPhase(t *testing.T)
 	}
 	if err := state.BeginSelection(144); err == nil {
 		t.Fatal("duplicate selection unexpectedly succeeded")
+	}
+}
+
+func TestDungeonRunStateConsumesVerifiedPacketSequence(t *testing.T) {
+	var state dungeonRunState
+	if err := state.BeginSelection(144); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.AcceptPacket(protocol.Packet{Command: 1, Type: protocol.CmdSelectDungeon, Body: []byte{1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.AcceptPacket(protocol.Packet{Command: 0, Type: 0x001D, Body: []byte{0, 3}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.AcceptPacket(protocol.Packet{Command: 0, Type: 0x001E, Body: []byte{0, 0, 0, 0, 0}}); err != nil {
+		t.Fatal(err)
+	}
+	got := state.Snapshot()
+	if got.Phase != uint8(dungeonPhaseReady) || got.RoomX != 0 || got.RoomY != 3 {
+		t.Fatalf("packet sequence snapshot = %+v", got)
+	}
+}
+
+func TestDungeonRunStateRejectsMalformedOrWrongDirectionPackets(t *testing.T) {
+	var state dungeonRunState
+	if err := state.BeginSelection(144); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.AcceptPacket(protocol.Packet{Command: 0, Type: protocol.CmdSelectDungeon, Body: []byte{1}}); err == nil {
+		t.Fatal("request-shaped SELECT_DUNGEON packet unexpectedly accepted")
+	}
+	if err := state.AcceptPacket(protocol.Packet{Command: 1, Type: protocol.CmdSelectDungeon, Body: []byte{0}}); err == nil {
+		t.Fatal("failed SELECT_DUNGEON ACK unexpectedly accepted")
+	}
+	if err := state.AcceptPacket(protocol.Packet{Command: 1, Type: 0x001D, Body: []byte{0, 3}}); err == nil {
+		t.Fatal("response-shaped START_MAP packet unexpectedly accepted")
+	}
+	if err := state.AcceptPacket(protocol.Packet{Command: 0, Type: 0x001D, Body: []byte{0}}); err == nil {
+		t.Fatal("truncated START_MAP unexpectedly accepted")
 	}
 }

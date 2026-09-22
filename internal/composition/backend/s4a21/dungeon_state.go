@@ -1,6 +1,10 @@
 package s4a21
 
-import "fmt"
+import (
+	"fmt"
+
+	protocol "robot/internal/protocol/s4a21"
+)
 
 // dungeonPhase is deliberately local to the S4A21 adapter. It is not exposed
 // to the scheduler until the complete entry, settlement and recovery workflow
@@ -57,6 +61,65 @@ func (s *dungeonRunState) BeginEntry() error {
 	}
 	s.phase = dungeonPhaseEntry
 	return nil
+}
+
+func (s *dungeonRunState) AcceptSelectDungeonAck(body []byte) error {
+	if s == nil {
+		return fmt.Errorf("S4A21 dungeon state is nil")
+	}
+	if s.phase != dungeonPhaseSelection {
+		return fmt.Errorf("S4A21 SELECT_DUNGEON ACK requires selection phase")
+	}
+	if len(body) != 1 || body[0] != 1 {
+		return fmt.Errorf("S4A21 SELECT_DUNGEON ACK rejected")
+	}
+	s.phase = dungeonPhaseEntry
+	return nil
+}
+
+func (s *dungeonRunState) AcceptStartMap(body []byte) error {
+	if s == nil {
+		return fmt.Errorf("S4A21 dungeon state is nil")
+	}
+	if s.phase != dungeonPhaseEntry && s.phase != dungeonPhaseReady {
+		return fmt.Errorf("S4A21 START_MAP requires entry or ready phase")
+	}
+	if len(body) < 2 {
+		return fmt.Errorf("S4A21 START_MAP body is truncated")
+	}
+	return s.StartLoading(body[0], body[1])
+}
+
+func (s *dungeonRunState) AcceptFinishLoading(body []byte) error {
+	if s == nil {
+		return fmt.Errorf("S4A21 dungeon state is nil")
+	}
+	if len(body) != 5 {
+		return fmt.Errorf("S4A21 FINISH_LOADING body must be 5 bytes")
+	}
+	return s.FinishLoading()
+}
+
+func (s *dungeonRunState) AcceptPacket(packet protocol.Packet) error {
+	switch packet.Type {
+	case protocol.CmdSelectDungeon:
+		if packet.Command != 1 {
+			return fmt.Errorf("S4A21 SELECT_DUNGEON packet is not a response")
+		}
+		return s.AcceptSelectDungeonAck(packet.Body)
+	case 0x001D: // NOTI START_MAP
+		if packet.Command != 0 {
+			return fmt.Errorf("S4A21 START_MAP packet is not a notification")
+		}
+		return s.AcceptStartMap(packet.Body)
+	case 0x001E: // NOTI FINISH_LOADING
+		if packet.Command != 0 {
+			return fmt.Errorf("S4A21 FINISH_LOADING packet is not a notification")
+		}
+		return s.AcceptFinishLoading(packet.Body)
+	default:
+		return nil
+	}
 }
 
 func (s *dungeonRunState) StartLoading(roomX, roomY byte) error {
