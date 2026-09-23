@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"robot/internal/capability/marketapp"
 	"robot/internal/scheduler"
-	"robot/internal/shared"
 	"strings"
 )
 
@@ -18,9 +17,6 @@ func SetMarketApp(app *marketapp.App) {
 func handleMarketCommand(cmd, pkt string, manager *scheduler.RobotManager) (string, bool) {
 	if !isMarketCommand(cmd) {
 		return "", false
-	}
-	if err := manager.RequireCapability(shared.CapabilityMarket); err != nil {
-		return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()}), true
 	}
 	switch cmd {
 	case "marketStatus":

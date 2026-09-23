@@ -1,6 +1,9 @@
 package tcpapi
 
-import "robot/internal/scheduler"
+import (
+	"robot/internal/scheduler"
+	"robot/internal/shared"
+)
 
 func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (response string) {
 	defer func() {
@@ -14,6 +17,11 @@ func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (respon
 	}
 
 	cmd := extractTagContent(pkt, "c")
+	if capability, ok := commandCapability(cmd); ok {
+		if err := manager.RequireCapability(capability); err != nil {
+			return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()})
+		}
+	}
 	if RequiresGameRuntime(cmd) {
 		if err := manager.CheckGameCommand(); err != nil {
 			return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()})
@@ -37,6 +45,38 @@ func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (respon
 
 	logRobotActionf("unknown command: %s\n", cmd)
 	return wrapResult(map[string]interface{}{"ok": false, "error": "unknown command"})
+}
+
+func commandCapability(cmd string) (shared.BackendCapability, bool) {
+	switch cmd {
+	case "createRobots":
+		return shared.CapabilityProvision, true
+	case "robotsMove":
+		return shared.CapabilityTownMove, true
+	case "robotsShout", "robotsShoutLocal":
+		return shared.CapabilityShout, true
+	case "robotsShoutWorld":
+		return shared.CapabilityWorldShout, true
+	case "robotsStore", "robotsStoreAsync":
+		return shared.CapabilityStore, true
+	case "cleanupRobots", "cleanupRobotsAsync":
+		return shared.CapabilityCleanup, true
+	case "partySkillReload":
+		return shared.CapabilitySkill, true
+	case "partyDebugStart", "partyDebugStop", "partyDebugStatus":
+		return shared.CapabilityParty, true
+	case "systemAnnouncement":
+		return shared.CapabilitySystemAnnouncement, true
+	case "keypairReleaseDefault":
+		return shared.CapabilityKeypair, true
+	case "dangerousDeleteUnlock", "dangerousDeleteAsync":
+		return shared.CapabilityDangerousDelete, true
+	default:
+		if isMarketCommand(cmd) {
+			return shared.CapabilityMarket, true
+		}
+		return "", false
+	}
 }
 
 func handleProtocolCommand(cmd string) (string, bool) {

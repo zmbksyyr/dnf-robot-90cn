@@ -22,9 +22,9 @@ func TestMarketCommandRejectsUnsupportedBackendBeforeAppLookup(t *testing.T) {
 	manager := scheduler.NewRobotManager(nil, nil, nil)
 	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported in test backend"})
 	manager.SetBackendRobotCreator(shared.BackendInfo{ID: shared.BackendS4A21, Capabilities: capabilities}, nil)
-	response, handled := handleMarketCommand("marketStatus", "", manager)
-	if !handled || !strings.Contains(response, shared.CodeBackendCapabilityUnsupported) {
-		t.Fatalf("response=%q handled=%t", response, handled)
+	response := HandlePacket("127.0.0.1:12345", `<tw><c>marketStatus</c><json>{}</json></tw>`, manager)
+	if !strings.Contains(response, shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("response=%q", response)
 	}
 	if strings.Contains(response, "market app is not initialized") {
 		t.Fatalf("backend boundary was bypassed: %q", response)

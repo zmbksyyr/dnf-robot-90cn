@@ -8,7 +8,6 @@ import (
 	robotcap "robot/internal/capability/robot"
 	"robot/internal/foundation/lockhub"
 	"robot/internal/scheduler"
-	"robot/internal/shared"
 	"strings"
 	"time"
 )
@@ -43,9 +42,6 @@ type dangerousDeleteToken struct {
 func handleDangerousDeleteCommand(clientID, cmd, pkt string, manager *scheduler.RobotManager) (string, bool) {
 	if !isDangerousDeleteCommand(cmd) {
 		return "", false
-	}
-	if err := manager.RequireCapability(shared.CapabilityDangerousDelete); err != nil {
-		return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()}), true
 	}
 	switch cmd {
 	case "dangerousDeleteUnlock":

@@ -1,12 +1,21 @@
 package tcpapi
 
 import (
+	"errors"
 	"strings"
+	"testing"
 
 	robotcap "robot/internal/capability/robot"
 	"robot/internal/scheduler"
-	"testing"
+	"robot/internal/shared"
 )
+
+type recordingGameGate struct{ called *bool }
+
+func (g recordingGameGate) Check() error {
+	*g.called = true
+	return errors.New("game runtime unavailable")
+}
 
 func TestRequiresGameRuntime(t *testing.T) {
 	if !RequiresGameRuntime("robotsOnline") {
@@ -62,5 +71,53 @@ func TestHandlePacketReturnsErrorAfterPanic(t *testing.T) {
 	response := HandlePacket("test", `<tw><c>autoStatus</c></tw>`, (*scheduler.RobotManager)(nil))
 	if !strings.Contains(response, "internal robot command failure") {
 		t.Fatalf("panic response = %q", response)
+	}
+}
+
+func TestAsyncCommandRejectsUnsupportedCapabilityBeforeQueue(t *testing.T) {
+	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported in test backend"})
+	manager := scheduler.NewRobotManager(nil, nil, nil)
+	manager.SetBackendRobotCreator(shared.BackendInfo{ID: shared.BackendS4A21, Capabilities: capabilities}, nil)
+	gateCalled := false
+	manager.SetGameCommandGate(recordingGameGate{called: &gateCalled})
+	for _, command := range []string{"robotsStoreAsync", "cleanupRobotsAsync"} {
+		packet := `<tw><c>` + command + `</c><json>{}</json></tw>`
+		response := HandlePacket("127.0.0.1:1234", packet, manager)
+		if !strings.Contains(response, shared.CodeBackendCapabilityUnsupported) ||
+			strings.Contains(response, `"state":"queued"`) || strings.Contains(response, `"state":"running"`) {
+			t.Fatalf("%s response=%q", command, response)
+		}
+	}
+	if gateCalled {
+		t.Fatal("game runtime gate ran before unsupported capability rejection")
+	}
+}
+
+func TestCommandCapabilityCoversBackendSpecificActions(t *testing.T) {
+	tests := map[string]shared.BackendCapability{
+		"createRobots":          shared.CapabilityProvision,
+		"robotsMove":            shared.CapabilityTownMove,
+		"robotsShout":           shared.CapabilityShout,
+		"robotsShoutLocal":      shared.CapabilityShout,
+		"robotsShoutWorld":      shared.CapabilityWorldShout,
+		"robotsStore":           shared.CapabilityStore,
+		"robotsStoreAsync":      shared.CapabilityStore,
+		"cleanupRobots":         shared.CapabilityCleanup,
+		"cleanupRobotsAsync":    shared.CapabilityCleanup,
+		"partySkillReload":      shared.CapabilitySkill,
+		"partyDebugStart":       shared.CapabilityParty,
+		"systemAnnouncement":    shared.CapabilitySystemAnnouncement,
+		"keypairReleaseDefault": shared.CapabilityKeypair,
+		"dangerousDeleteAsync":  shared.CapabilityDangerousDelete,
+		"marketStatus":          shared.CapabilityMarket,
+	}
+	for command, want := range tests {
+		got, ok := commandCapability(command)
+		if !ok || got != want {
+			t.Fatalf("commandCapability(%q) = (%q, %t), want (%q, true)", command, got, ok, want)
+		}
+	}
+	if capability, ok := commandCapability("dashboardStatus"); ok {
+		t.Fatalf("dashboardStatus unexpectedly requires %q", capability)
 	}
 }
