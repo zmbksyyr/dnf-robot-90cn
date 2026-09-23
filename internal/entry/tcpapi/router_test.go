@@ -2,6 +2,7 @@ package tcpapi
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -93,31 +94,47 @@ func TestAsyncCommandRejectsUnsupportedCapabilityBeforeQueue(t *testing.T) {
 	}
 }
 
-func TestCommandCapabilityCoversBackendSpecificActions(t *testing.T) {
-	tests := map[string]shared.BackendCapability{
-		"createRobots":          shared.CapabilityProvision,
-		"robotsMove":            shared.CapabilityTownMove,
-		"robotsShout":           shared.CapabilityShout,
-		"robotsShoutLocal":      shared.CapabilityShout,
-		"robotsShoutWorld":      shared.CapabilityWorldShout,
-		"robotsStore":           shared.CapabilityStore,
-		"robotsStoreAsync":      shared.CapabilityStore,
-		"cleanupRobots":         shared.CapabilityCleanup,
-		"cleanupRobotsAsync":    shared.CapabilityCleanup,
-		"partySkillReload":      shared.CapabilitySkill,
-		"partyDebugStart":       shared.CapabilityPartyDebug,
-		"systemAnnouncement":    shared.CapabilitySystemAnnouncement,
-		"keypairReleaseDefault": shared.CapabilityKeypair,
-		"dangerousDeleteAsync":  shared.CapabilityDangerousDelete,
-		"marketStatus":          shared.CapabilityMarket,
+func TestCommandCapabilitiesCoverBackendSpecificActions(t *testing.T) {
+	tests := map[string][]shared.BackendCapability{
+		"createRobots":                   {shared.CapabilityProvision},
+		"robotsMove":                     {shared.CapabilityTownMove},
+		"robotsShout":                    {shared.CapabilityWorldShout, shared.CapabilityShout},
+		"robotsShoutLocal":               {shared.CapabilityShout},
+		"robotsShoutWorld":               {shared.CapabilityWorldShout},
+		"robotsStore":                    {shared.CapabilityStore},
+		"robotsStoreAsync":               {shared.CapabilityStore},
+		"cleanupRobots":                  {shared.CapabilityCleanup},
+		"cleanupRobotsAsync":             {shared.CapabilityCleanup},
+		"partySkillReload":               {shared.CapabilitySkill},
+		"partyDebugStart":                {shared.CapabilityPartyDebug},
+		"partyDebugStop":                 {shared.CapabilityPartyDebug},
+		"partyDebugStatus":               {shared.CapabilityPartyDebug},
+		"systemAnnouncement":             {shared.CapabilitySystemAnnouncement},
+		"keypairReleaseDefault":          {shared.CapabilityKeypair},
+		"dangerousDeleteUnlock":          {shared.CapabilityDangerousDelete},
+		"dangerousDeleteAsync":           {shared.CapabilityDangerousDelete},
+		"marketStatus":                   {shared.CapabilityMarket},
+		"marketKindsProgress":            {shared.CapabilityMarket},
+		"marketStart":                    {shared.CapabilityMarket},
+		"marketEnsureServices":           {shared.CapabilityMarket},
+		"marketStop":                     {shared.CapabilityMarket},
+		"marketConfigUpdate":             {shared.CapabilityMarket},
+		"marketApplyListingConfig":       {shared.CapabilityMarket},
+		"marketRestockOnce":              {shared.CapabilityMarket},
+		"marketCollectOnce":              {shared.CapabilityMarket},
+		"marketSyncItemInfo":             {shared.CapabilityMarket},
+		"marketPVFUpgradeSeparateStatus": {shared.CapabilityMarket},
+		"marketPVFPatchUpgradeSeparate":  {shared.CapabilityMarket},
+		"marketClearSystemStock":         {shared.CapabilityMarket},
+		"marketInstallAuctionGuard":      {shared.CapabilityMarket},
+		"marketPatchAuctionMemory":       {shared.CapabilityMarket},
 	}
 	for command, want := range tests {
-		got, ok := commandCapability(command)
-		if !ok || got != want {
-			t.Fatalf("commandCapability(%q) = (%q, %t), want (%q, true)", command, got, ok, want)
+		if got := commandCapabilities(command); !reflect.DeepEqual(got, want) {
+			t.Fatalf("commandCapabilities(%q) = %q, want %q", command, got, want)
 		}
 	}
-	if capability, ok := commandCapability("dashboardStatus"); ok {
-		t.Fatalf("dashboardStatus unexpectedly requires %q", capability)
+	if capabilities := commandCapabilities("dashboardStatus"); len(capabilities) != 0 {
+		t.Fatalf("dashboardStatus unexpectedly requires %q", capabilities)
 	}
 }

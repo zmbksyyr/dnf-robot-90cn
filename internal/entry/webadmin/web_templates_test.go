@@ -54,7 +54,10 @@ func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
 		`followMode=followCapability.mode||'account'`,
 		`i18nFormat('auto.dungeon_follower')`,
 		`follow.type==='checkbox'`,
-		`cmd.includes("openPartyCompat"))cap='party'`,
+		`cmd.includes("openPartyCompat"))cap='party_compatibility'`,
+		`cmd.includes("openCompatDialog"))cap='mailbox_guard'`,
+		`backendCapabilities.party_debug?.enabled?api('partyDebugStatus')`,
+		`sec.name==='Party'&&backendCapabilities.party_debug?.enabled`,
 	} {
 		if !strings.Contains(appJS, want) {
 			t.Fatalf("follower configuration boundary is missing %q", want)

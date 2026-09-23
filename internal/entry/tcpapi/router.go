@@ -17,9 +17,16 @@ func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (respon
 	}
 
 	cmd := extractTagContent(pkt, "c")
-	if capability, ok := commandCapability(cmd); ok {
-		if err := manager.RequireCapability(capability); err != nil {
-			return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()})
+	if capabilities := commandCapabilities(cmd); len(capabilities) > 0 {
+		var capabilityErr error
+		for _, capability := range capabilities {
+			capabilityErr = manager.RequireCapability(capability)
+			if capabilityErr == nil {
+				break
+			}
+		}
+		if capabilityErr != nil {
+			return wrapResult(map[string]interface{}{"ok": false, "error": capabilityErr.Error()})
 		}
 	}
 	if RequiresGameRuntime(cmd) {
@@ -47,35 +54,40 @@ func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (respon
 	return wrapResult(map[string]interface{}{"ok": false, "error": "unknown command"})
 }
 
-func commandCapability(cmd string) (shared.BackendCapability, bool) {
+// commandCapabilities returns alternatives: satisfying any listed capability
+// admits the command. Most commands have exactly one requirement; preferred
+// shout intentionally supports either world or local delivery.
+func commandCapabilities(cmd string) []shared.BackendCapability {
 	switch cmd {
 	case "createRobots":
-		return shared.CapabilityProvision, true
+		return []shared.BackendCapability{shared.CapabilityProvision}
 	case "robotsMove":
-		return shared.CapabilityTownMove, true
-	case "robotsShout", "robotsShoutLocal":
-		return shared.CapabilityShout, true
+		return []shared.BackendCapability{shared.CapabilityTownMove}
+	case "robotsShout":
+		return []shared.BackendCapability{shared.CapabilityWorldShout, shared.CapabilityShout}
+	case "robotsShoutLocal":
+		return []shared.BackendCapability{shared.CapabilityShout}
 	case "robotsShoutWorld":
-		return shared.CapabilityWorldShout, true
+		return []shared.BackendCapability{shared.CapabilityWorldShout}
 	case "robotsStore", "robotsStoreAsync":
-		return shared.CapabilityStore, true
+		return []shared.BackendCapability{shared.CapabilityStore}
 	case "cleanupRobots", "cleanupRobotsAsync":
-		return shared.CapabilityCleanup, true
+		return []shared.BackendCapability{shared.CapabilityCleanup}
 	case "partySkillReload":
-		return shared.CapabilitySkill, true
+		return []shared.BackendCapability{shared.CapabilitySkill}
 	case "partyDebugStart", "partyDebugStop", "partyDebugStatus":
-		return shared.CapabilityPartyDebug, true
+		return []shared.BackendCapability{shared.CapabilityPartyDebug}
 	case "systemAnnouncement":
-		return shared.CapabilitySystemAnnouncement, true
+		return []shared.BackendCapability{shared.CapabilitySystemAnnouncement}
 	case "keypairReleaseDefault":
-		return shared.CapabilityKeypair, true
+		return []shared.BackendCapability{shared.CapabilityKeypair}
 	case "dangerousDeleteUnlock", "dangerousDeleteAsync":
-		return shared.CapabilityDangerousDelete, true
+		return []shared.BackendCapability{shared.CapabilityDangerousDelete}
 	default:
 		if isMarketCommand(cmd) {
-			return shared.CapabilityMarket, true
+			return []shared.BackendCapability{shared.CapabilityMarket}
 		}
-		return "", false
+		return nil
 	}
 }
 
