@@ -94,7 +94,7 @@ S4A21 的组队能力不是一个单独的“发送邀请包”动作。服务�
 - 队长选图后，服务端向队长和 follower 投送同一 run 的 `START_MAP`；
 - follower 不发送 `MOVE_MAP`，只对自己的 `START_MAP` 回复 `FINISH_LOADING`；
 - 队长换房后，服务端再次向 follower 投送目标房间，follower 完成下一房间加载；
-- 生产 `SessionFactory` 路径已完成上述自动接邀、入场和连续换房的真实回归。
+- 生产 `SessionFactory` 路径已完成上述自动接邀、入场和连续换房的真实回归；普通满编队测试中，1 名队长和 3 名独立 follower 均到达相同目标房间。
 
 该闭环只支持被动队员投影。通用 `party` 和主动 `dungeon_move` 能力继续关闭；创建队伍、主动邀请、技能、战斗、结算、奖励、回城和 rejoin 均未因此开放。
 

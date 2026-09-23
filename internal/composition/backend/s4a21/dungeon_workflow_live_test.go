@@ -62,33 +62,42 @@ func TestLiveS4A21ProductionSessionFollowsPartyDungeon(t *testing.T) {
 
 	suffix := time.Now().UnixNano() % 100000000
 	leaderAccount := fmt.Sprintf("pl%08d", suffix)
-	followerAccount := fmt.Sprintf("pf%08d", suffix)
 	leaderName := fmt.Sprintf("pl%08d", suffix)
-	followerName := fmt.Sprintf("pf%08d", suffix)
 	provisioner := Provisioner{Address: address, Timeout: 20 * time.Second}
 	deleter := CharacterDeleter{Address: address, Timeout: 20 * time.Second}
 
 	provisionLiveCharacter(t, provisioner, leaderAccount, leaderName)
 	defer deleteLiveCharacter(t, deleter, leaderAccount, leaderName)
-	provisionLiveCharacter(t, provisioner, followerAccount, followerName)
-	defer deleteLiveCharacter(t, deleter, followerAccount, followerName)
+	followerAccounts := make([]string, 3)
+	for i := range followerAccounts {
+		account := fmt.Sprintf("p%d%08d", i+1, suffix)
+		followerAccounts[i] = account
+		provisionLiveCharacter(t, provisioner, account, account)
+		defer deleteLiveCharacter(t, deleter, account, account)
+	}
 
 	factory := SessionFactory{Address: address, Timeout: 20 * time.Second}
 	leader := openLiveSession(t, factory, leaderAccount, true)
 	defer leader.Close()
 	leader.DisableDungeonFollower()
-	follower := openLiveSession(t, factory, followerAccount, true)
-	defer follower.Close()
+	followers := make([]*Session, 0, len(followerAccounts))
+	for _, account := range followerAccounts {
+		follower := openLiveSession(t, factory, account, true)
+		defer follower.Close()
+		followers = append(followers, follower)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	createLiveSessionParty(t, ctx, leader, follower)
+	createLiveSessionParty(t, ctx, leader, followers...)
 
 	entered, err := leader.enterSingleDungeon(ctx, 144, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitLiveFollowerSnapshot(t, ctx, follower, entered.RoomX, entered.RoomY)
+	for _, follower := range followers {
+		waitLiveFollowerSnapshot(t, ctx, follower, entered.RoomX, entered.RoomY)
+	}
 
 	nextX := entered.RoomX
 	if nextX == 0 {
@@ -100,7 +109,9 @@ func TestLiveS4A21ProductionSessionFollowsPartyDungeon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitLiveFollowerSnapshot(t, ctx, follower, moved.RoomX, moved.RoomY)
+	for _, follower := range followers {
+		waitLiveFollowerSnapshot(t, ctx, follower, moved.RoomX, moved.RoomY)
+	}
 }
 
 func provisionLiveCharacter(t *testing.T, provisioner Provisioner, account, name string) {
@@ -139,7 +150,7 @@ func openLiveSession(t *testing.T, factory SessionFactory, account string, follo
 	return session
 }
 
-func createLiveSessionParty(t *testing.T, ctx context.Context, leader, follower *Session) {
+func createLiveSessionParty(t *testing.T, ctx context.Context, leader *Session, followers ...*Session) {
 	t.Helper()
 	partyInfo := make(chan protocol.Packet, 8)
 	cleanup := leader.setPacketObserver(func(packet protocol.Packet) {
@@ -151,16 +162,6 @@ func createLiveSessionParty(t *testing.T, ctx context.Context, leader, follower 
 		}
 	})
 	defer cleanup()
-	followerPartyInfo := make(chan protocol.Packet, 8)
-	cleanupFollower := follower.setPacketObserver(func(packet protocol.Packet) {
-		if packet.Type == protocol.NotiPartyInfo {
-			select {
-			case followerPartyInfo <- packet:
-			default:
-			}
-		}
-	})
-	defer cleanupFollower()
 	settings := []byte{0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
 	if err := leader.client.SetPartyInfo(ctx, settings); err != nil {
 		t.Fatal(err)
@@ -168,18 +169,32 @@ func createLiveSessionParty(t *testing.T, ctx context.Context, leader, follower 
 	if _, err := waitDungeonPacket(ctx, partyInfo, protocol.NotiPartyInfo); err != nil {
 		t.Fatal(err)
 	}
-	if err := leader.client.RequestPeer(ctx, follower.selfUID, 0, 0); err != nil {
-		t.Fatal(err)
-	}
-	var lastPartyInfo protocol.Packet
-	for !follower.PartyActive() {
-		select {
-		case <-ctx.Done():
-			partyID, cleared, ok := parsePartyInfoProjection(lastPartyInfo, follower.selfUID)
-			t.Fatalf("party activation: %v; selfUID=%d last=%X parsedParty=%d cleared=%v parsed=%t", ctx.Err(), follower.selfUID, lastPartyInfo.Body, partyID, cleared, ok)
-		case lastPartyInfo = <-followerPartyInfo:
-		case <-time.After(10 * time.Millisecond):
+	for _, follower := range followers {
+		followerPartyInfo := make(chan protocol.Packet, 8)
+		cleanupFollower := follower.setPacketObserver(func(packet protocol.Packet) {
+			if packet.Type == protocol.NotiPartyInfo {
+				select {
+				case followerPartyInfo <- packet:
+				default:
+				}
+			}
+		})
+		if err := leader.client.RequestPeer(ctx, follower.selfUID, 0, 0); err != nil {
+			cleanupFollower()
+			t.Fatal(err)
 		}
+		var lastPartyInfo protocol.Packet
+		for !follower.PartyActive() {
+			select {
+			case <-ctx.Done():
+				cleanupFollower()
+				partyID, cleared, ok := parsePartyInfoProjection(lastPartyInfo, follower.selfUID)
+				t.Fatalf("party activation: %v; selfUID=%d last=%X parsedParty=%d cleared=%v parsed=%t", ctx.Err(), follower.selfUID, lastPartyInfo.Body, partyID, cleared, ok)
+			case lastPartyInfo = <-followerPartyInfo:
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+		cleanupFollower()
 	}
 }
 

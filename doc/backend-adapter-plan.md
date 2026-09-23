@@ -243,7 +243,7 @@ Follower 的组队状态以选角 ACK 中的本角色 wire UID 为身份边界�
 
 Follower 写入邀请接受或 `FINISH_LOADING` 失败时，当前 session 会结束并交给既有在线调度重连，不能在服务端与 robot 状态已经分叉后继续伪装在线。显式禁用 follower 产生的 context cancel 只停止 follower，不关闭仍可用的城镇 session。
 
-生产路径真实回归（2026-09-23）已经覆盖 `SessionFactory -> follower 自动接邀 -> 双端入场 -> follower 自动 FINISH_LOADING -> leader MOVE_MAP -> follower 下一房间加载完成`。当前整合包的 `PARTY_INFO` 在队名后使用 6 字节信息尾，而镜像当前源码使用 11 字节信息尾；adapter 对两种结构分别做完整包解析，只有完整消费且本角色 UID 出现在八槽名册中才接受。未确认自身队伍前收到的 `START_MAP` 不会创建地下城状态或回复 `FINISH_LOADING`。
+生产路径真实回归（2026-09-23）已经覆盖 `SessionFactory -> follower 自动接邀 -> 双端入场 -> follower 自动 FINISH_LOADING -> leader MOVE_MAP -> follower 下一房间加载完成`，并进一步以 1 名队长加 3 名独立 follower 的普通满编队验证所有队员进入同一副本及连续换房。当前整合包的 `PARTY_INFO` 在队名后使用 6 字节信息尾，而镜像当前源码使用 11 字节信息尾；adapter 对两种结构分别做完整包解析，只有完整消费且本角色 UID 出现在八槽名册中才接受。未确认自身队伍前收到的 `START_MAP` 不会创建地下城状态或回复 `FINISH_LOADING`。
 
 `follow_account` 在当前 S4A21 协议证据下只作为显式 follower 开关使用，不能据其账号文本校验邀请者。普通邀请通知只提供 inviter wire UID，现有已验证流程没有账号到该 UID 的可信协议映射；在补齐协议证据前，不查询模拟端数据库、不伪装成已经绑定指定邀请者。
 
