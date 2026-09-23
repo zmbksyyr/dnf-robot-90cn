@@ -237,6 +237,13 @@ func (m *RobotManager) repo() SchedulerRepository {
 	return missingRepository{}
 }
 
+func (m *RobotManager) ensureSchedulerStorage() error {
+	if m != nil && m.robotState != nil {
+		return nil
+	}
+	return m.repo().EnsureSchema()
+}
+
 func (m *RobotManager) selectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
 	if m.robotState != nil {
 		return m.robotState.SelectRobots(context.Background(), req)

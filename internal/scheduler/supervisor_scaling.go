@@ -192,7 +192,7 @@ func (s *RobotSupervisor) acquireUIDs(rc robotconfig.RuntimeConfig, actors []*ac
 }
 
 func (s *RobotSupervisor) maintainTarget(rc robotconfig.RuntimeConfig) {
-	if err := s.manager.repo().EnsureSchema(); err != nil {
+	if err := s.manager.ensureSchedulerStorage(); err != nil {
 		robotLogf("[RobotSupervisor] ensure_schema_failed err=%v\n", err)
 		return
 	}
