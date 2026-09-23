@@ -2,6 +2,7 @@ package s4a21
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -20,7 +21,7 @@ func TestSessionTranslatesSharedIntents(t *testing.T) {
 	defer listener.Close()
 	done := make(chan error, 1)
 	go serveSessionSequence(listener, done)
-	session, err := (SessionFactory{Address: listener.Addr().String(), Timeout: time.Second}).OpenSession(context.Background(), shared.OpenSessionRequest{AccountName: "robot", CharacterSlot: 2})
+	session, err := (SessionFactory{Address: listener.Addr().String(), Timeout: time.Second}).OpenSession(context.Background(), shared.OpenSessionRequest{AccountName: "robot", CharacterSlot: 2, InitialTownKnown: true, InitialVillage: 1, InitialArea: 2, InitialX: 100, InitialY: 200})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,10 @@ func TestLiveSessionTownMoveAndShout(t *testing.T) {
 	if _, err := (Provisioner{Address: address}).ProvisionCharacter(context.Background(), shared.ProvisionCharacterRequest{AccountName: account, CharacterName: name, Job: 2}); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (SessionFactory{Address: address}).OpenSession(context.Background(), shared.OpenSessionRequest{AccountName: account})
+	session, err := (SessionFactory{Address: address}).OpenSession(context.Background(), shared.OpenSessionRequest{
+		AccountName: account, InitialTownKnown: true,
+		InitialVillage: 1, InitialArea: 0, InitialX: 480, InitialY: 240,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +158,7 @@ func serveSessionSequence(listener net.Listener, done chan<- error) {
 		return
 	}
 	defer conn.Close()
-	want := []uint16{protocol.CmdLogin, protocol.CmdSelectCharacter, protocol.CmdCheckConnection, protocol.CmdSetUserPosition, protocol.CmdSendMessage}
+	want := []uint16{protocol.CmdLogin, protocol.CmdSelectCharacter, protocol.CmdCheckConnection, protocol.CmdSetUserArea, protocol.CmdSetUserPosition, protocol.CmdSendMessage}
 	for index, typ := range want {
 		packet, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
 		if readErr != nil {
@@ -167,6 +171,15 @@ func serveSessionSequence(listener net.Listener, done chan<- error) {
 		}
 		if index < 3 {
 			if _, err = conn.Write(protocol.EncodeResponse(1, typ, []byte{1})); err != nil {
+				done <- err
+				return
+			}
+		} else if typ == protocol.CmdSetUserArea {
+			body := make([]byte, 8)
+			body[2], body[3] = 1, 2
+			binary.LittleEndian.PutUint16(body[4:6], 100)
+			binary.LittleEndian.PutUint16(body[6:8], 200)
+			if _, err = conn.Write(protocol.EncodeResponse(0, protocol.NotiUserArea, body)); err != nil {
 				done <- err
 				return
 			}

@@ -1,7 +1,9 @@
 package s4a21
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -36,6 +38,15 @@ func TestProvisionCharacterFollowsProtocolSequence(t *testing.T) {
 			done <- err
 			return
 		}
+		rosterRequest, err := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+		if err != nil || rosterRequest.Type != protocol.CmdGetUserInfo {
+			done <- fmt.Errorf("roster request type=0x%04X err=%v", rosterRequest.Type, err)
+			return
+		}
+		if _, err = conn.Write(protocol.EncodeResponse(0, protocol.NotiCharacterList, emptyRosterBody())); err != nil {
+			done <- err
+			return
+		}
 		create, err := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
 		if err != nil || create.Type != protocol.CmdCreateCharacter {
 			done <- err
@@ -56,6 +67,72 @@ func TestProvisionCharacterFollowsProtocolSequence(t *testing.T) {
 	if !result.Created || result.Backend != shared.BackendS4A21 {
 		t.Fatalf("result = %+v", result)
 	}
+}
+
+func TestProvisionCharacterAdoptsExistingRosterIdentity(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	done := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			done <- acceptErr
+			return
+		}
+		defer conn.Close()
+		login, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+		if readErr != nil || login.Type != protocol.CmdLogin {
+			done <- fmt.Errorf("login type=0x%04X err=%v", login.Type, readErr)
+			return
+		}
+		if _, writeErr := conn.Write(protocol.EncodeResponse(1, protocol.CmdLogin, []byte{1})); writeErr != nil {
+			done <- writeErr
+			return
+		}
+		request, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+		if readErr != nil || request.Type != protocol.CmdGetUserInfo {
+			done <- fmt.Errorf("roster request type=0x%04X err=%v", request.Type, readErr)
+			return
+		}
+		_, writeErr := conn.Write(protocol.EncodeResponse(0, protocol.NotiCharacterList, rosterBody(3, "robot01", 2)))
+		done <- writeErr
+	}()
+	result, err := (Provisioner{Address: listener.Addr().String(), Timeout: time.Second}).ProvisionCharacter(
+		context.Background(), shared.ProvisionCharacterRequest{AccountName: "robot1", CharacterName: "robot01", Job: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !result.Created || result.BackendSlot == nil || *result.BackendSlot != 3 {
+		t.Fatalf("adopted result = %+v", result)
+	}
+}
+
+func emptyRosterBody() []byte {
+	body := make([]byte, 18)
+	body[0] = 2
+	return body
+}
+
+func rosterBody(slot uint16, name string, job byte) []byte {
+	var body bytes.Buffer
+	body.Write(make([]byte, 16))
+	body.Bytes()[0] = 2
+	_ = binary.Write(&body, binary.LittleEndian, uint16(1))
+	_ = binary.Write(&body, binary.LittleEndian, slot)
+	_ = binary.Write(&body, binary.LittleEndian, uint32(len(name)))
+	body.WriteString(name)
+	body.Write([]byte{0, 0, job, 0, 1, 0, 0})
+	_ = binary.Write(&body, binary.LittleEndian, uint32(0))
+	_ = binary.Write(&body, binary.LittleEndian, uint32(0))
+	body.WriteByte(0)
+	body.Write(make([]byte, 36))
+	return body.Bytes()
 }
 
 func TestProvisionCharactersStopsWithPartialResults(t *testing.T) {

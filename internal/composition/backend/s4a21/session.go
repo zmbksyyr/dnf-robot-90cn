@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -90,6 +91,11 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	if err := waitFor(openCtx, client, protocol.CmdCheckConnection, 1); err != nil {
 		return nil, fmt.Errorf("S4A21 session readiness: %w", err)
 	}
+	if request.InitialTownKnown {
+		if err := initializeTownPresence(openCtx, client, request); err != nil {
+			return nil, err
+		}
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	session := &Session{client: client, cancel: cancel, done: make(chan struct{}), keepaliveDone: make(chan struct{}), selfUID: selfUID}
 	go session.drain(runCtx)
@@ -102,6 +108,33 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	}
 	closeOnError = false
 	return session, nil
+}
+
+func initializeTownPresence(ctx context.Context, client *protocol.Client, request shared.OpenSessionRequest) error {
+	if request.InitialVillage < 0 || request.InitialVillage > 255 || request.InitialArea < 0 || request.InitialArea > 255 {
+		return fmt.Errorf("S4A21 initial town out of range: %d/%d", request.InitialVillage, request.InitialArea)
+	}
+	if request.InitialX < math.MinInt16 || request.InitialX > math.MaxInt16 || request.InitialY < math.MinInt16 || request.InitialY > math.MaxInt16 {
+		return fmt.Errorf("S4A21 initial town position out of range: %d,%d", request.InitialX, request.InitialY)
+	}
+	if err := client.SetUserArea(ctx, byte(request.InitialVillage), byte(request.InitialArea), int16(request.InitialX), int16(request.InitialY)); err != nil {
+		return fmt.Errorf("S4A21 enter town: %w", err)
+	}
+	for {
+		packet, err := client.Read(ctx)
+		if err != nil {
+			return fmt.Errorf("S4A21 enter town confirmation: %w", err)
+		}
+		if packet.Type != protocol.NotiUserArea || len(packet.Body) < 8 {
+			continue
+		}
+		if int(packet.Body[2]) != request.InitialVillage || int(packet.Body[3]) != request.InitialArea ||
+			int16(binary.LittleEndian.Uint16(packet.Body[4:6])) != int16(request.InitialX) ||
+			int16(binary.LittleEndian.Uint16(packet.Body[6:8])) != int16(request.InitialY) {
+			continue
+		}
+		return nil
+	}
 }
 
 func (s *Session) MoveTown(ctx context.Context, intent shared.TownMoveIntent) error {

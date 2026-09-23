@@ -72,6 +72,28 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	if err := waitFor(ctx, client, protocol.CmdLogin, 1); err != nil {
 		return result, fmt.Errorf("S4A21 login: %w", err)
 	}
+	if err := client.RequestCharacterRoster(ctx); err != nil {
+		return result, fmt.Errorf("S4A21 request character roster: %w", err)
+	}
+	rosterPacket, err := waitPacket(ctx, client, protocol.NotiCharacterList, 0)
+	if err != nil {
+		return result, fmt.Errorf("S4A21 character roster: %w", err)
+	}
+	roster, err := protocol.DecodeCharacterRoster(rosterPacket.Body)
+	if err != nil && len(rosterPacket.Body) > 1 {
+		return result, fmt.Errorf("S4A21 character roster decode: %w", err)
+	}
+	for _, character := range roster {
+		if character.Name != strings.TrimSpace(request.CharacterName) {
+			continue
+		}
+		slot := character.Slot
+		result.BackendSlot = &slot
+		// Created means the requested protocol identity is ready for local
+		// registration. It also covers adoption after a prior partial batch.
+		result.Created = true
+		return result, nil
+	}
 	if err := client.CreateCharacter(ctx, byte(request.Job), name); err != nil {
 		return result, err
 	}
@@ -82,7 +104,7 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	if err != nil {
 		return result, fmt.Errorf("S4A21 character list refresh: %w", err)
 	}
-	roster, err := protocol.DecodeCharacterRoster(packet.Body)
+	roster, err = protocol.DecodeCharacterRoster(packet.Body)
 	if err != nil {
 		// Older A21 builds acknowledge the refresh with an empty marker and
 		// expose the roster only on the next login. Creation still succeeded,
