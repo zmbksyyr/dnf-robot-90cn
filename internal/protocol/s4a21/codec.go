@@ -35,6 +35,7 @@ const (
 	CmdSetUserPosition      uint16 = 0x0023
 	CmdSetUserArea          uint16 = 0x0024
 	CmdMoveMap              uint16 = 0x002D
+	CmdCheckCharacterName   uint16 = 0x02B5
 	CmdCheckConnection      uint16 = 0x04DD
 	NotiCharacterList       uint16 = 0x0002
 	NotiAcceptableQuestList uint16 = 0x0015
@@ -211,6 +212,17 @@ func CreateCharacterBody(job byte, name []byte) ([]byte, error) {
 	out[0] = job
 	binary.LittleEndian.PutUint32(out[1:5], uint32(len(name)))
 	copy(out[5:], name)
+	return out, nil
+}
+
+// CheckCharacterNameBody is the server-side global name availability query.
+func CheckCharacterNameBody(name []byte) ([]byte, error) {
+	if len(name) < 2 || len(name) > 30 {
+		return nil, fmt.Errorf("character name must be 2..30 bytes")
+	}
+	out := make([]byte, 4+len(name))
+	binary.LittleEndian.PutUint32(out[:4], uint32(len(name)))
+	copy(out[4:], name)
 	return out, nil
 }
 

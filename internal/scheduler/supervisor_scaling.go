@@ -162,6 +162,19 @@ func (s *RobotSupervisor) acquireUIDs(rc robotconfig.RuntimeConfig, actors []*ac
 		return out
 	}
 	created, err := s.manager.CreateRobots(robotcap.CreateRequest{Count: need})
+	if len(created) > 0 {
+		s.manager.addAutoCreated(len(created))
+		for _, robot := range created {
+			if nextActor >= len(actors) {
+				break
+			}
+			actor := actors[nextActor]
+			if s.ledger.TryLeaseUID(robot.UID, actor) {
+				out = append(out, actorLease{actor: actor, uid: robot.UID})
+				nextActor++
+			}
+		}
+	}
 	if err != nil {
 		s.createFailures++
 		delays := [...]time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second}
@@ -175,19 +188,6 @@ func (s *RobotSupervisor) acquireUIDs(rc robotconfig.RuntimeConfig, actors []*ac
 	}
 	s.createFailures = 0
 	s.createNext = time.Time{}
-	if len(created) > 0 {
-		s.manager.addAutoCreated(len(created))
-	}
-	for _, robot := range created {
-		if nextActor >= len(actors) {
-			break
-		}
-		actor := actors[nextActor]
-		if s.ledger.TryLeaseUID(robot.UID, actor) {
-			out = append(out, actorLease{actor: actor, uid: robot.UID})
-			nextActor++
-		}
-	}
 	return out
 }
 

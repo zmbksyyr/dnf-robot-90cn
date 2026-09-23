@@ -18,6 +18,19 @@ func TestCreateCharacterBodyMatchesA21Layout(t *testing.T) {
 	}
 }
 
+func TestCheckCharacterNameBodyMatchesA21Layout(t *testing.T) {
+	body, err := CheckCharacterNameBody([]byte("robot01"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) != 11 || binary.LittleEndian.Uint32(body[:4]) != 7 || string(body[4:]) != "robot01" {
+		t.Fatalf("check name body = %X", body)
+	}
+	if _, err := CheckCharacterNameBody([]byte("x")); err == nil {
+		t.Fatal("short check name unexpectedly accepted")
+	}
+}
+
 func TestDeleteCharacterBodyMatchesA21Layout(t *testing.T) {
 	body, err := DeleteCharacterBody(0x0102, []byte("robot01"))
 	if err != nil {

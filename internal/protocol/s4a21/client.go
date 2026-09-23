@@ -53,6 +53,14 @@ func (c *Client) CreateCharacter(ctx context.Context, job byte, name []byte) err
 	return c.send(ctx, Encode(1, CmdCreateCharacter, body))
 }
 
+func (c *Client) CheckCharacterName(ctx context.Context, name []byte) error {
+	body, err := CheckCharacterNameBody(name)
+	if err != nil {
+		return err
+	}
+	return c.send(ctx, Encode(1, CmdCheckCharacterName, body))
+}
+
 func (c *Client) DeleteCharacter(ctx context.Context, slot uint16, name []byte) error {
 	body, err := DeleteCharacterBody(slot, name)
 	if err != nil {

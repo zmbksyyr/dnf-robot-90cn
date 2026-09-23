@@ -47,6 +47,15 @@ func TestProvisionCharacterFollowsProtocolSequence(t *testing.T) {
 			done <- err
 			return
 		}
+		checkName, err := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+		if err != nil || checkName.Type != protocol.CmdCheckCharacterName {
+			done <- fmt.Errorf("check name type=0x%04X err=%v", checkName.Type, err)
+			return
+		}
+		if _, err = conn.Write(protocol.EncodeResponse(1, protocol.CmdCheckCharacterName, []byte{1})); err != nil {
+			done <- err
+			return
+		}
 		create, err := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
 		if err != nil || create.Type != protocol.CmdCreateCharacter {
 			done <- err
@@ -66,6 +75,69 @@ func TestProvisionCharacterFollowsProtocolSequence(t *testing.T) {
 	}
 	if !result.Created || result.Backend != shared.BackendS4A21 {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestProvisionCharacterChecksGlobalNameAndUsesStableFallback(t *testing.T) {
+	for _, rejectionCode := range []byte{24, 159} {
+		t.Run(fmt.Sprintf("code_%d", rejectionCode), func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			done := make(chan error, 1)
+			go func() {
+				conn, acceptErr := listener.Accept()
+				if acceptErr != nil {
+					done <- acceptErr
+					return
+				}
+				defer conn.Close()
+				for _, step := range []struct {
+					wantType uint16
+					response []byte
+				}{
+					{protocol.CmdLogin, []byte{1}},
+					{protocol.CmdGetUserInfo, emptyRosterBody()},
+					{protocol.CmdCheckCharacterName, []byte{0, rejectionCode}},
+					{protocol.CmdCheckCharacterName, []byte{1}},
+					{protocol.CmdCreateCharacter, []byte{1}},
+				} {
+					request, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+					if readErr != nil || request.Type != step.wantType {
+						done <- fmt.Errorf("request type=0x%04X want=0x%04X err=%v", request.Type, step.wantType, readErr)
+						return
+					}
+					responseType := step.wantType
+					command := byte(1)
+					if step.wantType == protocol.CmdGetUserInfo {
+						responseType = protocol.NotiCharacterList
+						command = 0
+					}
+					if _, writeErr := conn.Write(protocol.EncodeResponse(command, responseType, step.response)); writeErr != nil {
+						done <- writeErr
+						return
+					}
+				}
+				_, writeErr := conn.Write(protocol.EncodeResponse(0, protocol.NotiCharacterList, []byte{0}))
+				done <- writeErr
+			}()
+
+			result, err := (Provisioner{Address: listener.Addr().String(), Timeout: time.Second}).ProvisionCharacter(
+				context.Background(), shared.ProvisionCharacterRequest{
+					AccountName: "robot42", CharacterName: "bad name", RobotUID: 42, Job: 1,
+				})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			if !result.Created || result.CharacterName != "rb42" || result.RobotUID != 42 {
+				t.Fatalf("result = %+v", result)
+			}
+		})
 	}
 }
 

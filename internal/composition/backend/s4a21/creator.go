@@ -51,31 +51,29 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	if err != nil {
 		return nil, err
 	}
-	requests := make([]shared.ProvisionCharacterRequest, len(plans))
-	for i := range plans {
-		requests[i] = plans[i].Request
-	}
-	batchID := fmt.Sprintf("s4a21-%d-%d", time.Now().UnixNano(), creatorBatchSequence.Add(1))
-	result, err := robotlifecycle.ProvisionProtocolBatch(ctx, c.BatchStore, c.IdentityStore, c.Provisioner, batchID, shared.BackendS4A21, requests)
-	if err != nil {
-		return nil, err
-	}
-	robots := make([]robotcap.Info, 0, len(result.Results))
-	for i, provisioned := range result.Results {
-		if i >= len(plans) {
-			break
+	robots := make([]robotcap.Info, 0, len(plans))
+	for i, plan := range plans {
+		batchID := fmt.Sprintf("s4a21-%d-%d-%d", time.Now().UnixNano(), creatorBatchSequence.Add(1), i)
+		result, provisionErr := robotlifecycle.ProvisionProtocolBatch(
+			ctx, c.BatchStore, c.IdentityStore, c.Provisioner, batchID,
+			shared.BackendS4A21, []shared.ProvisionCharacterRequest{plan.Request},
+		)
+		if provisionErr != nil {
+			return robots, provisionErr
 		}
-		info := plans[i].Info
+		if len(result.Results) != 1 || !result.Results[0].Created {
+			return robots, fmt.Errorf("S4A21 provision uid=%d returned no created character", plan.Info.UID)
+		}
+		provisioned := result.Results[0]
+		info := plan.Info
 		info.Name = provisioned.CharacterName
+		if err := c.RobotCatalog.RegisterRobots(ctx, []robotcap.Info{info}); err != nil {
+			return robots, fmt.Errorf("register S4A21 robot directory uid=%d: %w", info.UID, err)
+		}
 		robots = append(robots, info)
-	}
-	if err := c.RobotCatalog.RegisterRobots(ctx, robots); err != nil {
-		return nil, fmt.Errorf("register S4A21 robot directory: %w", err)
-	}
-	if c.Loadouts != nil {
-		for i, info := range robots {
-			if err := c.Loadouts.ApplyCharacterLoadout(ctx, plans[i].Request.AccountName, info); err != nil {
-				return nil, fmt.Errorf("apply S4A21 loadout uid=%d: %w", info.UID, err)
+		if c.Loadouts != nil {
+			if err := c.Loadouts.ApplyCharacterLoadout(ctx, plan.Request.AccountName, info); err != nil {
+				return robots, fmt.Errorf("apply S4A21 loadout uid=%d: %w", info.UID, err)
 			}
 		}
 	}

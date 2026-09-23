@@ -58,7 +58,8 @@ func ProvisionProtocolBatch(
 		}
 		identity := robotstate.Identity{Backend: identityBackend, CharacterName: provisioned.CharacterName}
 		for _, request := range requests {
-			if request.CharacterName == provisioned.CharacterName {
+			if (provisioned.RobotUID > 0 && request.RobotUID == provisioned.RobotUID) ||
+				(provisioned.RobotUID == 0 && request.CharacterName == provisioned.CharacterName) {
 				identity.Account = request.AccountName
 				break
 			}
