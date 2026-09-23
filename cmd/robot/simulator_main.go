@@ -152,13 +152,20 @@ func reconcileSimulatorLoadouts(ctx context.Context, state *robotstate.FileStore
 		accounts[identity.CharacterName] = identity.Account
 	}
 	profiles, canResolve := applier.(s4a21backend.CharacterProfileReader)
+	profileAdapter, canReconcileLevel := applier.(s4a21backend.CharacterProfileAdapter)
 	updates := make([]robotcap.Info, 0, len(robots))
 	for _, robot := range robots {
 		account := accounts[robot.Name]
 		if account == "" {
 			return fmt.Errorf("S4A21 robot %d/%s has no account identity", robot.UID, robot.Name)
 		}
-		if canResolve {
+		if canReconcileLevel {
+			robot, err = profileAdapter.ReconcileConfiguredCharacterLevel(ctx, account, robot)
+			if err != nil {
+				return fmt.Errorf("reconcile S4A21 level uid=%d: %w", robot.UID, err)
+			}
+			updates = append(updates, robot)
+		} else if canResolve {
 			robot, err = profiles.ResolveCharacterProfile(ctx, account, robot)
 			if err != nil {
 				return fmt.Errorf("resolve S4A21 profile uid=%d: %w", robot.UID, err)

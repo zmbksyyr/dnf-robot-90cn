@@ -92,6 +92,58 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 	}
 }
 
+func TestSQLiteProfileAdapterPersistsPlannedAndConfiguredLevels(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot7')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,grow_type,level,exp,delete_flag) VALUES(9,7,'Alpha',2,0,1,123,0)`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	rc := robotconfig.Default()
+	rc.LevelMin, rc.LevelMax = 50, 85
+	adapter := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, RandIntn: func(int) int { return 0 }}
+	info := robotcap.Info{UID: 17000007, Name: "Alpha", Job: 9, Grow: 2, Level: 70}
+
+	actual, err := adapter.ApplyPlannedCharacterLevel(context.Background(), "robot7", info, 73)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual.Level != 73 || actual.Job != 2 || actual.Grow != 0 {
+		t.Fatalf("planned profile=%+v", actual)
+	}
+	db = openLoadoutTestDB(t, path)
+	var level, exp int
+	if err := db.QueryRow(`SELECT level,exp FROM characters WHERE character_id=9`).Scan(&level, &exp); err != nil {
+		t.Fatal(err)
+	}
+	if level != 73 || exp != 0 {
+		t.Fatalf("persisted planned level=%d exp=%d", level, exp)
+	}
+	if _, err := db.Exec(`UPDATE characters SET level=1,exp=456 WHERE character_id=9`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	actual, err = adapter.ReconcileConfiguredCharacterLevel(context.Background(), "robot7", info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual.Level != 50 {
+		t.Fatalf("reconciled level=%d want deterministic minimum 50", actual.Level)
+	}
+	db = openLoadoutTestDB(t, path)
+	defer db.Close()
+	if err := db.QueryRow(`SELECT level,exp FROM characters WHERE character_id=9`).Scan(&level, &exp); err != nil {
+		t.Fatal(err)
+	}
+	if level != 50 || exp != 0 {
+		t.Fatalf("persisted reconciled level=%d exp=%d", level, exp)
+	}
+}
+
 func openLoadoutTestDB(t *testing.T, path string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", path)
@@ -100,7 +152,7 @@ func openLoadoutTestDB(t *testing.T, path string) *sql.DB {
 	}
 	if _, err := db.Exec(`PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS accounts(account_id INTEGER PRIMARY KEY,m_id TEXT UNIQUE);
-CREATE TABLE IF NOT EXISTS characters(character_id INTEGER PRIMARY KEY,account_id INTEGER,name TEXT,job INTEGER,grow_type INTEGER NOT NULL DEFAULT 0,level INTEGER,delete_flag INTEGER);
+CREATE TABLE IF NOT EXISTS characters(character_id INTEGER PRIMARY KEY,account_id INTEGER,name TEXT,job INTEGER,grow_type INTEGER NOT NULL DEFAULT 0,level INTEGER,exp INTEGER NOT NULL DEFAULT 0,delete_flag INTEGER,updated_at TEXT);
 CREATE TABLE IF NOT EXISTS character_inventory_items(item_uid INTEGER PRIMARY KEY AUTOINCREMENT,character_id INTEGER,list_type INTEGER,slot_index INTEGER,item_core BLOB,created_at TEXT,updated_at TEXT,UNIQUE(character_id,list_type,slot_index));
 CREATE TABLE IF NOT EXISTS character_avatar_detail(item_uid INTEGER PRIMARY KEY,owner_id INTEGER,character_id INTEGER,item_id INTEGER,expire_date INTEGER,clear_avatar_id INTEGER,jewel_socket BLOB,color1 INTEGER,color2 INTEGER,delete_date INTEGER);
 CREATE TABLE IF NOT EXISTS character_avatar_uid_sequence(avatar_uid INTEGER PRIMARY KEY AUTOINCREMENT);`); err != nil {

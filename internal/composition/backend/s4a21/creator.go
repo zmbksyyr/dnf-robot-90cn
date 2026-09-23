@@ -67,9 +67,16 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		}
 		provisioned := result.Results[0]
 		info := plan.Info
+		plannedLevel := info.Level
 		info.Name = provisioned.CharacterName
 		if provisioned.ProfileKnown {
 			info.Job, info.Grow, info.Level = provisioned.Job, provisioned.Grow, provisioned.Level
+		}
+		if profiles, ok := c.Profiles.(CharacterProfileAdapter); ok {
+			info, err = profiles.ApplyPlannedCharacterLevel(ctx, plan.Request.AccountName, info, plannedLevel)
+			if err != nil {
+				return robots, fmt.Errorf("apply S4A21 planned level uid=%d: %w", info.UID, err)
+			}
 		} else if c.Profiles != nil {
 			info, err = c.Profiles.ResolveCharacterProfile(ctx, plan.Request.AccountName, info)
 			if err != nil {

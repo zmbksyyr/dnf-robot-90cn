@@ -32,6 +32,12 @@ type CharacterProfileReader interface {
 	ResolveCharacterProfile(context.Context, string, robotcap.Info) (robotcap.Info, error)
 }
 
+type CharacterProfileAdapter interface {
+	CharacterProfileReader
+	ApplyPlannedCharacterLevel(context.Context, string, robotcap.Info, int) (robotcap.Info, error)
+	ReconcileConfiguredCharacterLevel(context.Context, string, robotcap.Info) (robotcap.Info, error)
+}
+
 type SQLiteLoadoutApplier struct {
 	DatabasePath string
 	Config       robotconfig.RuntimeConfig
@@ -102,6 +108,71 @@ func (a SQLiteLoadoutApplier) ResolveCharacterProfile(ctx context.Context, accou
 	}
 	_, _, actual, err := resolveCharacterProfile(ctx, db, account, info)
 	return actual, err
+}
+
+func (a SQLiteLoadoutApplier) ApplyPlannedCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
+	if level < 1 || level > math.MaxUint8 {
+		return info, fmt.Errorf("S4A21 character level must be between 1 and %d", math.MaxUint8)
+	}
+	return a.writeCharacterLevel(ctx, account, info, level)
+}
+
+func (a SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
+	actual, err := a.ResolveCharacterProfile(ctx, account, info)
+	if err != nil {
+		return info, err
+	}
+	minLevel, maxLevel := a.Config.LevelMin, a.Config.LevelMax
+	if minLevel < 1 {
+		minLevel = 1
+	}
+	if maxLevel < minLevel {
+		maxLevel = minLevel
+	}
+	if maxLevel > math.MaxUint8 {
+		maxLevel = math.MaxUint8
+	}
+	if actual.Level >= minLevel && actual.Level <= maxLevel {
+		return actual, nil
+	}
+	return a.writeCharacterLevel(ctx, account, actual, randomBetween(a.RandIntn, minLevel, maxLevel))
+}
+
+func (a SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
+	if strings.TrimSpace(a.DatabasePath) == "" {
+		return info, fmt.Errorf("S4A21 profile database path is required")
+	}
+	db, err := sql.Open("sqlite", a.DatabasePath)
+	if err != nil {
+		return info, fmt.Errorf("open S4A21 profile database: %w", err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
+		return info, err
+	}
+	_, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
+	if err != nil {
+		return info, err
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return info, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE characters
+SET level=?, exp=0, updated_at=CURRENT_TIMESTAMP
+WHERE character_id=? AND delete_flag=0`, level, characterID)
+	if err != nil {
+		return info, fmt.Errorf("write S4A21 character level id=%d: %w", characterID, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		return info, fmt.Errorf("write S4A21 character level id=%d affected=%d err=%v", characterID, affected, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return info, fmt.Errorf("commit S4A21 character level id=%d: %w", characterID, err)
+	}
+	actual.Level = level
+	return actual, nil
 }
 
 func resolveCharacterProfile(ctx context.Context, db *sql.DB, account string, info robotcap.Info) (int, int, robotcap.Info, error) {
