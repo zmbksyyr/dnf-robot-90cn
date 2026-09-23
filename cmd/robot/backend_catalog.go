@@ -78,7 +78,13 @@ func s4a21PVFPath(dfGameR string) (string, error) {
 	return candidate, nil
 }
 
-func s4a21DatabasePath(dfGameR string) (string, error) {
+func s4a21DatabasePath(dfGameR, configured string) (string, error) {
+	if value := strings.TrimSpace(configured); value != "" {
+		if _, err := os.Stat(value); err != nil {
+			return "", fmt.Errorf("S4A21 database %q: %w", value, err)
+		}
+		return value, nil
+	}
 	value := strings.TrimSpace(dfGameR)
 	if value == "" {
 		return "", fmt.Errorf("S4A21 database path cannot be resolved from empty DfGameR")

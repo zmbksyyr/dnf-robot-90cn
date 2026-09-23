@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +31,7 @@ type backendSelectionPayload struct {
 	Backends           []shared.BackendInfo `json:"backends"`
 	Error              string               `json:"error,omitempty"`
 	Message            string               `json:"message,omitempty"`
+	Settings           map[string]string    `json:"settings,omitempty"`
 }
 
 func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
@@ -41,10 +44,12 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		state.Settings = s.backendSettingsWithDefaults(state)
 		writeJSON(w, backendSelectionResponse(state, persisted, ""))
 	case http.MethodPost:
 		var req struct {
-			BackendID shared.BackendID `json:"backend_id"`
+			BackendID shared.BackendID  `json:"backend_id"`
+			Settings  map[string]string `json:"settings"`
 		}
 		if err := config.DecodeJSONLimit(r.Body, 64*1024, &req); err != nil {
 			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
@@ -55,11 +60,18 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
 			return
 		}
-		if state.BackendID == info.ID {
+		settings, err := validateBackendSettings(info, req.Settings)
+		if err != nil {
+			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
+			return
+		}
+		if state.BackendID == info.ID && equalStringMap(state.Settings, settings) {
+			state.Settings = settings
 			writeJSON(w, backendSelectionResponse(state, persisted, "backend is already selected"))
 			return
 		}
 		state.BackendID = info.ID
+		state.Settings = settings
 		state.ConfigGeneration++
 		state.SelectedAt = time.Now().UTC()
 		if err := s.writeBackendSelectionLocked(state); err != nil {
@@ -76,7 +88,72 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 }
 
 func backendSelectionResponse(state backendSelectionState, persisted bool, message string) backendSelectionPayload {
-	return backendSelectionPayload{OK: true, Selected: state.BackendID, ConfigGeneration: state.ConfigGeneration, SelectedAt: state.SelectedAt, Persisted: persisted, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Message: message}
+	return backendSelectionPayload{OK: true, Selected: state.BackendID, ConfigGeneration: state.ConfigGeneration, SelectedAt: state.SelectedAt, Persisted: persisted, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Message: message, Settings: state.Settings}
+}
+
+func (s *Server) backendSettingsWithDefaults(state backendSelectionState) map[string]string {
+	settings := make(map[string]string)
+	for key, value := range state.Settings {
+		settings[key] = value
+	}
+	if state.BackendID != shared.BackendS4A21 || s.cfg == nil {
+		return settings
+	}
+	serverDir := strings.TrimSpace(s.cfg.DFGameR)
+	if filepath.Ext(serverDir) != "" {
+		serverDir = filepath.Dir(serverDir)
+	}
+	if settings["server_directory"] == "" {
+		settings["server_directory"] = serverDir
+	}
+	if settings["server_host"] == "" {
+		settings["server_host"] = s.cfg.RobotConnectIP
+	}
+	if settings["game_port"] == "" && s.cfg.RobotGamePort > 0 {
+		settings["game_port"] = strconv.Itoa(s.cfg.RobotGamePort)
+	}
+	if settings["database_path"] == "" && serverDir != "" {
+		settings["database_path"] = filepath.Join(serverDir, "Data", "inventory.db")
+	}
+	return settings
+}
+
+func validateBackendSettings(info shared.BackendInfo, input map[string]string) (map[string]string, error) {
+	result := make(map[string]string, len(info.Settings))
+	for _, field := range info.Settings {
+		value := strings.TrimSpace(input[field.Key])
+		if value == "" {
+			value = field.Default
+		}
+		if field.Required && value == "" {
+			return nil, fmt.Errorf("%s is required", field.Label)
+		}
+		if field.InputType == "number" && value != "" {
+			port, err := strconv.Atoi(value)
+			if err != nil || port < 1 || port > 65535 {
+				return nil, fmt.Errorf("%s must be between 1 and 65535", field.Label)
+			}
+		}
+		if field.InputType == "path" && value != "" && !filepath.IsAbs(value) {
+			return nil, fmt.Errorf("%s must be an absolute path", field.Label)
+		}
+		if value != "" {
+			result[field.Key] = value
+		}
+	}
+	return result, nil
+}
+
+func equalStringMap(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, value := range left {
+		if right[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func backendCatalogForPlatform(platform string) []shared.BackendInfo {

@@ -82,7 +82,21 @@ func TestBackendSelectionRejectsUnsupportedPlatform(t *testing.T) {
 func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) {
 	dir := t.TempDir()
 	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
-	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(`{"backend_id":"sim_a21"}`))
+	serverDir := filepath.Join(dir, "DfoServer")
+	databasePath := filepath.Join(serverDir, "Data", "inventory.db")
+	body, err := json.Marshal(map[string]interface{}{
+		"backend_id": shared.BackendS4A21,
+		"settings": map[string]string{
+			"server_directory": serverDir,
+			"server_host":      "127.0.0.1",
+			"game_port":        "10011",
+			"database_path":    databasePath,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(string(body)))
 	rec := httptest.NewRecorder()
 	s.handleBackend(rec, req)
 	if rec.Code != http.StatusOK {
@@ -121,7 +135,23 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 		t.Fatal(err)
 	}
 	selection, err := shared.DecodeBackendSelection(data)
-	if err != nil || selection.BackendID != shared.BackendS4A21 || selection.ConfigGeneration != 1 {
+	if err != nil || selection.BackendID != shared.BackendS4A21 || selection.ConfigGeneration != 1 || selection.Settings["database_path"] != databasePath {
 		t.Fatalf("selection=%+v err=%v", selection, err)
+	}
+}
+
+func TestBackendSelectionRejectsIncompleteSimulatorSettings(t *testing.T) {
+	dir := t.TempDir()
+	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
+	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(`{"backend_id":"sim_a21","settings":{"server_host":"127.0.0.1"}}`))
+	rec := httptest.NewRecorder()
+	s.handleBackend(rec, req)
+
+	var got backendSelectionPayload
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OK || !strings.Contains(got.Error, "Game server directory") {
+		t.Fatalf("payload=%+v", got)
 	}
 }

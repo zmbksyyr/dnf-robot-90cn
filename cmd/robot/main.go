@@ -93,6 +93,10 @@ func runMain() int {
 		}
 		return 0
 	}
+	if err := applyBackendSelectionSettings(cfg, backendSelection); err != nil {
+		fmt.Fprintf(os.Stderr, "backend settings error: %v\n", err)
+		return 1
+	}
 	backendReinitialized, err := runtimeinit.PrepareBackendRuntime(paths, backendSelection)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backend runtime preparation error: %v\n", err)

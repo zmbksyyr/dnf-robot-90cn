@@ -44,12 +44,23 @@ type BackendInfo struct {
 	Selectable   bool                                   `json:"selectable"`
 	Reason       string                                 `json:"reason,omitempty"`
 	Capabilities map[BackendCapability]CapabilityStatus `json:"capabilities"`
+	Settings     []BackendSetting                       `json:"settings,omitempty"`
+}
+
+type BackendSetting struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	InputType   string `json:"input_type"`
+	Required    bool   `json:"required"`
+	Placeholder string `json:"placeholder,omitempty"`
+	Default     string `json:"default,omitempty"`
 }
 
 type BackendSelection struct {
-	BackendID        BackendID `json:"backend_id"`
-	ConfigGeneration uint64    `json:"config_generation"`
-	SelectedAt       time.Time `json:"selected_at"`
+	BackendID        BackendID         `json:"backend_id"`
+	ConfigGeneration uint64            `json:"config_generation"`
+	SelectedAt       time.Time         `json:"selected_at"`
+	Settings         map[string]string `json:"settings,omitempty"`
 }
 
 type ProvisionCharacterRequest struct {
@@ -116,6 +127,12 @@ func KnownBackends() []BackendInfo {
 		ID: BackendS4A21, DisplayName: "S4A21 Simulator", SupportedOS: []string{"linux", "windows"},
 		Selectable:   true,
 		Capabilities: s4a21Capabilities(),
+		Settings: []BackendSetting{
+			{Key: "server_directory", Label: "Game server directory", InputType: "path", Required: true},
+			{Key: "server_host", Label: "Protocol host", InputType: "text", Required: true, Default: "127.0.0.1"},
+			{Key: "game_port", Label: "Game port", InputType: "number", Required: true, Default: "10011"},
+			{Key: "database_path", Label: "Equipment database", InputType: "path", Required: true},
+		},
 	}}
 }
 

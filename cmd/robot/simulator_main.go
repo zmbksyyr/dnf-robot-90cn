@@ -61,7 +61,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		foundationlog.Robotf("SIMULATOR_ITEM_CATALOG_FAILED err=%v\n", err)
 		return 1
 	}
-	loadoutDB, err := s4a21DatabasePath(cfg.DFGameR)
+	loadoutDB, err := s4a21DatabasePath(cfg.DFGameR, backendSetting(selection, "database_path"))
 	if err != nil {
 		foundationlog.Robotf("SIMULATOR_LOADOUT_DATABASE_FAILED err=%v\n", err)
 		return 1
@@ -132,6 +132,10 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 	<-sigCh
 	foundationlog.Robotf("SIMULATOR_STOPPING backend=%s\n", info.ID)
 	return 0
+}
+
+func backendSetting(selection shared.BackendSelection, key string) string {
+	return selection.Settings[key]
 }
 
 func reconcileSimulatorLoadouts(ctx context.Context, state *robotstate.FileStore, applier s4a21backend.CharacterLoadoutApplier) error {
