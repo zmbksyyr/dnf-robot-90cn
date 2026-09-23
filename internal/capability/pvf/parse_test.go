@@ -61,6 +61,15 @@ func TestPriestAvatarPathKeepsGenderJob(t *testing.T) {
 	}
 }
 
+func TestSwordmanAvatarPathKeepsGenderJob(t *testing.T) {
+	if got := jobFromEquipmentPath("character/swordman/avatar/coat/100.equ"); got != 0 {
+		t.Fatalf("male swordman avatar job got %d want 0", got)
+	}
+	if got := jobFromEquipmentPath("character/swordman/at_avatar/coat/200.equ"); got != 11 {
+		t.Fatalf("female swordman avatar job got %d want 11", got)
+	}
+}
+
 func TestEquipmentExplicitJobsOverridePathFallback(t *testing.T) {
 	item := shared.EquipmentCatalogItem{ItemType: 1, UseJob: []int{14}}
 	applyEquipmentPathJob(&item, 4)

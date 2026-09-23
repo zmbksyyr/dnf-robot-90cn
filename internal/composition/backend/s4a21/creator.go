@@ -30,6 +30,7 @@ type RobotCreator struct {
 	RandIntn      func(int) int
 	RandBetween   func(int, int) int
 	Loadouts      CharacterLoadoutApplier
+	Profiles      CharacterProfileReader
 }
 
 func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateRequest) ([]robotcap.Info, error) {
@@ -67,6 +68,14 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		provisioned := result.Results[0]
 		info := plan.Info
 		info.Name = provisioned.CharacterName
+		if provisioned.ProfileKnown {
+			info.Job, info.Grow, info.Level = provisioned.Job, provisioned.Grow, provisioned.Level
+		} else if c.Profiles != nil {
+			info, err = c.Profiles.ResolveCharacterProfile(ctx, plan.Request.AccountName, info)
+			if err != nil {
+				return robots, fmt.Errorf("resolve S4A21 profile uid=%d: %w", info.UID, err)
+			}
+		}
 		if err := c.RobotCatalog.RegisterRobots(ctx, []robotcap.Info{info}); err != nil {
 			return robots, fmt.Errorf("register S4A21 robot directory uid=%d: %w", info.UID, err)
 		}

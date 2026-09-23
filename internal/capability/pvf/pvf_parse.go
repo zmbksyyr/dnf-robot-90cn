@@ -449,6 +449,8 @@ func shortHash(value string) string {
 func jobFromEquipmentPath(path string) int {
 	p := "/" + strings.ToLower(normalizePVFPath(path)) + "/"
 	switch {
+	case strings.Contains(p, "/character/swordman/at_avatar/"):
+		return 11
 	case strings.Contains(p, "/character/swordman/"):
 		return 0
 	case strings.Contains(p, "/character/fighter/at_avatar/"):

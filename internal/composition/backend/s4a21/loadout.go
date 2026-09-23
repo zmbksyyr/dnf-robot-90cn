@@ -28,6 +28,10 @@ type CharacterLoadoutApplier interface {
 	ApplyCharacterLoadout(context.Context, string, robotcap.Info) error
 }
 
+type CharacterProfileReader interface {
+	ResolveCharacterProfile(context.Context, string, robotcap.Info) (robotcap.Info, error)
+}
+
 type SQLiteLoadoutApplier struct {
 	DatabasePath string
 	Config       robotconfig.RuntimeConfig
@@ -50,17 +54,11 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 	if err := validateLoadoutSchema(ctx, db); err != nil {
 		return err
 	}
-	encodedName, err := charset.EncodeGBKString(info.Name)
+	accountID, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
 	if err != nil {
-		return fmt.Errorf("encode S4A21 loadout character name %q: %w", info.Name, err)
+		return err
 	}
-	var accountID, characterID int
-	err = db.QueryRowContext(ctx, `SELECT a.account_id, c.character_id
-FROM accounts a JOIN characters c ON c.account_id = a.account_id
-WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag = 0 LIMIT 1`, account, encodedName, info.Name).Scan(&accountID, &characterID)
-	if err != nil {
-		return fmt.Errorf("resolve S4A21 loadout character %s/%s: %w", account, info.Name, err)
-	}
+	info = actual
 	selectedEquipment := equipmentcap.SelectEquipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
 	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
 	if len(selectedEquipment) == 0 {
@@ -69,14 +67,11 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 	if a.Config.MinAvatarSlots > 0 && len(selectedAvatar) < a.Config.MinAvatarSlots {
 		return fmt.Errorf("S4A21 loadout has %d compatible avatar slots, need %d for job=%d", len(selectedAvatar), a.Config.MinAvatarSlots, info.Job)
 	}
-	var equipmentCount, avatarCount int
-	if err := db.QueryRowContext(ctx, `SELECT
-COUNT(CASE WHEN slot_index BETWEEN 12 AND 23 THEN 1 END),
-COUNT(CASE WHEN slot_index BETWEEN 0 AND 9 THEN 1 END)
-FROM character_inventory_items WHERE character_id=? AND list_type=?`, characterID, a21ListTypeEquipment).Scan(&equipmentCount, &avatarCount); err != nil {
-		return fmt.Errorf("inspect S4A21 loadout: %w", err)
+	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, a.Equipment, len(selectedEquipment), len(selectedAvatar))
+	if err != nil {
+		return err
 	}
-	if equipmentCount >= len(selectedEquipment) && avatarCount >= len(selectedAvatar) {
+	if compatible {
 		return nil
 	}
 	tx, err := db.BeginTx(ctx, nil)
@@ -91,6 +86,82 @@ FROM character_inventory_items WHERE character_id=? AND list_type=?`, characterI
 		return fmt.Errorf("commit S4A21 loadout: %w", err)
 	}
 	return nil
+}
+
+func (a SQLiteLoadoutApplier) ResolveCharacterProfile(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
+	if strings.TrimSpace(a.DatabasePath) == "" {
+		return info, fmt.Errorf("S4A21 profile database path is required")
+	}
+	db, err := sql.Open("sqlite", a.DatabasePath)
+	if err != nil {
+		return info, fmt.Errorf("open S4A21 profile database: %w", err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout=5000;`); err != nil {
+		return info, err
+	}
+	_, _, actual, err := resolveCharacterProfile(ctx, db, account, info)
+	return actual, err
+}
+
+func resolveCharacterProfile(ctx context.Context, db *sql.DB, account string, info robotcap.Info) (int, int, robotcap.Info, error) {
+	encodedName, err := charset.EncodeGBKString(info.Name)
+	if err != nil {
+		return 0, 0, info, fmt.Errorf("encode S4A21 character name %q: %w", info.Name, err)
+	}
+	var accountID, characterID int
+	err = db.QueryRowContext(ctx, `SELECT a.account_id, c.character_id, c.job, c.grow_type, c.level
+FROM accounts a JOIN characters c ON c.account_id = a.account_id
+WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag = 0 LIMIT 1`, account, encodedName, info.Name).
+		Scan(&accountID, &characterID, &info.Job, &info.Grow, &info.Level)
+	if err != nil {
+		return 0, 0, info, fmt.Errorf("resolve S4A21 character %s/%s: %w", account, info.Name, err)
+	}
+	return accountID, characterID, info, nil
+}
+
+func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, catalog []shared.EquipmentCatalogItem, wantEquipment, wantAvatar int) (bool, error) {
+	items := make(map[int]shared.EquipmentCatalogItem, len(catalog))
+	for _, item := range catalog {
+		items[item.ID] = item
+	}
+	rows, err := db.QueryContext(ctx, `SELECT slot_index,item_core FROM character_inventory_items
+WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 23`, characterID, a21ListTypeEquipment)
+	if err != nil {
+		return false, fmt.Errorf("inspect S4A21 loadout: %w", err)
+	}
+	defer rows.Close()
+	equipmentCount, avatarCount := 0, 0
+	for rows.Next() {
+		var slot int
+		var core []byte
+		if err := rows.Scan(&slot, &core); err != nil {
+			return false, err
+		}
+		if len(core) < 5 {
+			return false, nil
+		}
+		item, ok := items[int(binary.LittleEndian.Uint32(core[1:5]))]
+		if !ok || item.ID <= 0 || item.Expire || !shared.ClientCompatibleEquipment(item) {
+			return false, nil
+		}
+		switch {
+		case slot >= 12 && slot <= 23:
+			equipmentCount++
+			if item.ItemType != slot-11 || item.Level > info.Level || !equipmentcap.UsableByJob(item.UseJob, info.Job) {
+				return false, nil
+			}
+		case slot >= 0 && slot <= 9:
+			avatarCount++
+			if item.ItemType != slot+20 || !equipmentcap.AvatarRenderable(item) || !equipmentcap.AvatarUsableByJob(item, s4a21AvatarJob(info.Job)) {
+				return false, nil
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return equipmentCount >= wantEquipment && avatarCount >= wantAvatar, nil
 }
 
 func s4a21AvatarJob(job int) int {
@@ -115,29 +186,8 @@ func validateLoadoutSchema(ctx context.Context, db *sql.DB) error {
 }
 
 func replaceLoadout(ctx context.Context, tx *sql.Tx, accountID, characterID int, equipment map[int]shared.EquipmentCatalogItem, avatars map[int]shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig, randIntn func(int) int) error {
-	rows, err := tx.QueryContext(ctx, `SELECT item_core FROM character_inventory_items
-WHERE character_id = ? AND list_type = ? AND slot_index BETWEEN 0 AND 11`, characterID, a21ListTypeEquipment)
-	if err != nil {
-		return fmt.Errorf("read S4A21 equipped avatars: %w", err)
-	}
-	var avatarUIDs []int64
-	for rows.Next() {
-		var core []byte
-		if err := rows.Scan(&core); err != nil {
-			rows.Close()
-			return err
-		}
-		if len(core) >= 9 && core[0] == a21ItemKindAvatar {
-			avatarUIDs = append(avatarUIDs, int64(binary.LittleEndian.Uint32(core[5:9])))
-		}
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, avatarUID := range avatarUIDs {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM character_avatar_detail WHERE item_uid = ?`, avatarUID); err != nil {
-			return fmt.Errorf("clear S4A21 avatar detail uid=%d: %w", avatarUID, err)
-		}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM character_avatar_detail WHERE character_id = ?`, characterID); err != nil {
+		return fmt.Errorf("clear S4A21 avatar details character=%d: %w", characterID, err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM character_inventory_items
 WHERE character_id = ? AND list_type = ? AND slot_index BETWEEN 0 AND 24`, characterID, a21ListTypeEquipment); err != nil {

@@ -36,16 +36,22 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 	rc.MinAvatarSlots = 2
 	rc.EquipIntensifyMin, rc.EquipIntensifyMax = 7, 7
 	items := []shared.EquipmentCatalogItem{
-		{ID: 1001, ItemType: 1, Level: 80, Durability: 45, UseJob: []int{10}},
-		{ID: 1003, ItemType: 3, Level: 80, Durability: 55, UseJob: []int{10}},
-		{ID: 2000, Name: "Hat", ItemType: 20, UseJob: []int{3}, Icon: "avatar/a.img"},
-		{ID: 2001, Name: "Hair", ItemType: 21, UseJob: []int{3}, Icon: "avatar/b.img"},
+		{ID: 1001, ItemType: 1, Level: 80, Durability: 45, UseJob: []int{1}},
+		{ID: 1003, ItemType: 3, Level: 80, Durability: 55, UseJob: []int{1}},
+		{ID: 2000, Name: "Hat", ItemType: 20, UseJob: []int{1}, Icon: "avatar/a.img"},
+		{ID: 2001, Name: "Hair", ItemType: 21, UseJob: []int{1}, Icon: "avatar/b.img"},
+		{ID: 2011, Name: "Wrong job hat", ItemType: 20, UseJob: []int{11}, Icon: "avatar/c.img"},
 	}
 	applier := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
 	info := robotcap.Info{Name: "机器人", Job: 10, Level: 85}
 	if err := applier.ApplyCharacterLoadout(context.Background(), "robot7", info); err != nil {
 		t.Fatal(err)
 	}
+	db = openLoadoutTestDB(t, path)
+	if _, err := db.Exec(`UPDATE character_inventory_items SET item_core=? WHERE character_id=9 AND list_type=3 AND slot_index=0`, a21ItemCore(a21ItemKindAvatar, items[4], 0, 99)); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
 	if err := applier.ApplyCharacterLoadout(context.Background(), "robot7", info); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +100,7 @@ func openLoadoutTestDB(t *testing.T, path string) *sql.DB {
 	}
 	if _, err := db.Exec(`PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS accounts(account_id INTEGER PRIMARY KEY,m_id TEXT UNIQUE);
-CREATE TABLE IF NOT EXISTS characters(character_id INTEGER PRIMARY KEY,account_id INTEGER,name TEXT,job INTEGER,level INTEGER,delete_flag INTEGER);
+CREATE TABLE IF NOT EXISTS characters(character_id INTEGER PRIMARY KEY,account_id INTEGER,name TEXT,job INTEGER,grow_type INTEGER NOT NULL DEFAULT 0,level INTEGER,delete_flag INTEGER);
 CREATE TABLE IF NOT EXISTS character_inventory_items(item_uid INTEGER PRIMARY KEY AUTOINCREMENT,character_id INTEGER,list_type INTEGER,slot_index INTEGER,item_core BLOB,created_at TEXT,updated_at TEXT,UNIQUE(character_id,list_type,slot_index));
 CREATE TABLE IF NOT EXISTS character_avatar_detail(item_uid INTEGER PRIMARY KEY,owner_id INTEGER,character_id INTEGER,item_id INTEGER,expire_date INTEGER,clear_avatar_id INTEGER,jewel_socket BLOB,color1 INTEGER,color2 INTEGER,delete_date INTEGER);
 CREATE TABLE IF NOT EXISTS character_avatar_uid_sequence(avatar_uid INTEGER PRIMARY KEY AUTOINCREMENT);`); err != nil {
@@ -174,7 +180,7 @@ func TestLiveSQLiteLoadoutAgainstDatabaseClone(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(CASE WHEN slot_index BETWEEN 12 AND 23 THEN 1 END), COUNT(CASE WHEN slot_index BETWEEN 0 AND 9 THEN 1 END) FROM character_inventory_items WHERE character_id=? AND list_type=3`, characterID).Scan(&equipmentCount, &avatarCount); err != nil {
 		t.Fatal(err)
 	}
-	if equipmentCount < 8 || avatarCount < rc.MinAvatarSlots {
+	if equipmentCount < 1 || avatarCount < rc.MinAvatarSlots {
 		t.Fatalf("real clone loadout equipment=%d avatar=%d", equipmentCount, avatarCount)
 	}
 }

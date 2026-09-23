@@ -81,7 +81,11 @@ type ProvisionCharacterResult struct {
 	RobotUID      int
 	// BackendSlot is meaningful for backends whose roster is slot-based.
 	// UID/CID remain unset when the backend does not expose native IDs.
-	BackendSlot *uint16
+	BackendSlot  *uint16
+	ProfileKnown bool
+	Job          int
+	Grow         int
+	Level        int
 }
 
 type CharacterProvisioner interface {

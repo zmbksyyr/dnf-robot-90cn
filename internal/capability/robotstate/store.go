@@ -42,6 +42,10 @@ type RobotCatalog interface {
 	RegisterRobots(context.Context, []robotcap.Info) error
 }
 
+type RobotProfileUpdater interface {
+	UpdateRobotProfiles(context.Context, []robotcap.Info) error
+}
+
 type RobotRemover interface {
 	RemoveRobots(context.Context, []int) error
 }
@@ -163,6 +167,25 @@ func (s *MemoryStore) RegisterRobots(ctx context.Context, robots []robotcap.Info
 	return nil
 }
 
+func (s *MemoryStore) UpdateRobotProfiles(ctx context.Context, robots []robotcap.Info) error {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, update := range robots {
+		if _, ok := s.robots[update.UID]; !ok {
+			return ErrNotFound
+		}
+	}
+	for _, update := range robots {
+		robot := s.robots[update.UID]
+		robot.Level, robot.Job, robot.Grow = update.Level, update.Job, update.Grow
+		s.robots[update.UID] = robot
+	}
+	return nil
+}
+
 func (s *MemoryStore) RemoveRobots(ctx context.Context, uids []int) error {
 	if err := contextError(ctx); err != nil {
 		return err
@@ -237,4 +260,5 @@ func contextError(ctx context.Context) error {
 
 var _ Directory = (*MemoryStore)(nil)
 var _ RobotCatalog = (*MemoryStore)(nil)
+var _ RobotProfileUpdater = (*MemoryStore)(nil)
 var _ RobotRemover = (*MemoryStore)(nil)

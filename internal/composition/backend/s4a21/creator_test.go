@@ -53,6 +53,35 @@ func (creatorProvisioner) ProvisionCharacters(_ context.Context, requests []shar
 	return results, nil
 }
 
+type profiledCreatorProvisioner struct{}
+
+func (profiledCreatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
+	request := requests[0]
+	return []shared.ProvisionCharacterResult{{
+		Backend: shared.BackendS4A21, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
+		ProfileKnown: true, Job: request.Job, Grow: 0, Level: 1,
+	}}, nil
+}
+
+func TestRobotCreatorRegistersBackendReportedProfile(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	creator := RobotCreator{
+		Provisioner: profiledCreatorProvisioner{}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			LevelMin: 70, LevelMax: 70, Jobs: []int{1}, GrowTypes: []int{2},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+		},
+		Names: robottemplate.NameTemplates{Common: []string{"Alpha"}}, IDStart: 17000000, AccountPrefix: "robot",
+	}
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1})
+	if err != nil || len(robots) != 1 {
+		t.Fatalf("robots=%+v err=%v", robots, err)
+	}
+	if robots[0].Level != 1 || robots[0].Job != 1 || robots[0].Grow != 0 {
+		t.Fatalf("registered planned profile instead of backend profile: %+v", robots[0])
+	}
+}
+
 type failingCreatorProvisioner struct {
 	calls int
 }

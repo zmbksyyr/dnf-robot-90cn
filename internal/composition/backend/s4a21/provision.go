@@ -86,6 +86,10 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 			slot := character.Slot
 			result.CharacterName = candidate
 			result.BackendSlot = &slot
+			result.ProfileKnown = true
+			result.Job = int(character.Job)
+			result.Grow = int(character.Grow)
+			result.Level = int(character.Level)
 			// Created means the requested protocol identity is ready for local
 			// registration. It also covers adoption after a prior partial batch.
 			result.Created = true
@@ -160,6 +164,10 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 		if character.Name == createdName {
 			slot := character.Slot
 			result.BackendSlot = &slot
+			result.ProfileKnown = true
+			result.Job = int(character.Job)
+			result.Grow = int(character.Grow)
+			result.Level = int(character.Level)
 			break
 		}
 	}

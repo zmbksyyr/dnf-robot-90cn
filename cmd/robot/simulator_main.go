@@ -93,7 +93,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state, Config: rc, Names: nameTemplates, Maps: townMaps,
 		AccountPrefix: "robot", IDStart: rc.RobotUIDStart,
 		RandIntn: manager.RandIntn, RandBetween: manager.RandBetween,
-		Loadouts: loadouts,
+		Loadouts: loadouts, Profiles: loadouts,
 	})
 	manager.SetBackendRobotCleaner(s4a21backend.RobotCleaner{
 		Protocol: s4a21backend.CharacterDeleter{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
@@ -151,13 +151,27 @@ func reconcileSimulatorLoadouts(ctx context.Context, state *robotstate.FileStore
 	for _, identity := range identities {
 		accounts[identity.CharacterName] = identity.Account
 	}
+	profiles, canResolve := applier.(s4a21backend.CharacterProfileReader)
+	updates := make([]robotcap.Info, 0, len(robots))
 	for _, robot := range robots {
 		account := accounts[robot.Name]
 		if account == "" {
 			return fmt.Errorf("S4A21 robot %d/%s has no account identity", robot.UID, robot.Name)
 		}
+		if canResolve {
+			robot, err = profiles.ResolveCharacterProfile(ctx, account, robot)
+			if err != nil {
+				return fmt.Errorf("resolve S4A21 profile uid=%d: %w", robot.UID, err)
+			}
+			updates = append(updates, robot)
+		}
 		if err := applier.ApplyCharacterLoadout(ctx, account, robot); err != nil {
 			return fmt.Errorf("reconcile S4A21 loadout uid=%d: %w", robot.UID, err)
+		}
+	}
+	if len(updates) > 0 {
+		if err := state.UpdateRobotProfiles(ctx, updates); err != nil {
+			return fmt.Errorf("persist S4A21 profiles: %w", err)
 		}
 	}
 	return nil
