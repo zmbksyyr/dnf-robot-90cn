@@ -36,13 +36,13 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 	rc.MinAvatarSlots = 2
 	rc.EquipIntensifyMin, rc.EquipIntensifyMax = 7, 7
 	items := []shared.EquipmentCatalogItem{
-		{ID: 1001, ItemType: 1, Level: 80, Durability: 45, UseJob: []int{1}},
-		{ID: 1003, ItemType: 3, Level: 80, Durability: 55, UseJob: []int{1}},
-		{ID: 2000, Name: "Hat", ItemType: 20, UseJob: []int{1}, Icon: "avatar/a.img"},
-		{ID: 2001, Name: "Hair", ItemType: 21, UseJob: []int{1}, Icon: "avatar/b.img"},
+		{ID: 1001, ItemType: 1, Level: 80, Durability: 45, UseJob: []int{10}},
+		{ID: 1003, ItemType: 3, Level: 80, Durability: 55, UseJob: []int{10}},
+		{ID: 2000, Name: "Hat", ItemType: 20, UseJob: []int{3}, Icon: "avatar/a.img"},
+		{ID: 2001, Name: "Hair", ItemType: 21, UseJob: []int{3}, Icon: "avatar/b.img"},
 	}
 	applier := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
-	info := robotcap.Info{Name: "机器人", Job: 1, Level: 85}
+	info := robotcap.Info{Name: "机器人", Job: 10, Level: 85}
 	if err := applier.ApplyCharacterLoadout(context.Background(), "robot7", info); err != nil {
 		t.Fatal(err)
 	}

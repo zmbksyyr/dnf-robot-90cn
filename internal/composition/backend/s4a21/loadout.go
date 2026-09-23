@@ -62,7 +62,7 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 		return fmt.Errorf("resolve S4A21 loadout character %s/%s: %w", account, info.Name, err)
 	}
 	selectedEquipment := equipmentcap.SelectEquipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
-	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, info.Job, a.Config, a.RandIntn)
+	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
 	if len(selectedEquipment) == 0 {
 		return fmt.Errorf("S4A21 loadout has no compatible equipment for level=%d job=%d", info.Level, info.Job)
 	}
@@ -91,6 +91,17 @@ FROM character_inventory_items WHERE character_id=? AND list_type=?`, characterI
 		return fmt.Errorf("commit S4A21 loadout: %w", err)
 	}
 	return nil
+}
+
+func s4a21AvatarJob(job int) int {
+	switch job {
+	case 9:
+		return 0
+	case 10:
+		return 3
+	default:
+		return job
+	}
 }
 
 func validateLoadoutSchema(ctx context.Context, db *sql.DB) error {
