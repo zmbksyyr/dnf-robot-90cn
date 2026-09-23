@@ -225,16 +225,34 @@ func parsePartyInfoProjection(packet protocol.Packet, selfUID uint16) (uint16, [
 	if packet.Command != 0 || len(packet.Body) < 2 || selfUID == 0 || selfUID == 0xFFFF {
 		return 0, nil, false
 	}
-	blocks := int(binary.LittleEndian.Uint16(packet.Body[:2]))
+	// Deployed A21 packs six bytes after the optional party name. Newer
+	// ServerS4A21 builds pack eleven; require either shape to consume the
+	// complete packet so roster UIDs cannot be matched at an arbitrary offset.
+	shortPartyID, shortCleared, shortOK := parsePartyInfoBody(packet.Body, selfUID, 6)
+	longPartyID, longCleared, longOK := parsePartyInfoBody(packet.Body, selfUID, 11)
+	if shortOK && longOK {
+		if shortPartyID != longPartyID || !samePartyIDs(shortCleared, longCleared) {
+			return 0, nil, false
+		}
+		return shortPartyID, shortCleared, true
+	}
+	if shortOK {
+		return shortPartyID, shortCleared, true
+	}
+	return longPartyID, longCleared, longOK
+}
+
+func parsePartyInfoBody(body []byte, selfUID uint16, infoTailLength int) (uint16, []uint16, bool) {
+	blocks := int(binary.LittleEndian.Uint16(body[:2]))
 	offset := 2
 	memberPartyID := uint16(0)
 	clearedPartyIDs := make([]uint16, 0, blocks)
 	for i := 0; i < blocks; i++ {
-		if len(packet.Body)-offset < 3 {
+		if len(body)-offset < 3 {
 			return 0, nil, false
 		}
-		partyID := binary.LittleEndian.Uint16(packet.Body[offset : offset+2])
-		typ := packet.Body[offset+2]
+		partyID := binary.LittleEndian.Uint16(body[offset : offset+2])
+		typ := body[offset+2]
 		offset += 3
 		switch typ {
 		case 0, 1, 2, 5:
@@ -246,49 +264,69 @@ func parsePartyInfoProjection(packet protocol.Packet, selfUID uint16) (uint16, [
 		// Types 0/1 contain the party-info block; type 0/2 contain the
 		// eight member slots. We only need to skip their wire shape here.
 		if typ == 0 || typ == 1 {
-			if len(packet.Body)-offset < 13 {
+			if len(body)-offset < 1+4+infoTailLength {
 				return 0, nil, false
 			}
-			if packet.Body[offset] == 0 {
+			if body[offset] == 0 {
 				offset++
-				if len(packet.Body)-offset < 4 {
+				if len(body)-offset < 4 {
 					return 0, nil, false
 				}
+				nameLength := int(binary.LittleEndian.Uint32(body[offset : offset+4]))
 				offset += 4
+				if nameLength > len(body)-offset {
+					return 0, nil, false
+				}
+				offset += nameLength
 			} else {
 				offset++
 			}
-			offset += 11
+			if len(body)-offset < infoTailLength {
+				return 0, nil, false
+			}
+			offset += infoTailLength
 		}
 		if typ == 0 || typ == 2 {
-			if len(packet.Body)-offset < 43 {
+			if len(body)-offset < 43 {
 				return 0, nil, false
 			}
 			for slot := 0; slot < 8; slot++ {
 				uidOffset := offset + slot*5
-				if binary.LittleEndian.Uint16(packet.Body[uidOffset:uidOffset+2]) == selfUID {
+				if binary.LittleEndian.Uint16(body[uidOffset:uidOffset+2]) == selfUID {
 					memberPartyID = partyID
 				}
 			}
 			offset += 43
 		}
 		if typ == 5 {
-			if len(packet.Body)-offset < 1 {
+			if len(body)-offset < 1 {
 				return 0, nil, false
 			}
 			offset++
 		}
 		if typ <= 2 {
-			if len(packet.Body)-offset < 1 {
+			if len(body)-offset < 1 {
 				return 0, nil, false
 			}
 			offset++
 		}
 	}
-	if offset != len(packet.Body) {
+	if offset != len(body) {
 		return 0, nil, false
 	}
 	return memberPartyID, clearedPartyIDs, true
+}
+
+func samePartyIDs(left, right []uint16) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func containsPartyID(ids []uint16, want uint16) bool {

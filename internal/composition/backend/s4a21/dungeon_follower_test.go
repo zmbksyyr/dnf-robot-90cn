@@ -287,6 +287,20 @@ func TestParsePartyInfoProjectionRequiresOwnRosterMembership(t *testing.T) {
 	}
 
 	partyID, cleared, ok = parsePartyInfoProjection(protocol.Packet{
+		Type: protocol.NotiPartyInfo, Body: followerNamedPartyRosterBody(9, 31, 32, "party-name"),
+	}, 32)
+	if !ok || partyID != 9 || len(cleared) != 0 {
+		t.Fatalf("named roster projection = party=%d cleared=%v ok=%t", partyID, cleared, ok)
+	}
+
+	partyID, cleared, ok = parsePartyInfoProjection(protocol.Packet{
+		Type: protocol.NotiPartyInfo, Body: followerShortNamedPartyRosterBody(10, 41, 42, "old-party"),
+	}, 42)
+	if !ok || partyID != 10 || len(cleared) != 0 {
+		t.Fatalf("short named roster projection = party=%d cleared=%v ok=%t", partyID, cleared, ok)
+	}
+
+	partyID, cleared, ok = parsePartyInfoProjection(protocol.Packet{
 		Type: protocol.NotiPartyInfo, Body: followerPartyRosterBody(8, 21, 22),
 	}, 12)
 	if !ok || partyID != 0 || len(cleared) != 0 {
@@ -342,4 +356,27 @@ func followerPartyRosterBody(partyID, leaderUID, memberUID uint16) []byte {
 	}
 	body = append(body, 0, 0, 0, 0)
 	return body
+}
+
+func followerNamedPartyRosterBody(partyID, leaderUID, memberUID uint16, name string) []byte {
+	body := followerPartyRosterBody(partyID, leaderUID, memberUID)
+	nameBytes := []byte(name)
+	named := make([]byte, 0, len(body)+len(nameBytes))
+	named = append(named, body[:6]...)
+	named = binary.LittleEndian.AppendUint32(named, uint32(len(nameBytes)))
+	named = append(named, nameBytes...)
+	named = append(named, body[10:]...)
+	return named
+}
+
+func followerShortNamedPartyRosterBody(partyID, leaderUID, memberUID uint16, name string) []byte {
+	body := followerPartyRosterBody(partyID, leaderUID, memberUID)
+	nameBytes := []byte(name)
+	named := make([]byte, 0, len(body)+len(nameBytes)-5)
+	named = append(named, body[:6]...)
+	named = binary.LittleEndian.AppendUint32(named, uint32(len(nameBytes)))
+	named = append(named, nameBytes...)
+	named = append(named, body[10:16]...)
+	named = append(named, body[21:]...)
+	return named
 }
