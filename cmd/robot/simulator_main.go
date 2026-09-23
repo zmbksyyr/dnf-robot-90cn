@@ -10,7 +10,9 @@ import (
 
 	runtimeinit "robot/internal/bootstrap/runtime"
 	"robot/internal/capability/catalog"
+	robotcap "robot/internal/capability/robot"
 	"robot/internal/capability/robotconfig"
+	robotstate "robot/internal/capability/robotstate"
 	s4a21backend "robot/internal/composition/backend/s4a21"
 	"robot/internal/entry/tcpapi"
 	"robot/internal/entry/webadmin"
@@ -59,6 +61,11 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		foundationlog.Robotf("SIMULATOR_ITEM_CATALOG_FAILED err=%v\n", err)
 		return 1
 	}
+	loadoutDB, err := s4a21DatabasePath(cfg.DFGameR)
+	if err != nil {
+		foundationlog.Robotf("SIMULATOR_LOADOUT_DATABASE_FAILED err=%v\n", err)
+		return 1
+	}
 	// Do not mark the generation as applied until simulator-specific
 	// initialization (including transport composition and PVF projection) has
 	// succeeded. A failed startup must retry the reinitialization next time.
@@ -74,11 +81,19 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 	manager.SetBackendSessionTransport(transports.sessions)
 	manager.SetTownMapCatalog(townMaps)
 	nameTemplates := catalog.NameTemplates(paths.Templates)
+	loadouts := s4a21backend.SQLiteLoadoutApplier{
+		DatabasePath: loadoutDB, Config: rc, Equipment: catalog.ViewItemCatalogs(paths.PVF).Equipment, RandIntn: manager.RandIntn,
+	}
+	if err := reconcileSimulatorLoadouts(context.Background(), state, loadouts); err != nil {
+		foundationlog.Robotf("SIMULATOR_LOADOUT_RECONCILE_FAILED err=%v\n", err)
+		return 1
+	}
 	manager.SetBackendRobotCreator(info.ID, s4a21backend.RobotCreator{
 		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state, Config: rc, Names: nameTemplates, Maps: townMaps,
 		AccountPrefix: "robot", IDStart: rc.RobotUIDStart,
 		RandIntn: manager.RandIntn, RandBetween: manager.RandBetween,
+		Loadouts: loadouts,
 	})
 	manager.SetBackendRobotCleaner(s4a21backend.RobotCleaner{
 		Protocol: s4a21backend.CharacterDeleter{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
@@ -117,6 +132,31 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 	<-sigCh
 	foundationlog.Robotf("SIMULATOR_STOPPING backend=%s\n", info.ID)
 	return 0
+}
+
+func reconcileSimulatorLoadouts(ctx context.Context, state *robotstate.FileStore, applier s4a21backend.CharacterLoadoutApplier) error {
+	robots, err := state.SelectRobots(ctx, robotcap.CommandRequest{Count: 1 << 30})
+	if err != nil {
+		return err
+	}
+	identities, err := state.Identities(ctx, shared.BackendS4A21)
+	if err != nil {
+		return err
+	}
+	accounts := make(map[string]string, len(identities))
+	for _, identity := range identities {
+		accounts[identity.CharacterName] = identity.Account
+	}
+	for _, robot := range robots {
+		account := accounts[robot.Name]
+		if account == "" {
+			return fmt.Errorf("S4A21 robot %d/%s has no account identity", robot.UID, robot.Name)
+		}
+		if err := applier.ApplyCharacterLoadout(ctx, account, robot); err != nil {
+			return fmt.Errorf("reconcile S4A21 loadout uid=%d: %w", robot.UID, err)
+		}
+	}
+	return nil
 }
 
 func ensureSimulatorOpenFileLimit(rc robotconfig.RuntimeConfig) error {

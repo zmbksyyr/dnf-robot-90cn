@@ -939,7 +939,20 @@ func equipmentType(v string) int {
 }
 
 func normalizeEquipmentTypeName(v string) string {
-	v = strings.ToLower(cleanPVFString(v))
+	// Some simulator PVFs append a numeric subtype after the bracketed type,
+	// for example "[weapon] 20". The common catalog only needs the type token.
+	v = strings.ToLower(strings.TrimSpace(v))
+	if start := strings.IndexByte(v, '['); start >= 0 {
+		if end := strings.IndexByte(v[start+1:], ']'); end > 0 {
+			v = v[start+1 : start+1+end]
+		}
+	} else if end := strings.IndexByte(v, ']'); end > 0 {
+		// cleanPVFString may already have removed the opening delimiters.
+		v = v[:end]
+	} else {
+		v = cleanPVFString(v)
+	}
+	v = cleanPVFString(v)
 	v = strings.NewReplacer(" ", "", "_", "", "-", "").Replace(v)
 	switch v {
 	case "redartifact", "creatureartifactred", "creatureredartifact", "petartifactred", "petredartifact":

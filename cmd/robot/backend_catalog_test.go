@@ -40,3 +40,19 @@ func TestS4A21PVFPathResolvesInsideServerDirectory(t *testing.T) {
 		t.Fatalf("directory path = %q, err = %v", got, err)
 	}
 }
+
+func TestS4A21DatabasePathResolvesBesideExecutable(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "Data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dataDir, "inventory.db")
+	if err := os.WriteFile(path, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s4a21DatabasePath(filepath.Join(dir, "DfoServer.exe"))
+	if err != nil || got != path {
+		t.Fatalf("path = %q, err = %v", got, err)
+	}
+}

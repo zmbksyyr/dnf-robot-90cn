@@ -34,6 +34,7 @@ var sqlImportAllowedDirs = []string{
 	"internal/scheduler/repository",
 	"internal/capability/mailnotify",
 	"internal/capability/marketapp",
+	"internal/composition/backend/s4a21",
 	"internal/protocol/dnf",
 }
 

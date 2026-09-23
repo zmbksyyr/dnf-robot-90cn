@@ -1,15 +1,27 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	runtimeinit "robot/internal/bootstrap/runtime"
+	robotcap "robot/internal/capability/robot"
+	robotstate "robot/internal/capability/robotstate"
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
 	"robot/internal/shared"
 )
+
+type recordingLoadoutApplier struct {
+	calls []string
+}
+
+func (a *recordingLoadoutApplier) ApplyCharacterLoadout(_ context.Context, account string, info robotcap.Info) error {
+	a.calls = append(a.calls, account+"/"+info.Name)
+	return nil
+}
 
 func TestSimulatorStartupDoesNotMarkRuntimeBeforePVFInit(t *testing.T) {
 	root := t.TempDir()
@@ -32,5 +44,26 @@ func TestSimulatorStartupDoesNotMarkRuntimeBeforePVFInit(t *testing.T) {
 	}
 	if _, err := runtimeinit.PrepareBackendRuntime(paths, selection); err != nil {
 		t.Fatalf("failed startup left runtime layout unusable: %v", err)
+	}
+}
+
+func TestReconcileSimulatorLoadoutsUsesPersistedIdentity(t *testing.T) {
+	state, err := robotstate.OpenFileStore(filepath.Join(t.TempDir(), "robot_state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := state.RegisterRobots(ctx, []robotcap.Info{{UID: 7, Name: "bot"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.RegisterIdentity(ctx, robotstate.Identity{Backend: shared.BackendS4A21, Account: "robot7", CharacterName: "bot"}); err != nil {
+		t.Fatal(err)
+	}
+	applier := &recordingLoadoutApplier{}
+	if err := reconcileSimulatorLoadouts(ctx, state, applier); err != nil {
+		t.Fatal(err)
+	}
+	if len(applier.calls) != 1 || applier.calls[0] != "robot7/bot" {
+		t.Fatalf("loadout calls=%v", applier.calls)
 	}
 }

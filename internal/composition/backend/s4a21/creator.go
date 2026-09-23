@@ -29,6 +29,7 @@ type RobotCreator struct {
 	IDStart       int
 	RandIntn      func(int) int
 	RandBetween   func(int, int) int
+	Loadouts      CharacterLoadoutApplier
 }
 
 func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateRequest) ([]robotcap.Info, error) {
@@ -70,6 +71,13 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	}
 	if err := c.RobotCatalog.RegisterRobots(ctx, robots); err != nil {
 		return nil, fmt.Errorf("register S4A21 robot directory: %w", err)
+	}
+	if c.Loadouts != nil {
+		for i, info := range robots {
+			if err := c.Loadouts.ApplyCharacterLoadout(ctx, plans[i].Request.AccountName, info); err != nil {
+				return nil, fmt.Errorf("apply S4A21 loadout uid=%d: %w", info.UID, err)
+			}
+		}
 	}
 	return robots, nil
 }

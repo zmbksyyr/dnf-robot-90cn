@@ -77,3 +77,21 @@ func s4a21PVFPath(dfGameR string) (string, error) {
 	}
 	return candidate, nil
 }
+
+func s4a21DatabasePath(dfGameR string) (string, error) {
+	value := strings.TrimSpace(dfGameR)
+	if value == "" {
+		return "", fmt.Errorf("S4A21 database path cannot be resolved from empty DfGameR")
+	}
+	base := value
+	if stat, err := os.Stat(value); err == nil && !stat.IsDir() {
+		base = filepath.Dir(value)
+	} else if filepath.Ext(value) != "" {
+		base = filepath.Dir(value)
+	}
+	candidate := filepath.Join(base, "Data", "inventory.db")
+	if _, err := os.Stat(candidate); err != nil {
+		return "", fmt.Errorf("S4A21 database %q: %w", candidate, err)
+	}
+	return candidate, nil
+}

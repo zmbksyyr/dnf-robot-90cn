@@ -7,13 +7,16 @@ import (
 	"testing"
 )
 
-func TestSimulatorAdapterDoesNotReferenceGameDatabase(t *testing.T) {
+func TestSimulatorDatabaseAccessIsIsolatedToPersistenceAdapter(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		if entry.Name() == "loadout.go" {
 			continue
 		}
 		path := filepath.Join(".", entry.Name())
@@ -26,7 +29,7 @@ func TestSimulatorAdapterDoesNotReferenceGameDatabase(t *testing.T) {
 			"database/sql", "sqlite", "mysql", "inventory.db", "taiwan_cain", "d_starsky",
 		} {
 			if strings.Contains(text, forbidden) {
-				t.Errorf("%s references forbidden simulator database marker %q", path, forbidden)
+				t.Errorf("%s references database marker %q outside the explicit persistence adapter", path, forbidden)
 			}
 		}
 	}

@@ -48,7 +48,7 @@ func TestLiveReadNativeTownMapCatalog(t *testing.T) {
 func TestProjectItemCatalogsUsesBackendTextArchive(t *testing.T) {
 	archive := testTextArchive{
 		"equipment/equipment.lst":         "1001 `weapon/a.equ` 2001 `avatar/mage/cap/b.equ`",
-		"equipment/weapon/a.equ":          "[name]\n`Blade`\n[equipment type]\n`[weapon]`\n[minimum level]\n10\n[usable job]\n1\n[/usable job]",
+		"equipment/weapon/a.equ":          "[name]\n`Blade`\n[equipment type]\n`[weapon]` 20\n[minimum level]\n10\n[usable job]\n1\n[/usable job]",
 		"equipment/avatar/mage/cap/b.equ": "[name]\n`Hat`\n[equipment type]\n`[hat avatar]`\n[usable job]\n3\n[/usable job]",
 		"stackable/stackable.lst":         "3001 `material/c.stk`",
 		"stackable/material/c.stk":        "[name]\n`Ore`\n[stack limit]\n1000",
