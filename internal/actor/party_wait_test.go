@@ -88,8 +88,7 @@ func TestPartyActiveActorUsesLiveStateAndWaits(t *testing.T) {
 	a.resetForUID(7)
 	now := time.Now()
 	a.nextMove = now.Add(-time.Second)
-	a.nextLocalShout = now.Add(-time.Second)
-	a.nextWorldShout = now.Add(-time.Second)
+	a.nextShout = now.Add(-time.Second)
 	a.nextStore = now.Add(-time.Second)
 	a.storeUntil = now.Add(-time.Second)
 
@@ -97,7 +96,7 @@ func TestPartyActiveActorUsesLiveStateAndWaits(t *testing.T) {
 	if runtime.moves != 0 || runtime.shouts != 0 || runtime.stores != 0 || runtime.expires != 0 {
 		t.Fatalf("party actor ran automatic actions: moves=%d shouts=%d stores=%d expires=%d", runtime.moves, runtime.shouts, runtime.stores, runtime.expires)
 	}
-	if !a.nextMove.IsZero() || !a.nextLocalShout.IsZero() || !a.nextWorldShout.IsZero() || !a.nextStore.IsZero() {
+	if !a.nextMove.IsZero() || !a.nextShout.IsZero() || !a.nextStore.IsZero() {
 		t.Fatal("party wait did not clear automatic schedule")
 	}
 	if !a.shouldStopAutoStore() {
@@ -119,7 +118,7 @@ func TestPartyActiveActorUsesLiveStateAndWaits(t *testing.T) {
 	if runtime.moves != 0 || runtime.shouts != 0 || runtime.stores != 0 || runtime.expires != 0 {
 		t.Fatalf("leaving party ran overdue actions immediately: moves=%d shouts=%d stores=%d expires=%d", runtime.moves, runtime.shouts, runtime.stores, runtime.expires)
 	}
-	if a.nextMove.IsZero() || a.nextLocalShout.IsZero() || a.nextWorldShout.IsZero() || a.nextStore.IsZero() {
+	if a.nextMove.IsZero() || a.nextShout.IsZero() || a.nextStore.IsZero() {
 		t.Fatal("leaving party did not restart automatic schedules")
 	}
 }

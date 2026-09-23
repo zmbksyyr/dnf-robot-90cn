@@ -162,6 +162,11 @@ func (r *RobotRuntime) AutoShout(uid int, world bool, msg string) robotcap.Actio
 	return r.run(uid, func() robotcap.ActionResult {
 		if world {
 			if err := r.manager.requireBackendCapability(shared.CapabilityWorldShout); err != nil {
+				world = false
+			}
+		}
+		if !world {
+			if err := r.manager.requireBackendCapability(shared.CapabilityShout); err != nil {
 				return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
 			}
 		}

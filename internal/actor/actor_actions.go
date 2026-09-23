@@ -171,14 +171,9 @@ func (a *Actor) tick(now time.Time) {
 	if !a.runtime.AutoActionsEnabled(rc) {
 		return
 	}
-	if a.nextWorldShoutDue(now, rc) {
-		a.runBusy("shout_world", func() {
+	if a.nextShoutDue(now, rc) {
+		a.runBusy("shout", func() {
 			a.runtime.AutoShout(uid, true, a.randomShoutMessage())
-		})
-	}
-	if a.nextLocalShoutDue(now, rc) {
-		a.runBusy("shout_local", func() {
-			a.runtime.AutoShout(uid, false, a.randomShoutMessage())
 		})
 	}
 	if !isStore && a.nextStoreDue(now, rc) {
@@ -219,15 +214,13 @@ func (a *Actor) clearAutoActionSchedule() {
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
 	a.nextMove = time.Time{}
-	a.nextLocalShout = time.Time{}
-	a.nextWorldShout = time.Time{}
+	a.nextShout = time.Time{}
 	a.nextStore = time.Time{}
 }
 
 func (a *Actor) clearAutoScheduleLocked() {
 	a.nextMove = time.Time{}
-	a.nextLocalShout = time.Time{}
-	a.nextWorldShout = time.Time{}
+	a.nextShout = time.Time{}
 	a.nextStore = time.Time{}
 	a.storeUntil = time.Time{}
 }
@@ -274,16 +267,10 @@ func (a *Actor) setNextStore(t time.Time) {
 	a.stateMu.Unlock()
 }
 
-func (a *Actor) nextWorldShoutDue(now time.Time, rc robotconfig.RuntimeConfig) bool {
+func (a *Actor) nextShoutDue(now time.Time, rc robotconfig.RuntimeConfig) bool {
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
-	return a.randomizedDue(&a.nextWorldShout, now, rc.AutoShoutIntervalMinSec, rc.AutoShoutIntervalMaxSec)
-}
-
-func (a *Actor) nextLocalShoutDue(now time.Time, rc robotconfig.RuntimeConfig) bool {
-	a.stateMu.Lock()
-	defer a.stateMu.Unlock()
-	return a.randomizedDue(&a.nextLocalShout, now, rc.AutoShoutIntervalMinSec, rc.AutoShoutIntervalMaxSec)
+	return a.randomizedDue(&a.nextShout, now, rc.AutoShoutIntervalMinSec, rc.AutoShoutIntervalMaxSec)
 }
 
 func (a *Actor) nextStoreDue(now time.Time, rc robotconfig.RuntimeConfig) bool {

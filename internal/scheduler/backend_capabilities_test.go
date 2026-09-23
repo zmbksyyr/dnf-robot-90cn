@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	robotcap "robot/internal/capability/robot"
 	"robot/internal/shared"
@@ -21,6 +22,39 @@ func (t partyStateActionTransport) ShoutLocal(context.Context, shared.RuntimeSho
 }
 
 func (t partyStateActionTransport) PartyActive(uid int) bool { return uid == t.activeUID }
+
+type shoutRecordingTransport struct {
+	commands []shared.RuntimeShoutCommand
+}
+
+func (*shoutRecordingTransport) MoveTown(context.Context, shared.RuntimeMoveCommand) error {
+	return nil
+}
+func (t *shoutRecordingTransport) ShoutLocal(_ context.Context, command shared.RuntimeShoutCommand) error {
+	t.commands = append(t.commands, command)
+	return nil
+}
+
+func TestSimulatorAutomaticShoutFallsBackToAreaChannel(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "[shout]\nshout_send_enabled = true\n")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	transport := &shoutRecordingTransport{}
+	m.SetBackendActionTransport(transport)
+	m.runtimeStatusCache = map[int]robotcap.RuntimeStatus{
+		7: {UID: 7, StateName: robotcap.RuntimeStateRunning},
+	}
+	m.runtimeStatusCacheAt = time.Now()
+	result := NewRobotRuntime(m).AutoShout(7, true, "hello")
+	if !result.OK || len(transport.commands) != 1 || transport.commands[0].Message != "hello" {
+		t.Fatalf("result=%+v commands=%+v", result, transport.commands)
+	}
+	m.autoMu.Lock()
+	stats := m.autoStats
+	m.autoMu.Unlock()
+	if stats.ShoutLocalSuccess != 1 || stats.ShoutWorldSuccess != 0 {
+		t.Fatalf("shout stats local=%d world=%d", stats.ShoutLocalSuccess, stats.ShoutWorldSuccess)
+	}
+}
 
 func TestRobotRuntimeUsesLiveBackendPartyState(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")

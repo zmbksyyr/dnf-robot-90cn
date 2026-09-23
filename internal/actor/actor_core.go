@@ -24,8 +24,7 @@ type Actor struct {
 	once       sync.Once
 
 	nextMove         time.Time
-	nextLocalShout   time.Time
-	nextWorldShout   time.Time
+	nextShout        time.Time
 	nextStore        time.Time
 	storeUntil       time.Time
 	lastOnlineTry    time.Time
