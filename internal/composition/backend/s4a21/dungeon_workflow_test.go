@@ -180,6 +180,46 @@ func TestMoveSingleDungeonTimeoutPreservesReadyRoom(t *testing.T) {
 	}
 }
 
+func TestMoveSingleDungeonLoadingTimeoutRollsBackPendingRoom(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	session, drainCancel := testSessionWithDrain(clientConn)
+	defer drainCancel()
+
+	state := &dungeonRunState{}
+	if err := state.BeginSelection(144); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.BeginEntry(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.StartLoading(2, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.FinishLoading(); err != nil {
+		t.Fatal(err)
+	}
+	session.dungeonState = state
+
+	go func() {
+		_, _ = protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
+		_, _ = serverConn.Write(protocol.EncodeResponse(0, protocol.NotiStartMap, []byte{7, 8}))
+		// Deliberately omit FINISH_LOADING to exercise rollback after the
+		// adapter has already entered the loading phase.
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := session.moveSingleDungeon(ctx, 7, 8, 0, 0); err == nil {
+		t.Fatal("loading timeout unexpectedly succeeded")
+	}
+	snapshot := state.Snapshot()
+	if snapshot.Phase != uint8(dungeonPhaseReady) || snapshot.RoomX != 2 || snapshot.RoomY != 3 || state.hasPending {
+		t.Fatalf("state changed after loading timeout: %+v pending=%t", snapshot, state.hasPending)
+	}
+}
+
 func testSessionWithDrain(clientConn net.Conn) (*Session, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &Session{client: protocol.NewClient(clientConn), done: make(chan struct{})}

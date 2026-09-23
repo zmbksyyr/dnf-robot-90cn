@@ -87,6 +87,13 @@ func (s *Session) moveSingleDungeon(ctx context.Context, nextX, nextY byte, path
 		return dungeonRunSnapshot{}, fmt.Errorf("S4A21 dungeon run is not active")
 	}
 	state := s.dungeonState
+	previous := *state
+	committed := false
+	defer func() {
+		if !committed {
+			*state = previous
+		}
+	}()
 	if err := state.PrepareMove(); err != nil {
 		return dungeonRunSnapshot{}, err
 	}
@@ -121,6 +128,7 @@ func (s *Session) moveSingleDungeon(ctx context.Context, nextX, nextY byte, path
 	if err := state.AcceptFinishLoading(finish.Body); err != nil {
 		return dungeonRunSnapshot{}, err
 	}
+	committed = true
 	return state.Snapshot(), nil
 }
 
