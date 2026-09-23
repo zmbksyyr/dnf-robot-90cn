@@ -416,6 +416,12 @@ VALUES (?, ?, ?, ?, 0, 0, zeroblob(30), 0, 0, 0)`, avatarUID, accountID, charact
 		}
 	}
 	if petSelected {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO character_subtype0_fields(character_id) VALUES(?)`, characterID); err != nil {
+			return fmt.Errorf("initialize S4A21 creature state character=%d: %w", characterID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO character_subtype1_fields(character_id) VALUES(?)`, characterID); err != nil {
+			return fmt.Errorf("initialize S4A21 creature level state character=%d: %w", characterID, err)
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM character_creatures WHERE character_id=?`, characterID); err != nil {
 			return fmt.Errorf("clear S4A21 creatures character=%d: %w", characterID, err)
 		}
