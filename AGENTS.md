@@ -125,9 +125,9 @@ Game RSA files and Auction/Point `iteminfo.dat` are external integration
 files/copies, not alternate deployment roots. A normal Restart only restarts
 `/root/robot` and must not move, delete, or recreate `/root/config`.
 
-Start the native robot with the bounded stdout sink:
+Start the native robot directly; Robot owns its rotating log file:
 
 ```sh
 mkdir -p /root/config/logs
-nohup sh -c '/root/robot 2>&1 | /root/robot --bounded-log-sink /root/config/logs/stdout.log' >/dev/null 2>/root/config/logs/start_error.log &
+nohup /root/robot >>/root/config/logs/stdout.log 2>/root/config/logs/start_error.log < /dev/null &
 ```

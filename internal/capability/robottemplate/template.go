@@ -128,13 +128,15 @@ func AllocateName(uid, job, grow int, used map[string]struct{}, rc robotconfig.R
 			}
 		}
 	}
+	fallbackRunes := []rune("风云星月山海天涯剑影霜雪龙吟夜雨晨光青岚苍穹逐梦无双凌墨羽寒江孤城长歌惊鸿逍遥清欢归舟听潮踏歌流萤锦书朝暮浮生")
 	for attempt := 0; attempt < 1000; attempt++ {
-		name := fmt.Sprintf("Robot%d%03d", uid%100000, attempt)
+		value := uid + attempt
+		name := fmt.Sprintf("旅人%c%c%c%c", fallbackRunes[(value/1)%len(fallbackRunes)], fallbackRunes[(value/7)%len(fallbackRunes)], fallbackRunes[(value/31)%len(fallbackRunes)], fallbackRunes[(value/127)%len(fallbackRunes)])
 		if reserveName(name, used, exists) {
 			return name
 		}
 	}
-	return fmt.Sprintf("Robot%d", time.Now().UnixNano()%1000000)
+	return fmt.Sprintf("旅人%d", time.Now().UnixNano()%1000000)
 }
 
 func allocateFromPool(names []string, used map[string]struct{}, exists func(string) bool, randBetween func(int, int) int) (string, bool) {

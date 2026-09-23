@@ -95,6 +95,13 @@ func AvatarUsableByJob(item shared.EquipmentCatalogItem, job int) bool {
 	if len(item.UseJob) == 0 {
 		return item.ItemType == 29
 	}
+	meta := strings.ToLower(strings.TrimSpace(item.Name + " " + item.Name2 + " " + item.Path + " " + item.Icon))
+	if job >= 0 && job <= 4 && (strings.Contains(meta, "female") || strings.Contains(meta, "\u5973")) {
+		return false
+	}
+	if job >= 5 && job <= 8 && (strings.Contains(meta, "male") || strings.Contains(meta, "\u7537")) {
+		return false
+	}
 	for _, j := range item.UseJob {
 		if j == job {
 			return true

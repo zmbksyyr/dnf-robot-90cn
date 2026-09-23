@@ -9,16 +9,18 @@ import (
 	"testing"
 )
 
-func TestBuildRobotRestartScriptKeepsOtherBoundedLogSinks(t *testing.T) {
+func TestBuildRobotRestartScriptRestartsSingleRobotProcess(t *testing.T) {
 	script := buildRobotRestartScript("/root/robot", "/root/config")
 	for _, want := range []string{
-		`[ "$mode" = "--web-admin" ]`,
-		`[ "$mode" = "--bounded-log-sink" ] && [ "$sink" = "$log_path" ]`,
-		"log_path=" + shellQuote(filepath.Join("/root/config", "logs", "stdout.log")),
+		shellQuote(filepath.Join("/root/config", "logs", "stdout.log")),
+		`nohup "$exe" >>`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("restart script missing %q:\n%s", want, script)
 		}
+	}
+	if strings.Contains(script, "bounded-log-sink") || strings.Contains(script, "web-admin") {
+		t.Fatalf("single-process restart script retains child modes: %s", script)
 	}
 }
 

@@ -265,7 +265,6 @@ func buildRobotRestartScript(exe, configDir string) string {
 	return fmt.Sprintf(`(
 sleep 1
 exe=%s
-log_path=%s
 stop_robot_processes() {
   signal=$1
   for d in /proc/[0-9]*; do
@@ -273,8 +272,7 @@ stop_robot_processes() {
     target=$(readlink "$d/exe" 2>/dev/null || true)
     [ "$target" = "$exe" ] || continue
     mode=$(tr '\000' '\n' < "$d/cmdline" 2>/dev/null | sed -n '2p')
-    sink=$(tr '\000' '\n' < "$d/cmdline" 2>/dev/null | sed -n '3p')
-    if [ -z "$mode" ] || [ "$mode" = "--web-admin" ] || { [ "$mode" = "--bounded-log-sink" ] && [ "$sink" = "$log_path" ]; }; then
+    if [ -z "$mode" ]; then
       kill "-$signal" "$pid" 2>/dev/null || true
     fi
   done
@@ -283,8 +281,8 @@ stop_robot_processes TERM
 sleep 2
 stop_robot_processes KILL
 cd %s || exit 1
-nohup sh -c '"$1" 2>&1 | "$1" --bounded-log-sink "$2"' sh "$exe" %s >/dev/null 2>%s < /dev/null &
-) >/dev/null 2>&1 &`, shellQuote(exe), shellQuote(logPath), shellQuote(workDir), shellQuote(logPath), shellQuote(errPath))
+nohup "$exe" >>%s 2>>%s < /dev/null &
+) >/dev/null 2>&1 &`, shellQuote(exe), shellQuote(workDir), shellQuote(logPath), shellQuote(errPath))
 }
 
 func shellQuote(value string) string {

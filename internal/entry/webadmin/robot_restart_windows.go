@@ -3,7 +3,6 @@
 package webadmin
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -28,8 +27,7 @@ func startRobotRestartHelper(exe, configDir string) error {
 		"--restart-helper",
 		"--restart-exe", exe,
 		"--restart-config-dir", configDir,
-		"--restart-parent-pid", fmt.Sprint(os.Getppid()),
-		"--restart-web-pid", fmt.Sprint(os.Getpid()),
+		"--restart-parent-pid", fmt.Sprint(os.Getpid()),
 	)
 	cmd.Dir = filepath.Dir(exe)
 	setDetachedWindowsProcess(cmd)
@@ -45,11 +43,10 @@ func runRestartHelper(args []string) error {
 	exe := flags.String("restart-exe", "", "robot executable")
 	configDir := flags.String("restart-config-dir", "", "robot config directory")
 	parentPID := flags.Int("restart-parent-pid", 0, "robot parent pid")
-	webPID := flags.Int("restart-web-pid", 0, "web child pid")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || *parentPID <= 0 || *webPID <= 0 || *parentPID == *webPID || *parentPID == os.Getpid() || *webPID == os.Getpid() {
+	if flags.NArg() != 0 || *parentPID <= 0 || *parentPID == os.Getpid() {
 		return fmt.Errorf("invalid restart helper process arguments")
 	}
 	resolvedExe, err := filepath.Abs(*exe)
@@ -64,12 +61,9 @@ func runRestartHelper(args []string) error {
 		return fmt.Errorf("empty restart config directory")
 	}
 
-	// Let the Web handler flush its response before terminating the two known
-	// Robot processes. Windows does not recursively kill child processes here,
-	// so this detached helper remains alive to launch the replacement.
+	// Let the Web handler flush its response before terminating the Robot.
 	time.Sleep(time.Second)
 	_ = terminateWindowsProcess(*parentPID)
-	_ = terminateWindowsProcess(*webPID)
 	time.Sleep(500 * time.Millisecond)
 	return startWindowsRobot(resolvedExe, *configDir)
 }
@@ -93,34 +87,21 @@ func startWindowsRobot(exe, configDir string) error {
 	}
 	defer errorLog.Close()
 
-	reader, writer, err := os.Pipe()
+	robot := exec.Command(exe)
+	robot.Dir = filepath.Dir(exe)
+	stdout, err := os.OpenFile(paths.StdoutLog(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
-	defer writer.Close()
-
-	sink := exec.Command(exe, "--bounded-log-sink", paths.StdoutLog())
-	sink.Dir = filepath.Dir(exe)
-	sink.Stdin = reader
-	sink.Stderr = errorLog
-	setDetachedWindowsProcess(sink)
-	if err := sink.Start(); err != nil {
-		return fmt.Errorf("start bounded log sink: %w", err)
-	}
-
-	robot := exec.Command(exe)
-	robot.Dir = filepath.Dir(exe)
-	robot.Stdout = writer
-	robot.Stderr = writer
+	defer stdout.Close()
+	robot.Stdout = stdout
+	robot.Stderr = errorLog
 	setDetachedWindowsProcess(robot)
 	if err := robot.Start(); err != nil {
-		_ = sink.Process.Kill()
-		_ = sink.Wait()
 		return fmt.Errorf("start robot: %w", err)
 	}
-	if err := errors.Join(robot.Process.Release(), sink.Process.Release()); err != nil {
-		return fmt.Errorf("release restarted robot processes: %w", err)
+	if err := robot.Process.Release(); err != nil {
+		return fmt.Errorf("release restarted robot process: %w", err)
 	}
 	return nil
 }
