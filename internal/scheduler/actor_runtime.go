@@ -89,6 +89,12 @@ func (r *RobotRuntime) Logout(uid int) robotcap.ActionResult {
 }
 
 func (r *RobotRuntime) ForceClose(uid int) bool {
+	if r != nil && r.manager != nil && r.manager.backendSessions != nil {
+		// Backend session transports own simulator connections. Close is
+		// intentionally idempotent, so a retry also confirms that a session
+		// detached even when its first socket close returned an error.
+		return r.manager.backendSessions.Close(uid) == nil
+	}
 	closer, ok := r.manager.doll.(interface{ ForceClose(int) bool })
 	return ok && closer.ForceClose(uid)
 }

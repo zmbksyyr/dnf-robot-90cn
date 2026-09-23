@@ -13,8 +13,9 @@ import (
 )
 
 type backendSessionStub struct {
-	opened []shared.OpenSessionRequest
-	closed []int
+	opened      []shared.OpenSessionRequest
+	closed      []int
+	closeErrors []error
 }
 
 func (s *backendSessionStub) Open(_ context.Context, uid int, request shared.OpenSessionRequest) error {
@@ -25,7 +26,29 @@ func (s *backendSessionStub) Open(_ context.Context, uid int, request shared.Ope
 
 func (s *backendSessionStub) Close(uid int) error {
 	s.closed = append(s.closed, uid)
+	if len(s.closeErrors) > 0 {
+		err := s.closeErrors[0]
+		s.closeErrors = s.closeErrors[1:]
+		return err
+	}
 	return nil
+}
+
+func TestRobotRuntimeForceCloseUsesBackendSessionTransport(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	backend := &backendSessionStub{closeErrors: []error{errors.New("socket close failed")}}
+	m.SetBackendSessionTransport(backend)
+	runtime := NewRobotRuntime(m)
+
+	if runtime.ForceClose(17000001) {
+		t.Fatal("first backend close error was reported as success")
+	}
+	if !runtime.ForceClose(17000001) {
+		t.Fatal("idempotent backend close retry did not confirm release")
+	}
+	if len(backend.closed) != 2 || backend.closed[0] != 17000001 || backend.closed[1] != 17000001 {
+		t.Fatalf("backend close calls=%v", backend.closed)
+	}
 }
 
 type offlineSessionRepository struct {
