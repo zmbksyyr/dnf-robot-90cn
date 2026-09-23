@@ -110,7 +110,7 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 			t.Fatalf("S4A21 capability %s unexpectedly disabled: %+v", capability, simulator.Capabilities[capability])
 		}
 	}
-	for _, capability := range []shared.BackendCapability{shared.CapabilityDungeonMove, shared.CapabilityWorldShout, shared.CapabilityStore, shared.CapabilityParty, shared.CapabilitySkill, shared.CapabilityCompatibility} {
+	for _, capability := range []shared.BackendCapability{shared.CapabilityDungeonMove, shared.CapabilityWorldShout, shared.CapabilityStore, shared.CapabilityParty, shared.CapabilitySkill, shared.CapabilityCompatibility, shared.CapabilityKeypair} {
 		status := simulator.Capabilities[capability]
 		if status.Enabled || status.Reason == "" {
 			t.Fatalf("S4A21 capability %s must be disabled with a reason: %+v", capability, status)

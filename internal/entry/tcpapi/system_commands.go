@@ -48,7 +48,13 @@ func handleSystemCommand(cmd, pkt string, manager *scheduler.RobotManager) (stri
 	case "databaseStatus":
 		return wrapResult(map[string]interface{}{"ok": true, "result": manager.DatabaseStatus()}), true
 	case "keypairStatus":
-		return wrapResult(map[string]interface{}{"ok": true, "result": manager.KeypairStatus()}), true
+		status := manager.KeypairStatus()
+		return wrapResult(map[string]interface{}{"ok": status.Error == "", "error": func() string {
+			if status.Error != "" {
+				return status.Error
+			}
+			return ""
+		}(), "result": status}), true
 	case "keypairReleaseDefault":
 		res, err := manager.ReleaseDefaultKeypair()
 		return wrapResult(map[string]interface{}{"ok": err == nil, "error": errString(err), "result": res}), true

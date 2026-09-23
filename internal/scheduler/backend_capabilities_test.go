@@ -95,3 +95,16 @@ func TestSimulatorCleanupIsRejectedWithStableCapabilityError(t *testing.T) {
 		t.Fatalf("error = %v, missing stable capability code", err)
 	}
 }
+
+func TestSimulatorKeypairOperationsAreRejectedWithStableCapabilityError(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	if status := m.KeypairStatus(); !strings.Contains(status.Error, shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("status = %+v, want stable unsupported keypair error", status)
+	}
+	_, err := m.ReleaseDefaultKeypair()
+	var unsupported shared.UnsupportedCapabilityError
+	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityKeypair {
+		t.Fatalf("error = %v, want keypair unsupported", err)
+	}
+}

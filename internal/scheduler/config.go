@@ -39,10 +39,16 @@ func (m *RobotManager) RuntimeFileEntries() []filewatch.Entry {
 }
 
 func (m *RobotManager) ReleaseDefaultKeypair() (keypair.KeypairStatus, error) {
+	if err := m.requireBackendCapability(shared.CapabilityKeypair); err != nil {
+		return keypair.KeypairStatus{}, err
+	}
 	return keypair.ReleaseDefault(m.cfg)
 }
 
 func (m *RobotManager) KeypairStatus() keypair.KeypairStatus {
+	if err := m.requireBackendCapability(shared.CapabilityKeypair); err != nil {
+		return keypair.KeypairStatus{Error: err.Error()}
+	}
 	return keypair.CurrentStatus(m.cfg)
 }
 

@@ -7,9 +7,13 @@ import (
 	"strconv"
 
 	"robot/internal/capability/keypair"
+	"robot/internal/shared"
 )
 
 func (s *Server) handleKeypairDownload(w http.ResponseWriter, _ *http.Request) {
+	if s.nativeBackendOnly(w, shared.CapabilityKeypair) {
+		return
+	}
 	raw, err := callRobot(s.robotAddr, "keypairStatus", nil, robotCallTimeout("keypairStatus"), s.cfg.MaxResponseBytes)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)

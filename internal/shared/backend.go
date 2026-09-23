@@ -27,6 +27,7 @@ const (
 	CapabilityMarket        BackendCapability = "market"
 	CapabilityCleanup       BackendCapability = "cleanup"
 	CapabilityCompatibility BackendCapability = "compatibility"
+	CapabilityKeypair       BackendCapability = "keypair"
 )
 
 type CapabilityStatus struct {
@@ -102,7 +103,7 @@ func KnownBackends() []BackendInfo {
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility,
+		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
@@ -124,6 +125,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
 	capabilities[CapabilityCleanup] = CapabilityStatus{Reason: "S4A21 character deletion protocol is not integrated"}
 	capabilities[CapabilityCompatibility] = CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
+	capabilities[CapabilityKeypair] = CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
 	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "dungeon entry workflow is not integrated yet"}
 	return capabilities
 }
@@ -133,7 +135,7 @@ func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStat
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility,
+		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair,
 	} {
 		capabilities[operation] = CapabilityStatus{Reason: reason}
 	}
