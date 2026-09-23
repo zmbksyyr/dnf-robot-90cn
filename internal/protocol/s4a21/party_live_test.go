@@ -143,7 +143,7 @@ func TestLivePartyDungeonTutorialProjectionProbe(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	leader, member, _, _ := establishLiveParty(t, ctx, address, "tutorial")
+	leader, member, _, _ := establishLivePartyAfterTutorial(t, ctx, address, "tutorial")
 	defer leader.Close()
 	defer member.Close()
 
@@ -153,37 +153,139 @@ func TestLivePartyDungeonTutorialProjectionProbe(t *testing.T) {
 	if _, err := waitPartyProbePacket(leader, CmdEnterSelectDungeon, 5*time.Second, "tutorial-enter-ack"); err != nil {
 		t.Fatal(err)
 	}
-	// Drain the pre-flag selection projection before selecting the dungeon.
-	drainPartyProbe(t, leader, 300*time.Millisecond, "tutorial-before-flag-leader")
-	drainPartyProbe(t, member, 300*time.Millisecond, "tutorial-before-flag-member")
+	// Both characters have completed the first-tutorial protocol before the
+	// party is formed, so ENTER_SELECT_DUNGEON must project the frozen party
+	// cohort immediately.
+	drainPartyProbe(t, leader, 300*time.Millisecond, "party-selection-leader")
+	drainPartyProbe(t, member, 300*time.Millisecond, "party-selection-member")
 	if err := leader.SelectDungeon(ctx, 144, 0, 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	selectPackets := collectPartyProbePackets(t, leader, 1200*time.Millisecond, "tutorial-select-leader")
-	selectAccepted := false
-	for _, packet := range selectPackets {
-		if packet.Type == CmdSelectDungeon && packet.Command == 1 && len(packet.Body) > 0 && packet.Body[0] == 1 {
-			selectAccepted = true
-		}
-	}
-	if !selectAccepted {
-		t.Logf("party SELECT_DUNGEON produced no success ACK; continuing tutorial probe with packets=%v", packetTypes(selectPackets))
-	}
-	if err := leader.ChangeTutorialFlag(ctx, 30, 1); err != nil {
-		t.Fatal(err)
-	}
-	leaderPackets := collectPartyProbePackets(t, leader, 1800*time.Millisecond, "tutorial-after-flag-leader")
-	memberPackets := collectPartyProbePackets(t, member, 1800*time.Millisecond, "tutorial-after-flag-member")
+	leaderPackets := collectPartyProbePackets(t, leader, 2500*time.Millisecond, "party-entry-leader")
+	memberPackets := collectPartyProbePackets(t, member, 2500*time.Millisecond, "party-entry-member")
 	leaderTypes := packetTypes(leaderPackets)
 	memberTypes := packetTypes(memberPackets)
-	t.Logf("party tutorial projection: leader=%v member=%v", leaderTypes, memberTypes)
-	if !hasPacket(leaderPackets, CmdChangeTutorialFlag, 1) {
-		t.Fatalf("tutorial flag ACK missing: %v", leaderTypes)
+	t.Logf("party entry projection: leader=%v member=%v", leaderTypes, memberTypes)
+	leaderStart, leaderStarted := packetOfType(leaderPackets, NotiStartMap)
+	_, memberStarted := packetOfType(memberPackets, NotiStartMap)
+	if !leaderStarted || !memberStarted {
+		t.Fatalf("party entry did not project START_MAP to both sessions: leader=%v member=%v", leaderTypes, memberTypes)
 	}
-	if hasType(leaderPackets, NotiStartMap) != hasType(memberPackets, NotiStartMap) {
-		t.Logf("party tutorial projection is incomplete (expected gate failure): leader=%v member=%v", leaderTypes, memberTypes)
-		return
+	finishLivePartyLoading(t, ctx, leader, member, "party-entry")
+
+	if len(leaderStart.Body) < 2 {
+		t.Fatalf("leader START_MAP body is truncated: %X", leaderStart.Body)
 	}
+	nextX := leaderStart.Body[0]
+	if nextX == 0 {
+		nextX++
+	} else {
+		nextX--
+	}
+	nextY := leaderStart.Body[1]
+	if err := leader.MoveMap(ctx, MoveMapRequest{NextX: nextX, NextY: nextY}); err != nil {
+		t.Fatal(err)
+	}
+	leaderMove, err := waitPartyProbePacket(leader, NotiStartMap, 5*time.Second, "party-move-leader")
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberMove, err := waitPartyProbePacket(member, NotiStartMap, 5*time.Second, "party-move-member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leaderMove.Body) < 2 || len(memberMove.Body) < 2 ||
+		leaderMove.Body[0] != nextX || leaderMove.Body[1] != nextY ||
+		memberMove.Body[0] != nextX || memberMove.Body[1] != nextY {
+		t.Fatalf("party room projection mismatch: want=(%d,%d) leader=%X member=%X", nextX, nextY, leaderMove.Body, memberMove.Body)
+	}
+	finishLivePartyLoading(t, ctx, leader, member, "party-move")
+}
+
+func finishLivePartyLoading(t *testing.T, ctx context.Context, leader, member *Client, label string) {
+	t.Helper()
+	if err := leader.FinishLoading(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := member.FinishLoading(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitPartyProbePacket(leader, NotiFinishLoading, 5*time.Second, label+"-leader-loaded"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitPartyProbePacket(member, NotiFinishLoading, 5*time.Second, label+"-member-loaded"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func establishLivePartyAfterTutorial(t *testing.T, ctx context.Context, address, prefix string) (*Client, *Client, uint16, uint16) {
+	t.Helper()
+	leader, leaderCID := livePartyProbeSession(t, ctx, address, prefix+"-a")
+	member, memberCID := livePartyProbeSession(t, ctx, address, prefix+"-b")
+	completeLiveFirstTutorial(t, ctx, leader, prefix+"-a")
+	completeLiveFirstTutorial(t, ctx, member, prefix+"-b")
+
+	settings := []byte{0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
+	if err := leader.SetPartyInfo(ctx, settings); err != nil {
+		leader.Close()
+		member.Close()
+		t.Fatal(err)
+	}
+	drainPartyProbe(t, leader, 400*time.Millisecond, prefix+"-create")
+	if err := leader.RequestPeer(ctx, memberCID, 0, 0); err != nil {
+		leader.Close()
+		member.Close()
+		t.Fatal(err)
+	}
+	if _, err := waitPartyProbePacket(member, NotiRequestPeer, 1200*time.Millisecond, prefix+"-invite"); err != nil {
+		leader.Close()
+		member.Close()
+		t.Fatal(err)
+	}
+	if err := member.AcceptPartyInvite(ctx, leaderCID); err != nil {
+		leader.Close()
+		member.Close()
+		t.Fatal(err)
+	}
+	if types := collectPartyProbeTypes(t, leader, 1000*time.Millisecond, prefix+"-accept"); !types[NotiPartyInfo] {
+		leader.Close()
+		member.Close()
+		t.Fatalf("party setup did not publish PARTY_INFO: %v", types)
+	}
+	return leader, member, leaderCID, memberCID
+}
+
+func completeLiveFirstTutorial(t *testing.T, ctx context.Context, client *Client, label string) {
+	t.Helper()
+	if err := client.EnterSelectDungeon(ctx, 144); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitPartyProbePacket(client, CmdEnterSelectDungeon, 5*time.Second, label+"-tutorial-enter"); err != nil {
+		t.Fatal(err)
+	}
+	drainPartyProbe(t, client, 300*time.Millisecond, label+"-tutorial-selection")
+	if err := client.SelectDungeon(ctx, 144, 0, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ChangeTutorialFlag(ctx, 30, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitPartyProbePacket(client, NotiStartMap, 5*time.Second, label+"-tutorial-start"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.FinishLoading(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitPartyProbePacket(client, NotiFinishLoading, 5*time.Second, label+"-tutorial-loaded"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ChangeTutorialFlag(ctx, 31, 0); err != nil {
+		t.Fatal(err)
+	}
+	if packet, err := waitPartyProbePacket(client, CmdChangeTutorialFlag, 5*time.Second, label+"-tutorial-complete"); err != nil || packet.Command != 1 {
+		t.Fatalf("tutorial completion ACK missing: packet=%+v err=%v", packet, err)
+	}
+	drainPartyProbe(t, client, 500*time.Millisecond, label+"-tutorial-return")
 }
 
 func establishLiveParty(t *testing.T, ctx context.Context, address, prefix string) (*Client, *Client, uint16, uint16) {
@@ -336,12 +438,17 @@ func packetTypes(packets []Packet) map[uint16]bool {
 }
 
 func hasType(packets []Packet, typ uint16) bool {
+	_, ok := packetOfType(packets, typ)
+	return ok
+}
+
+func packetOfType(packets []Packet, typ uint16) (Packet, bool) {
 	for _, packet := range packets {
 		if packet.Type == typ {
-			return true
+			return packet, true
 		}
 	}
-	return false
+	return Packet{}, false
 }
 
 func hasPacket(packets []Packet, typ uint16, command byte) bool {
