@@ -19,6 +19,7 @@ const (
 	CapabilityProvision       BackendCapability = "provision"
 	CapabilityTownMove        BackendCapability = "town_move"
 	CapabilityDungeonMove     BackendCapability = "dungeon_move"
+	CapabilityDungeonFollow   BackendCapability = "dungeon_follow"
 	CapabilityShout           BackendCapability = "shout"
 	CapabilityWorldShout      BackendCapability = "world_shout"
 	CapabilityStore           BackendCapability = "store"
@@ -36,6 +37,7 @@ const (
 type CapabilityStatus struct {
 	Enabled bool   `json:"enabled"`
 	Reason  string `json:"reason,omitempty"`
+	Mode    string `json:"mode,omitempty"`
 }
 
 type BackendInfo struct {
@@ -119,12 +121,13 @@ func DecodeBackendSelection(data []byte) (BackendSelection, error) {
 func KnownBackends() []BackendInfo {
 	capabilities := make(map[BackendCapability]CapabilityStatus)
 	for _, operation := range []BackendCapability{
-		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
+		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
 		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
+	capabilities[CapabilityDungeonFollow] = CapabilityStatus{Enabled: true, Mode: "account"}
 	return []BackendInfo{{
 		ID: BackendNative, DisplayName: "Native", SupportedOS: []string{"linux"}, Selectable: true,
 		Capabilities: capabilities,
@@ -145,6 +148,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities := unavailableCapabilities("S4A21 protocol operation is not implemented yet")
 	capabilities[CapabilityProvision] = CapabilityStatus{Enabled: true}
 	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true, Reason: "coordinates and verified town-area transitions"}
+	capabilities[CapabilityDungeonFollow] = CapabilityStatus{Enabled: true, Mode: "toggle", Reason: "accepts ordinary party invitations without filtering by inviter account"}
 	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area channel only; party requires the separate party capability"}
 	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
 	capabilities[CapabilityCleanup] = CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
@@ -160,7 +164,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStatus {
 	capabilities := make(map[BackendCapability]CapabilityStatus)
 	for _, operation := range []BackendCapability{
-		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
+		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
 		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
 	} {

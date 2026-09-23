@@ -43,11 +43,14 @@ func TestAutoControlIsNotGatedByMarketCapability(t *testing.T) {
 }
 
 func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
+	if strings.Contains(appJS, `selectedBackendID==='sim_a21'`) {
+		t.Fatal("auto dialog must use backend capability metadata instead of a concrete backend ID")
+	}
 	for _, want := range []string{
 		`id="followAccount"`,
 		`cfg.follow_account`,
 		`'follow.follow_account'`,
-		`selectedBackendID==='sim_a21'`,
+		`backendCapabilities.dungeon_follow?.mode||'account'`,
 		`i18nFormat('auto.dungeon_follower')`,
 		`follow.type==='checkbox'`,
 		`cmd.includes("openPartyCompat"))cap='party'`,

@@ -37,10 +37,13 @@ func TestS4A21MetadataReflectsVerifiedCapabilities(t *testing.T) {
 	if found.ID == "" || !found.Selectable {
 		t.Fatalf("S4A21 metadata = %+v", found)
 	}
-	for _, capability := range []BackendCapability{CapabilityProvision, CapabilityTownMove, CapabilityShout} {
+	for _, capability := range []BackendCapability{CapabilityProvision, CapabilityTownMove, CapabilityDungeonFollow, CapabilityShout} {
 		if !found.Supports(capability) {
 			t.Fatalf("verified capability %s is disabled", capability)
 		}
+	}
+	if found.Capabilities[CapabilityDungeonFollow].Mode != "toggle" {
+		t.Fatalf("S4A21 dungeon follower mode = %+v", found.Capabilities[CapabilityDungeonFollow])
 	}
 	if found.Capabilities[CapabilityTownMove].Reason == "" {
 		t.Fatalf("town movement must describe its same-area boundary: %+v", found.Capabilities[CapabilityTownMove])

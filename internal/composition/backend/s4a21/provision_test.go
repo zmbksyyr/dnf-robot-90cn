@@ -10,7 +10,9 @@ import (
 	"os"
 	"testing"
 	"time"
+	"unicode"
 
+	"robot/internal/foundation/charset"
 	protocol "robot/internal/protocol/s4a21"
 	"robot/internal/shared"
 )
@@ -78,7 +80,7 @@ func TestProvisionCharacterFollowsProtocolSequence(t *testing.T) {
 	}
 }
 
-func TestProvisionCharacterChecksGlobalNameAndUsesStableFallback(t *testing.T) {
+func TestProvisionCharacterChecksGlobalNameAndUsesChineseFallback(t *testing.T) {
 	for _, rejectionCode := range []byte{24, 159} {
 		t.Run(fmt.Sprintf("code_%d", rejectionCode), func(t *testing.T) {
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -134,7 +136,7 @@ func TestProvisionCharacterChecksGlobalNameAndUsesStableFallback(t *testing.T) {
 			if err := <-done; err != nil {
 				t.Fatal(err)
 			}
-			if !result.Created || result.CharacterName != "rb42" || result.RobotUID != 42 {
+			if !result.Created || !onlyHan(result.CharacterName) || result.RobotUID != 42 {
 				t.Fatalf("result = %+v", result)
 			}
 		})
@@ -178,7 +180,7 @@ func TestProvisionCharacterRetriesFreshNameAfterSoftDeleteConflict(t *testing.T)
 			}
 			if request.Type == protocol.CmdCreateCharacter {
 				nameLength := int(binary.LittleEndian.Uint32(request.Body[1:5]))
-				createNames = append(createNames, string(request.Body[5:5+nameLength]))
+				createNames = append(createNames, charset.DecodePVFBytes(request.Body[5:5+nameLength]))
 			}
 			command := byte(1)
 			if step.responseType == protocol.NotiCharacterList {
@@ -189,7 +191,7 @@ func TestProvisionCharacterRetriesFreshNameAfterSoftDeleteConflict(t *testing.T)
 				return
 			}
 		}
-		if len(createNames) != 3 || createNames[0] != "robotOld" || createNames[1] != "rb42" || createNames[2] == createNames[1] {
+		if len(createNames) != 3 || createNames[0] != "robotOld" || !onlyHan(createNames[1]) || !onlyHan(createNames[2]) || createNames[2] == createNames[1] {
 			done <- fmt.Errorf("unexpected create candidates: %q", createNames)
 			return
 		}
@@ -205,9 +207,36 @@ func TestProvisionCharacterRetriesFreshNameAfterSoftDeleteConflict(t *testing.T)
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !result.Created || result.CharacterName == "robotOld" || result.CharacterName == "rb42" {
+	if !result.Created || !onlyHan(result.CharacterName) {
 		t.Fatalf("result=%+v", result)
 	}
+}
+
+func TestFreshCharacterNamesAreChineseAndFitS4A21Limit(t *testing.T) {
+	seen := make(map[string]struct{})
+	for index := uint64(0); index < 1000; index++ {
+		name := freshCharacterName("Robot17000001安徒恩", index*0x9e3779b97f4a7c15)
+		encoded, err := charset.EncodeGBKString(name)
+		if err != nil || len(encoded) > 18 || !onlyHan(name) {
+			t.Fatalf("name=%q bytes=%d err=%v", name, len(encoded), err)
+		}
+		if _, exists := seen[name]; exists {
+			t.Fatalf("duplicate generated name %q at %d", name, index)
+		}
+		seen[name] = struct{}{}
+	}
+}
+
+func onlyHan(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if !unicode.Is(unicode.Han, r) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestProvisionCharacterAdoptsExistingRosterIdentity(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"robot/internal/foundation/charset"
 	protocol "robot/internal/protocol/s4a21"
@@ -200,8 +201,8 @@ func rosterNameMatches(character protocol.CharacterRosterEntry, candidate string
 }
 
 func provisionCharacterNameCandidates(request shared.ProvisionCharacterRequest, requestedName string) []string {
-	candidates := make([]string, 0, 14)
-	seen := make(map[string]struct{}, 14)
+	candidates := make([]string, 0, 13)
+	seen := make(map[string]struct{}, 13)
 	add := func(name string) {
 		name = strings.TrimSpace(name)
 		if name == "" {
@@ -214,37 +215,45 @@ func provisionCharacterNameCandidates(request shared.ProvisionCharacterRequest, 
 		candidates = append(candidates, name)
 	}
 	add(requestedName)
-	add(fallbackCharacterName(request))
 	seed := uint64(time.Now().UnixNano()) ^ provisionNameSequence.Add(1)*0x9e3779b97f4a7c15
 	for _, value := range []byte(request.AccountName) {
 		seed ^= uint64(value)
 		seed *= 1099511628211
 	}
 	for attempt := 0; attempt < 12; attempt++ {
-		base := requestedName
-		if attempt >= 8 {
-			base = "旅人"
-		}
-		add(freshCharacterName(base, seed+uint64(attempt)*0x9e3779b97f4a7c15))
+		add(freshCharacterName(requestedName, seed+uint64(attempt)*0x9e3779b97f4a7c15))
 	}
 	return candidates
 }
 
+const s4a21NameSuffixRunes = "风云星月山海天涯剑影霜雪龙吟夜雨晨光流火青岚苍穹逐梦无双凌墨羽寒江孤城长歌惊鸿逍遥清欢归舟听潮踏歌流萤锦书朝暮浮生"
+
 func freshCharacterName(base string, seed uint64) string {
-	suffix := fmt.Sprintf("%012x", seed&0xffffffffffff)
-	remaining := 18 - len(suffix)
+	alphabet := []rune(s4a21NameSuffixRunes)
+	suffixRunes := make([]rune, 4)
+	value := seed
+	for index := range suffixRunes {
+		suffixRunes[index] = alphabet[value%uint64(len(alphabet))]
+		value = value/uint64(len(alphabet)) + 0x9e3779b97f4a7c15
+	}
+	suffix := string(suffixRunes)
+	suffixBytes, _ := charset.EncodeGBKString(suffix)
+	remaining := 18 - len(suffixBytes)
 	var prefix strings.Builder
 	used := 0
 	for _, r := range strings.TrimSpace(base) {
+		if !unicode.Is(unicode.Han, r) {
+			continue
+		}
 		encoded, err := charset.EncodeGBKString(string(r))
 		if err != nil || used+len(encoded) > remaining {
-			break
+			continue
 		}
 		prefix.WriteRune(r)
 		used += len(encoded)
 	}
 	if prefix.Len() == 0 {
-		prefix.WriteString("r")
+		prefix.WriteString("旅人")
 	}
 	return prefix.String() + suffix
 }

@@ -357,6 +357,33 @@ func TestSchedulerDoesNotExposeActionFacadeMethods(t *testing.T) {
 	}
 }
 
+func TestSchedulerDoesNotReferenceConcreteBackends(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "internal", "scheduler")
+	forbidden := []string{"BackendS4A21", "sim_a21", "composition/backend/s4a21", "protocol/s4a21"}
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, token := range forbidden {
+			if strings.Contains(string(data), token) {
+				t.Errorf("%s references concrete backend token %q", path, token)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk scheduler: %v", err)
+	}
+}
+
 func TestSchedulerLockResourcesUseNamedConstants(t *testing.T) {
 	root := repoRoot(t)
 	targets := []string{
