@@ -53,7 +53,7 @@ func runMain() int {
 	}
 
 	if *webAdminMode {
-		if err := runWebAdmin(*robotAddr, *webAddr, *webConfigStdin, shared.BackendID(*webBackendID)); err != nil {
+		if err := runWebAdmin(*robotAddr, *webAddr, *webConfigStdin, shared.BackendID(*webBackendID), false); err != nil {
 			fmt.Fprintf(os.Stderr, "web admin failed: %v\n", err)
 			return 1
 		}
@@ -87,7 +87,7 @@ func runMain() int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
 		fmt.Fprintln(os.Stderr, "starting Web admin recovery mode; select a backend and restart the robot")
-		if webErr := runWebAdmin("", "", false, shared.BackendNative); webErr != nil {
+		if webErr := runWebAdmin("", "", false, backendSelection.BackendID, true); webErr != nil {
 			fmt.Fprintf(os.Stderr, "backend recovery Web admin failed: %v\n", webErr)
 			return 1
 		}
@@ -288,7 +288,7 @@ func loadBackendSelection(path string) (shared.BackendSelection, error) {
 	return shared.DecodeBackendSelection(data)
 }
 
-func runWebAdmin(robotAddr, webAddr string, configFromStdin bool, backend shared.BackendID) error {
+func runWebAdmin(robotAddr, webAddr string, configFromStdin bool, backend shared.BackendID, recovery bool) error {
 	var cfg *config.SysConfig
 	if configFromStdin {
 		cfg = &config.SysConfig{}
@@ -315,7 +315,11 @@ func runWebAdmin(robotAddr, webAddr string, configFromStdin bool, backend shared
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := webadmin.New(cfg, robotAddr, webAddr, backend).Serve(ctx); err != nil {
+	server := webadmin.New(cfg, robotAddr, webAddr, backend)
+	if recovery {
+		server = webadmin.NewRecovery(cfg, robotAddr, webAddr, backend)
+	}
+	if err := server.Serve(ctx); err != nil {
 		return err
 	}
 	return nil

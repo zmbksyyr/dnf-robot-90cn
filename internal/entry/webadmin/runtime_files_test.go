@@ -8,7 +8,21 @@ import (
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/filewatch"
 	"robot/internal/foundation/layout"
+	"robot/internal/shared"
 )
+
+func TestRuntimeFileWatcherOnlyTracksNativeBackendFiles(t *testing.T) {
+	cfg := &config.SysConfig{ConfigDir: t.TempDir()}
+	if entries := New(cfg, "", "", shared.BackendS4A21).runtimeFileEntries(); len(entries) != 0 {
+		t.Fatalf("S4A21 runtime entries=%v, want none", entries)
+	}
+	if entries := NewRecovery(cfg, "", "", shared.BackendNative).runtimeFileEntries(); len(entries) != 0 {
+		t.Fatalf("recovery runtime entries=%v, want none", entries)
+	}
+	if entries := New(cfg, "", "", shared.BackendNative).runtimeFileEntries(); len(entries) != 3 {
+		t.Fatalf("native runtime entry count=%d, want 3", len(entries))
+	}
+}
 
 func TestRuntimeFileWatcherRetainsLastValidWebConfig(t *testing.T) {
 	root := t.TempDir()

@@ -35,6 +35,20 @@ func TestSimulatorWebRejectsNativeCompatibilityOperations(t *testing.T) {
 	}
 }
 
+func TestRecoveryWebRejectsNativeCompatibilityOperations(t *testing.T) {
+	s := NewRecovery(&config.SysConfig{ConfigDir: t.TempDir()}, "", "", shared.BackendNative)
+	req := httptest.NewRequest(http.MethodGet, "/api/compat", nil)
+	rec := httptest.NewRecorder()
+	s.handleCompat(rec, req)
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["ok"] != false || !strings.Contains(payload["error"].(string), shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("payload=%v", payload)
+	}
+}
+
 func TestSimulatorDiagnosticsSkipsNativeSections(t *testing.T) {
 	s := New(&config.SysConfig{ConfigDir: t.TempDir()}, "127.0.0.1:1", "", shared.BackendS4A21)
 	report := s.buildDiagnostics()

@@ -41,6 +41,17 @@ type Server struct {
 	gameMaxUser             gameMaxUserCache
 	backendSelectionMu      lockhub.Locker
 	backend                 shared.BackendID
+	recoveryMode            bool
+}
+
+// NewRecovery creates the backend-neutral Web surface used when the persisted
+// backend cannot run on the current platform. It must not start any
+// backend-specific watcher or supervisor before the operator selects a valid
+// backend and restarts the process.
+func NewRecovery(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID) *Server {
+	server := New(cfg, robotAddr, webAddr, selected)
+	server.recoveryMode = true
+	return server
 }
 
 type partySkillFileState struct {
@@ -82,7 +93,7 @@ func (s *Server) nativeBackendOnly(w http.ResponseWriter, operation shared.Backe
 }
 
 func (s *Server) isNativeBackend() bool {
-	return s == nil || s.backend == "" || s.backend == shared.BackendNative
+	return s == nil || (!s.recoveryMode && (s.backend == "" || s.backend == shared.BackendNative))
 }
 
 func (s *Server) Serve(ctx context.Context) error {

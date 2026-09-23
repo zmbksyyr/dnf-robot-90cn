@@ -12,7 +12,11 @@ func (s *Server) startRuntimeFileWatcher() func() {
 	if s == nil || s.cfg == nil {
 		return func() {}
 	}
-	poller := filewatch.New(time.Second, s.runtimeFileEntries(), func(entry filewatch.Entry, err error) {
+	entries := s.runtimeFileEntries()
+	if len(entries) == 0 {
+		return func() {}
+	}
+	poller := filewatch.New(time.Second, entries, func(entry filewatch.Entry, err error) {
 		foundationlog.Robotf("[WEB_RUNTIME_FILE] rejected name=%s path=%s err=%v\n", entry.Name, entry.Path, err)
 	})
 	poller.Start()
@@ -20,7 +24,7 @@ func (s *Server) startRuntimeFileWatcher() func() {
 }
 
 func (s *Server) runtimeFileEntries() []filewatch.Entry {
-	if s == nil || s.cfg == nil {
+	if s == nil || s.cfg == nil || !s.isNativeBackend() {
 		return nil
 	}
 	paths := layout.New(s.cfg.ConfigDir)
