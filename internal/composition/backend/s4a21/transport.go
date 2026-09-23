@@ -143,6 +143,11 @@ func (t *ActionTransport) RuntimeStatusMap() map[int]shared.RuntimeStatus {
 	defer t.mu.RUnlock()
 	out := make(map[int]shared.RuntimeStatus, len(t.status))
 	for uid, status := range t.status {
+		if session := t.sessions[uid]; session != nil {
+			if party, ok := session.(interface{ PartyActive() bool }); ok {
+				status.PartyActive = party.PartyActive()
+			}
+		}
 		out[uid] = status
 	}
 	return out

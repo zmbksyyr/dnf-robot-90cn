@@ -67,6 +67,24 @@ func (s *dungeonRunState) BeginEntry() error {
 	return nil
 }
 
+// BeginFollowerEntry starts the entry phase for a party follower. The
+// follower does not select a dungeon itself, so the dungeon id is learned by
+// the server-side party projection and is intentionally left unknown here.
+func (s *dungeonRunState) BeginFollowerEntry() error {
+	if s == nil {
+		return fmt.Errorf("S4A21 dungeon state is nil")
+	}
+	if s.phase != dungeonPhaseTown {
+		return fmt.Errorf("S4A21 follower entry requires town phase")
+	}
+	s.generation++
+	s.dungeonID = 0
+	s.roomX, s.roomY = 0, 0
+	s.pendingX, s.pendingY, s.hasPending = 0, 0, false
+	s.phase = dungeonPhaseEntry
+	return nil
+}
+
 func (s *dungeonRunState) AcceptStartMap(body []byte) error {
 	if s == nil {
 		return fmt.Errorf("S4A21 dungeon state is nil")

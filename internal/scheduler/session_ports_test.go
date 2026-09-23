@@ -84,6 +84,20 @@ func TestBackendSessionTransportBypassesNativeOnlinePath(t *testing.T) {
 	}
 }
 
+func TestBackendSessionTransportOptsS4A21FollowersFromFollowAccount(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "[follow]\nfollow_account = leader\n")
+	backend := &backendSessionStub{}
+	m.SetBackendSessionTransport(backend)
+	if err := (sessionActionEnv{manager: m}).SendOnline([]shared.RuntimeOnlineUser{{
+		UID: 17000001, AccountName: "acct", PasswordHash: "hash",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.opened) != 1 || !backend.opened[0].EnablePartyDungeonFollower {
+		t.Fatalf("opened=%+v, want explicit dungeon follower", backend.opened)
+	}
+}
+
 func TestBackendSessionTransportRequiresAccount(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	backend := &backendSessionStub{}

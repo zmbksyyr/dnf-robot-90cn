@@ -15,6 +15,7 @@ type actionTestSession struct {
 	moveErr error
 	closed  bool
 	done    chan struct{}
+	party   bool
 }
 
 type areaActionTestSession struct {
@@ -41,6 +42,7 @@ func (s *actionTestSession) Shout(_ context.Context, intent shared.ShoutIntent) 
 }
 func (s *actionTestSession) Close() error          { s.closed = true; return nil }
 func (s *actionTestSession) Done() <-chan struct{} { return s.done }
+func (s *actionTestSession) PartyActive() bool     { return s.party }
 
 type actionTestFactory struct{ session shared.RobotSession }
 
@@ -68,6 +70,17 @@ func TestActionTransportMapsVerifiedTownActions(t *testing.T) {
 	}
 	if session.shout.Channel != shared.ShoutChannelArea || session.shout.Message != "hello" {
 		t.Fatalf("shout intent = %+v", session.shout)
+	}
+}
+
+func TestActionTransportProjectsFollowerPartyState(t *testing.T) {
+	session := &actionTestSession{party: true}
+	transport := NewActionTransport()
+	if err := transport.Attach(7, session); err != nil {
+		t.Fatal(err)
+	}
+	if status := transport.RuntimeStatusMap()[7]; !status.PartyActive {
+		t.Fatalf("runtime status did not project party state: %+v", status)
 	}
 }
 

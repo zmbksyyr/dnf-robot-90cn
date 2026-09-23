@@ -128,7 +128,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityCompatibility] = CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
 	capabilities[CapabilityKeypair] = CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
 	capabilities[CapabilityDatabase] = CapabilityStatus{Reason: "simulator game databases are outside the robot boundary"}
-	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "dungeon entry workflow is not integrated yet"}
+	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
 	return capabilities
 }
 

@@ -30,6 +30,12 @@ type Session struct {
 	packetObserver     *packetObserverRegistration
 	dungeonStateGuard  lockhub.Locker
 	dungeonState       *dungeonRunState
+	followerGuard      lockhub.Locker
+	followerCancel     context.CancelFunc
+	followerEvents     chan protocol.Packet
+	followerDone       chan struct{}
+	followerStarting   bool
+	partyActive        bool
 }
 
 type packetObserverRegistration struct {
@@ -81,6 +87,12 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	session := &Session{client: client, cancel: cancel, done: make(chan struct{}), keepaliveDone: make(chan struct{})}
 	go session.drain(runCtx)
 	go session.keepalive(runCtx)
+	if request.EnablePartyDungeonFollower {
+		if err := session.EnableDungeonFollower(openCtx); err != nil {
+			_ = session.Close()
+			return nil, err
+		}
+	}
 	closeOnError = false
 	return session, nil
 }
@@ -133,7 +145,7 @@ func (s *Session) MoveDungeon(ctx context.Context, intent shared.DungeonMoveInte
 	return shared.UnsupportedCapabilityError{
 		Backend:   shared.BackendS4A21,
 		Operation: shared.CapabilityDungeonMove,
-		Reason:    "dungeon entry workflow is not integrated yet",
+		Reason:    "only server-directed party following is available; active dungeon movement is unsupported",
 	}
 }
 
@@ -160,12 +172,21 @@ func (s *Session) Close() error {
 	if s == nil || s.client == nil {
 		return nil
 	}
-	s.cancel()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	// Cancel the follower before closing the socket. Closing the socket is
+	// still done before waiting so a worker blocked in a protocol write can
+	// leave promptly.
+	s.stopDungeonFollower(false)
 	s.dungeonStateGuard.Lock()
 	s.dungeonState = nil
 	s.dungeonStateGuard.Unlock()
 	err := s.client.Close()
-	<-s.done
+	if s.done != nil {
+		<-s.done
+	}
+	s.stopDungeonFollower(true)
 	if s.keepaliveDone != nil {
 		<-s.keepaliveDone
 	}
@@ -204,6 +225,20 @@ func (s *Session) setPacketObserver(observer func(protocol.Packet)) func() {
 func (s *Session) dispatchPacket(packet protocol.Packet) {
 	if s == nil {
 		return
+	}
+	s.followerGuard.Lock()
+	followerEvents := s.followerEvents
+	s.followerGuard.Unlock()
+	if followerEvents != nil {
+		switch packet.Type {
+		case protocol.NotiRequestPeer, protocol.NotiPartyInfo,
+			protocol.NotiStartMap, protocol.NotiFinishLoading:
+			// Never send from drain. The follower worker owns all writes.
+			select {
+			case followerEvents <- packet:
+			default:
+			}
+		}
 	}
 	s.packetObserverLock.RLock()
 	observer := s.packetObserver

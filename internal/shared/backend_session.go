@@ -6,6 +6,10 @@ type OpenSessionRequest struct {
 	AccountName   string
 	PasswordHash  string
 	CharacterSlot uint16
+	// EnablePartyDungeonFollower is an explicit session intent. Backends may
+	// implement it with their own verified workflow or leave party following
+	// unsupported.
+	EnablePartyDungeonFollower bool
 	// InitialTown* are robot-owned position metadata used by adapters that
 	// need to distinguish an in-area coordinate move from an area transition.
 	// They are not sent as game-database mutations or protocol credentials.

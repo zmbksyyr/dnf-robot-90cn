@@ -167,6 +167,7 @@ func (e sessionActionEnv) SendLogout(uid int) error {
 
 func (e sessionActionEnv) SendOnline(userinfos []shared.RuntimeOnlineUser) error {
 	if e.manager.backendSessions != nil {
+		rc := e.manager.loadRobotConfig()
 		if err := e.populateBackendSessionIdentities(userinfos); err != nil {
 			return err
 		}
@@ -180,11 +181,12 @@ func (e sessionActionEnv) SendOnline(userinfos []shared.RuntimeOnlineUser) error
 			}
 			if err := e.manager.backendSessions.Open(context.Background(), user.UID, shared.OpenSessionRequest{
 				AccountName: user.AccountName, PasswordHash: user.PasswordHash, CharacterSlot: uint16(user.CharacterSlot),
-				InitialTownKnown: true,
-				InitialVillage:   user.BirthVillage,
-				InitialArea:      user.BirthArea,
-				InitialX:         user.BirthX,
-				InitialY:         user.BirthY,
+				EnablePartyDungeonFollower: strings.TrimSpace(rc.FollowAccount) != "",
+				InitialTownKnown:           true,
+				InitialVillage:             user.BirthVillage,
+				InitialArea:                user.BirthArea,
+				InitialX:                   user.BirthX,
+				InitialY:                   user.BirthY,
 			}); err != nil {
 				for _, uid := range opened {
 					_ = e.manager.backendSessions.Close(uid)
