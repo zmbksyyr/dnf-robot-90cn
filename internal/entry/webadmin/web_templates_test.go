@@ -47,10 +47,18 @@ func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
 		`id="followAccount"`,
 		`cfg.follow_account`,
 		`'follow.follow_account'`,
+		`selectedBackendID==='sim_a21'`,
+		`i18nFormat('auto.dungeon_follower')`,
+		`follow.type==='checkbox'`,
 		`cmd.includes("openPartyCompat"))cap='party'`,
 	} {
 		if !strings.Contains(appJS, want) {
 			t.Fatalf("follower configuration boundary is missing %q", want)
+		}
+	}
+	for _, want := range []string{`'auto.dungeon_follower':'Dungeon follower'`, `'auto.dungeon_follower':'地下城跟随'`} {
+		if !strings.Contains(i18nJS, want) {
+			t.Fatalf("follower backend label is missing %q", want)
 		}
 	}
 }
