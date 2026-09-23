@@ -50,7 +50,8 @@ func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
 		`id="followAccount"`,
 		`cfg.follow_account`,
 		`'follow.follow_account'`,
-		`backendCapabilities.dungeon_follow?.mode||'account'`,
+		`followCapability=backendCapabilities.dungeon_follow||{}`,
+		`followMode=followCapability.mode||'account'`,
 		`i18nFormat('auto.dungeon_follower')`,
 		`follow.type==='checkbox'`,
 		`cmd.includes("openPartyCompat"))cap='party'`,
@@ -141,7 +142,8 @@ func TestHeaderActionsStayRightAlignedAndBackendSelectorIsCompact(t *testing.T) 
 		`'backend',false`,
 		`dialog.backend{width:min(640px,96vw)`,
 		`class="backend-choices"`,
-		`server_directory:['Server dir','服务目录']`,
+		`backendSettingText(field,'label')`,
+		`field[key+'_zh']`,
 		`button.textContent=selected?.display_name`,
 	} {
 		if !strings.Contains(indexHTML+appCSS+appJS, want) {

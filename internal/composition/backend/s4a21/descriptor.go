@@ -22,10 +22,10 @@ func Info() shared.BackendInfo {
 		ID: shared.BackendS4A21, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true,
 		Capabilities: capabilities,
 		Settings: []shared.BackendSetting{
-			{Key: "server_directory", Label: "Server directory", InputType: "path", Required: true, RuntimeSource: "server_directory"},
-			{Key: "server_host", Label: "Host", InputType: "text", Required: true, Default: "127.0.0.1", RuntimeSource: "game_host"},
-			{Key: "game_port", Label: "Port", InputType: "number", Required: true, Default: "10011", RuntimeSource: "game_port"},
-			{Key: "database_path", Label: "Database", InputType: "path", Placeholder: `Data\inventory.db (auto)`, DerivedFrom: "server_directory", PathSuffix: []string{"Data", "inventory.db"}},
+			{Key: "server_directory", Label: "Server dir", LabelZH: "服务目录", Hint: "Directory containing Script.pvf; also provides the default database path.", HintZH: "包含 Script.pvf 的目录，同时用于推导默认数据库路径。", InputType: "path", Required: true, RuntimeSource: "server_directory"},
+			{Key: "server_host", Label: "Host", LabelZH: "地址", Hint: "Game protocol address.", HintZH: "游戏协议地址。", InputType: "text", Required: true, Default: "127.0.0.1", RuntimeSource: "game_host"},
+			{Key: "game_port", Label: "Port", LabelZH: "端口", Hint: "Game protocol port.", HintZH: "游戏协议端口。", InputType: "number", Required: true, Default: "10011", RuntimeSource: "game_port"},
+			{Key: "database_path", Label: "Database", LabelZH: "数据库", Hint: `Optional override; defaults to Data\inventory.db under the server directory.`, HintZH: `可选覆盖；默认使用服务目录下的 Data\inventory.db。`, InputType: "path", Placeholder: `Data\inventory.db (auto)`, DerivedFrom: "server_directory", PathSuffix: []string{"Data", "inventory.db"}},
 		},
 	}
 }

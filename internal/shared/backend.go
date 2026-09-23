@@ -54,6 +54,9 @@ type BackendInfo struct {
 type BackendSetting struct {
 	Key           string   `json:"key"`
 	Label         string   `json:"label"`
+	LabelZH       string   `json:"label_zh,omitempty"`
+	Hint          string   `json:"hint,omitempty"`
+	HintZH        string   `json:"hint_zh,omitempty"`
 	InputType     string   `json:"input_type"`
 	Required      bool     `json:"required"`
 	Placeholder   string   `json:"placeholder,omitempty"`

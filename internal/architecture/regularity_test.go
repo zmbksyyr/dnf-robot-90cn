@@ -388,12 +388,19 @@ func TestSchedulerDoesNotReferenceConcreteBackends(t *testing.T) {
 func TestWebRuntimeDoesNotUseBackendTypeGuards(t *testing.T) {
 	root := repoRoot(t)
 	dir := filepath.Join(root, "internal", "entry", "webadmin")
-	forbidden := []string{"isNativeBackend", "nativeBackendOnly"}
+	forbidden := []string{
+		"isNativeBackend", "nativeBackendOnly",
+		"BackendS4A21", "sim_a21", "composition/backend/s4a21", "protocol/s4a21", "S4A21",
+	}
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if entry.IsDir() || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext != ".go" && ext != ".js" && ext != ".html" {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -402,7 +409,7 @@ func TestWebRuntimeDoesNotUseBackendTypeGuards(t *testing.T) {
 		}
 		for _, token := range forbidden {
 			if strings.Contains(string(data), token) {
-				t.Errorf("%s uses backend type guard %q; use declared capabilities", path, token)
+				t.Errorf("%s references concrete backend token %q; use catalog metadata or declared capabilities", path, token)
 			}
 		}
 		return nil
