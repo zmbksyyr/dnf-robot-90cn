@@ -14,6 +14,7 @@ import (
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/lockhub"
 	foundationlog "robot/internal/foundation/log"
+	"robot/internal/shared"
 )
 
 type Server struct {
@@ -39,18 +40,23 @@ type Server struct {
 	gameMaxUserMu           lockhub.Locker
 	gameMaxUser             gameMaxUserCache
 	backendSelectionMu      lockhub.Locker
+	backend                 shared.BackendID
 }
 
 type partySkillFileState struct {
 	enabled bool
 }
 
-func New(cfg *config.SysConfig, robotAddr, webAddr string) *Server {
+func New(cfg *config.SysConfig, robotAddr, webAddr string, backend ...shared.BackendID) *Server {
 	if robotAddr == "" {
 		robotAddr = fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort)
 	}
 	if webAddr == "" {
 		webAddr = fmt.Sprintf("0.0.0.0:%d", cfg.WebPort)
+	}
+	selectedBackend := shared.BackendNative
+	if len(backend) > 0 && backend[0] != "" {
+		selectedBackend = backend[0]
 	}
 	return &Server{
 		cfg:              cfg,
@@ -60,7 +66,23 @@ func New(cfg *config.SysConfig, robotAddr, webAddr string) *Server {
 		loginFailures:    make(map[string]loginFailure),
 		partyCompatWake:  make(chan struct{}, 1),
 		mailboxGuardWake: make(chan struct{}, 1),
+		backend:          selectedBackend,
 	}
+}
+
+func (s *Server) nativeBackendOnly(w http.ResponseWriter, operation shared.BackendCapability) bool {
+	if s == nil || s.isNativeBackend() {
+		return false
+	}
+	writeJSON(w, map[string]interface{}{
+		"ok":    false,
+		"error": shared.UnsupportedCapabilityError{Backend: s.backend, Operation: operation, Reason: "native-only Web operation is unavailable for this backend"}.Error(),
+	})
+	return true
+}
+
+func (s *Server) isNativeBackend() bool {
+	return s == nil || s.backend == "" || s.backend == shared.BackendNative
 }
 
 func (s *Server) Serve(ctx context.Context) error {
@@ -70,10 +92,14 @@ func (s *Server) Serve(ctx context.Context) error {
 	defer s.stopServerScript()
 	stopRuntimeFiles := s.startRuntimeFileWatcher()
 	defer stopRuntimeFiles()
-	stopPartyCompat := s.startPartyCompatSupervisor()
-	defer stopPartyCompat()
-	stopMailboxGuard := s.startMailboxGuardSupervisor()
-	defer stopMailboxGuard()
+	stopPartyCompat := func() {}
+	stopMailboxGuard := func() {}
+	if s.isNativeBackend() {
+		stopPartyCompat = s.startPartyCompatSupervisor()
+		defer stopPartyCompat()
+		stopMailboxGuard = s.startMailboxGuardSupervisor()
+		defer stopMailboxGuard()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/login", s.handleLogin)

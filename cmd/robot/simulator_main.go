@@ -97,7 +97,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		return 1
 	}
 	defer tcpServer.Close()
-	stopWebAdmin := webadmin.StartSupervisor(cfg)
+	stopWebAdmin := webadmin.StartSupervisor(cfg, info.ID)
 	defer stopWebAdmin()
 	manager.StartAutoActions()
 	foundationlog.Robotf("SIMULATOR_STARTED backend=%s tcp=%s\n", info.ID, addr)

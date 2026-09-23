@@ -94,11 +94,13 @@ func (s *Server) buildDiagnostics() diagnosticsReport {
 		},
 	}
 	b.addRuntimeSection()
-	b.addDatabaseSection()
 	b.addFileSection()
-	b.addMarketSection()
-	b.addPartySection()
-	b.addSkillSection()
+	if b.server == nil || b.server.isNativeBackend() {
+		b.addDatabaseSection()
+		b.addMarketSection()
+		b.addPartySection()
+		b.addSkillSection()
+	}
 	b.addLogSection()
 	for _, section := range b.report.Sections {
 		for _, check := range section.Checks {

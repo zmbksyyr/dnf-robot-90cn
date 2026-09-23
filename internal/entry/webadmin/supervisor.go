@@ -11,17 +11,18 @@ import (
 
 	"robot/internal/foundation/config"
 	foundationlog "robot/internal/foundation/log"
+	"robot/internal/shared"
 )
 
 const webAdminShutdownTimeout = 6 * time.Second
 
-func StartSupervisor(cfg *config.SysConfig) func() {
+func StartSupervisor(cfg *config.SysConfig, backend ...shared.BackendID) func() {
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for {
-			cmd := newCommand(cfg)
+			cmd := newCommand(cfg, backend...)
 			if cmd == nil {
 				return
 			}
@@ -72,7 +73,7 @@ func StartSupervisor(cfg *config.SysConfig) func() {
 	}
 }
 
-func newCommand(cfg *config.SysConfig) *exec.Cmd {
+func newCommand(cfg *config.SysConfig, backend ...shared.BackendID) *exec.Cmd {
 	exe, err := os.Executable()
 	if err != nil {
 		foundationlog.Robotf("web admin executable lookup failed: %v\n", err)
@@ -80,12 +81,16 @@ func newCommand(cfg *config.SysConfig) *exec.Cmd {
 	}
 	robotAddr := fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort)
 	webAddr := fmt.Sprintf("0.0.0.0:%d", cfg.WebPort)
+	selectedBackend := shared.BackendNative
+	if len(backend) > 0 && backend[0] != "" {
+		selectedBackend = backend[0]
+	}
 	snapshot, err := json.Marshal(cfg)
 	if err != nil {
 		foundationlog.Robotf("web admin config snapshot failed: %v\n", err)
 		return nil
 	}
-	cmd := exec.Command(exe, "--web-admin", "--web-config-stdin", "--robot-addr", robotAddr, "--web-addr", webAddr)
+	cmd := exec.Command(exe, "--web-admin", "--web-config-stdin", "--backend-id", string(selectedBackend), "--robot-addr", robotAddr, "--web-addr", webAddr)
 	cmd.Stdin = bytes.NewReader(snapshot)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

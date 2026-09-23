@@ -12,6 +12,7 @@ import (
 	foundationconfig "robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
 	foundationlog "robot/internal/foundation/log"
+	"robot/internal/shared"
 )
 
 type partyCompatConfig struct {
@@ -44,6 +45,9 @@ type partyCompatRequest struct {
 }
 
 func (s *Server) handlePartyCompat(w http.ResponseWriter, r *http.Request) {
+	if s.nativeBackendOnly(w, shared.CapabilityParty) {
+		return
+	}
 	s.partyCompatMu.Lock()
 	defer s.partyCompatMu.Unlock()
 

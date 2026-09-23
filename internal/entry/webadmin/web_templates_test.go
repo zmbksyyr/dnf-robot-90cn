@@ -76,6 +76,7 @@ func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
 		`cap='world_shout'`,
 		`cmd.includes("robotsStore")`,
 		`cmd.includes("openPartyCompat")`,
+		`cmd.includes("openCompatDialog")`,
 		`cmd.includes("openCleanupDialog")`,
 	} {
 		if !strings.Contains(appJS, want) {

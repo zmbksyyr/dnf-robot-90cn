@@ -42,6 +42,7 @@ func runMain() int {
 	robotAddr := flag.String("robot-addr", "", "robot TCP address for web admin")
 	webAddr := flag.String("web-addr", "", "web admin listen address")
 	webConfigStdin := flag.Bool("web-config-stdin", false, "read the parent runtime config snapshot from stdin")
+	webBackendID := flag.String("backend-id", string(shared.BackendNative), "backend identity for the Web admin child")
 	flag.Parse()
 	if boundedLogSinkRequested() {
 		if err := runBoundedLogSink(os.Stdin); err != nil {
@@ -52,7 +53,7 @@ func runMain() int {
 	}
 
 	if *webAdminMode {
-		if err := runWebAdmin(*robotAddr, *webAddr, *webConfigStdin); err != nil {
+		if err := runWebAdmin(*robotAddr, *webAddr, *webConfigStdin, shared.BackendID(*webBackendID)); err != nil {
 			fmt.Fprintf(os.Stderr, "web admin failed: %v\n", err)
 			return 1
 		}
@@ -86,7 +87,7 @@ func runMain() int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
 		fmt.Fprintln(os.Stderr, "starting Web admin recovery mode; select a backend and restart the robot")
-		if webErr := runWebAdmin("", "", false); webErr != nil {
+		if webErr := runWebAdmin("", "", false, shared.BackendNative); webErr != nil {
 			fmt.Fprintf(os.Stderr, "backend recovery Web admin failed: %v\n", webErr)
 			return 1
 		}
@@ -259,7 +260,7 @@ func runMain() int {
 		}
 	}()
 	logRobotActionf("TCP server listening on %s\n", addr)
-	stopWebAdmin := webadmin.StartSupervisor(cfg)
+	stopWebAdmin := webadmin.StartSupervisor(cfg, shared.BackendNative)
 	defer stopWebAdmin()
 	manager.StartAutoActions()
 	if marketApp.Config().Auto.Enabled {
@@ -287,7 +288,7 @@ func loadBackendSelection(path string) (shared.BackendSelection, error) {
 	return shared.DecodeBackendSelection(data)
 }
 
-func runWebAdmin(robotAddr, webAddr string, configFromStdin bool) error {
+func runWebAdmin(robotAddr, webAddr string, configFromStdin bool, backend shared.BackendID) error {
 	var cfg *config.SysConfig
 	if configFromStdin {
 		cfg = &config.SysConfig{}
@@ -314,7 +315,7 @@ func runWebAdmin(robotAddr, webAddr string, configFromStdin bool) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := webadmin.New(cfg, robotAddr, webAddr).Serve(ctx); err != nil {
+	if err := webadmin.New(cfg, robotAddr, webAddr, backend).Serve(ctx); err != nil {
 		return err
 	}
 	return nil

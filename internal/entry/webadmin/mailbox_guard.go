@@ -10,6 +10,7 @@ import (
 	foundationconfig "robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
 	foundationlog "robot/internal/foundation/log"
+	"robot/internal/shared"
 )
 
 type mailboxGuardConfig struct {
@@ -30,6 +31,9 @@ type mailboxGuardStatus struct {
 }
 
 func (s *Server) handleCompat(w http.ResponseWriter, r *http.Request) {
+	if s.nativeBackendOnly(w, shared.CapabilityCompatibility) {
+		return
+	}
 	// Serialize all df_game_r compatibility inspection and patch operations.
 	s.partyCompatMu.Lock()
 	defer s.partyCompatMu.Unlock()
