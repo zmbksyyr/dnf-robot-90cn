@@ -25,6 +25,7 @@ const (
 	a21ListTypeEquipment = 3
 	a21ItemKindEquipment = 1
 	a21ItemKindAvatar    = 8
+	a21PetArtifactSlot   = 25
 )
 
 type CharacterLoadoutApplier interface {
@@ -120,13 +121,18 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 	info = actual
 	selectedEquipment := equipmentcap.SelectEquipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
 	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
+	selectedPet, selectedArtifacts, petSelected := equipmentcap.SelectPet(a.Equipment, a.Config, a.RandIntn)
+	if petSelected && !petSchemaAvailable(ctx, db) {
+		petSelected = false
+		selectedArtifacts = nil
+	}
 	if len(selectedEquipment) == 0 {
 		return fmt.Errorf("S4A21 loadout has no compatible equipment for level=%d job=%d", info.Level, info.Job)
 	}
 	if a.Config.MinAvatarSlots > 0 && len(selectedAvatar) < a.Config.MinAvatarSlots {
 		return fmt.Errorf("S4A21 loadout has %d compatible avatar slots, need %d for job=%d", len(selectedAvatar), a.Config.MinAvatarSlots, info.Job)
 	}
-	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, a.Equipment, len(selectedEquipment), len(selectedAvatar))
+	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, a.Equipment, len(selectedEquipment), len(selectedAvatar), petSelected, selectedPet, selectedArtifacts)
 	if err != nil {
 		return err
 	}
@@ -138,7 +144,7 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 		return err
 	}
 	defer tx.Rollback()
-	if err := replaceLoadout(ctx, tx, accountID, characterID, selectedEquipment, selectedAvatar, a.Config, a.RandIntn); err != nil {
+	if err := replaceLoadout(ctx, tx, accountID, characterID, selectedEquipment, selectedAvatar, selectedPet, selectedArtifacts, petSelected, a.Config, a.RandIntn); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -247,13 +253,13 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 	return accountID, characterID, info, nil
 }
 
-func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, catalog []shared.EquipmentCatalogItem, wantEquipment, wantAvatar int) (bool, error) {
+func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, catalog []shared.EquipmentCatalogItem, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
 	items := make(map[int]shared.EquipmentCatalogItem, len(catalog))
 	for _, item := range catalog {
 		items[item.ID] = item
 	}
 	rows, err := db.QueryContext(ctx, `SELECT slot_index,item_core FROM character_inventory_items
-WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 23`, characterID, a21ListTypeEquipment)
+WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 27`, characterID, a21ListTypeEquipment)
 	if err != nil {
 		return false, fmt.Errorf("inspect S4A21 loadout: %w", err)
 	}
@@ -288,7 +294,71 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 23`, character
 	if err := rows.Err(); err != nil {
 		return false, err
 	}
-	return equipmentCount >= wantEquipment && avatarCount >= wantAvatar, nil
+	if equipmentCount < wantEquipment || avatarCount < wantAvatar {
+		return false, nil
+	}
+	if wantPet {
+		petCore, err := db.QueryContext(ctx, `SELECT creature_buffer FROM character_subtype0_fields WHERE character_id=?`, characterID)
+		if err != nil {
+			return false, err
+		}
+		petPresent := false
+		if petCore.Next() {
+			var raw []byte
+			if err := petCore.Scan(&raw); err != nil {
+				petCore.Close()
+				return false, err
+			}
+			petPresent = len(raw) >= 4 && binary.LittleEndian.Uint32(raw[:4]) != 0
+		}
+		if err := petCore.Err(); err != nil {
+			petCore.Close()
+			return false, err
+		}
+		petCore.Close()
+		if !petPresent {
+			return false, nil
+		}
+		var creatureID int
+		if err := db.QueryRowContext(ctx, `SELECT creature_key FROM character_creatures WHERE character_id=? AND sort_order=0`, characterID).Scan(&creatureID); err != nil || creatureID != pet.ID {
+			return false, nil
+		}
+		for itemType, item := range artifacts {
+			slot := a21PetArtifactSlot + itemType - 31
+			core, err := db.QueryContext(ctx, `SELECT item_core FROM character_inventory_items WHERE character_id=? AND list_type=? AND slot_index=?`, characterID, a21ListTypeEquipment, slot)
+			if err != nil {
+				return false, err
+			}
+			valid := core.Next()
+			if valid {
+				var raw []byte
+				if err := core.Scan(&raw); err != nil {
+					core.Close()
+					return false, err
+				}
+				valid = len(raw) >= 5 && int(binary.LittleEndian.Uint32(raw[1:5])) == item.ID
+			}
+			if err := core.Err(); err != nil {
+				core.Close()
+				return false, err
+			}
+			core.Close()
+			if !valid {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
+}
+
+func petSchemaAvailable(ctx context.Context, db *sql.DB) bool {
+	for _, table := range []string{"character_creatures", "character_subtype0_fields", "character_subtype1_fields"} {
+		var found string
+		if err := db.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&found); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func s4a21AvatarJob(job int) int {
@@ -312,12 +382,12 @@ func validateLoadoutSchema(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func replaceLoadout(ctx context.Context, tx *sql.Tx, accountID, characterID int, equipment map[int]shared.EquipmentCatalogItem, avatars map[int]shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig, randIntn func(int) int) error {
+func replaceLoadout(ctx context.Context, tx *sql.Tx, accountID, characterID int, equipment map[int]shared.EquipmentCatalogItem, avatars map[int]shared.EquipmentCatalogItem, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem, petSelected bool, rc robotconfig.RuntimeConfig, randIntn func(int) int) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM character_avatar_detail WHERE character_id = ?`, characterID); err != nil {
 		return fmt.Errorf("clear S4A21 avatar details character=%d: %w", characterID, err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM character_inventory_items
-WHERE character_id = ? AND list_type = ? AND slot_index BETWEEN 0 AND 24`, characterID, a21ListTypeEquipment); err != nil {
+	WHERE character_id = ? AND list_type = ? AND slot_index BETWEEN 0 AND 27`, characterID, a21ListTypeEquipment); err != nil {
 		return fmt.Errorf("clear S4A21 equipped loadout: %w", err)
 	}
 	for commonSlot, item := range equipment {
@@ -345,7 +415,48 @@ VALUES (?, ?, ?, ?, 0, 0, zeroblob(30), 0, 0, 0)`, avatarUID, accountID, charact
 			return fmt.Errorf("insert S4A21 avatar detail slot=%d item=%d: %w", slot, item.ID, err)
 		}
 	}
+	if petSelected {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM character_creatures WHERE character_id=?`, characterID); err != nil {
+			return fmt.Errorf("clear S4A21 creatures character=%d: %w", characterID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO character_creatures
+(character_id,sort_order,creature_key,field04,mode_flag,progress_value,mode1_field0a,mode1_field0b,field_after_value,creature_text,tail_flag,extra_json)
+VALUES (?,0,?,0,0,0,0,0,0,NULL,0,'{}')`, characterID, pet.ID); err != nil {
+			return fmt.Errorf("insert S4A21 creature character=%d item=%d: %w", characterID, pet.ID, err)
+		}
+		creatureBuffer := make([]byte, 8)
+		binary.LittleEndian.PutUint32(creatureBuffer, uint32(pet.ID))
+		if _, err := tx.ExecContext(ctx, `UPDATE character_subtype0_fields SET creature_buffer=?,pet_display_flag=1 WHERE character_id=?`, creatureBuffer, characterID); err != nil {
+			return fmt.Errorf("activate S4A21 creature character=%d: %w", characterID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE character_subtype1_fields SET equipped_creature_level=1 WHERE character_id=?`, characterID); err != nil {
+			return fmt.Errorf("set S4A21 creature level character=%d: %w", characterID, err)
+		}
+		for itemType, item := range artifacts {
+			slot := a21PetArtifactSlot + itemType - 31
+			if err := upsertEquippedCore(ctx, tx, characterID, slot, a21ItemCore(a21ItemKindEquipment, item, 0, int32(randomPositive(randIntn)))); err != nil {
+				return err
+			}
+		}
+	} else if petSchemaAvailableTx(ctx, tx) {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM character_creatures WHERE character_id=?`, characterID); err != nil {
+			return fmt.Errorf("clear S4A21 creatures character=%d: %w", characterID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE character_subtype0_fields SET creature_buffer=NULL,pet_display_flag=0 WHERE character_id=?`, characterID); err != nil {
+			return fmt.Errorf("clear S4A21 creature character=%d: %w", characterID, err)
+		}
+	}
 	return nil
+}
+
+func petSchemaAvailableTx(ctx context.Context, tx *sql.Tx) bool {
+	for _, table := range []string{"character_creatures", "character_subtype0_fields", "character_subtype1_fields"} {
+		var found string
+		if err := tx.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&found); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func upsertEquippedCore(ctx context.Context, tx *sql.Tx, characterID, slot int, core []byte) error {

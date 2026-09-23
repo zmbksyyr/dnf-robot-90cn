@@ -1,6 +1,6 @@
 # S4A21 组队能力阶段门槛
 
-本文记录 `ServerS4A21` 已确认的组队协议边界。dnf-robot 当前只实现显式启用的地下城被动 follower，不开放通用组队能力。
+本文记录 `ServerS4A21` 已确认的组队协议边界。dnf-robot 实现显式启用的真人队长 follower：自动接受邀请、跟随城镇位置/区域包和服务端地下城投影；不开放假人建队、主动邀请或主动地下城移动。
 
 ## 当前结论
 
@@ -26,7 +26,7 @@ S4A21 的组队能力不是一个单独的“发送邀请包”动作。服务�
 
 ## 开放组队前的必要证据
 
-后续若实现 `party`，必须逐项取得协议级或真实整合包回归证据：
+后续若扩展通用 `party`，必须逐项取得协议级或真实整合包回归证据：
 
 1. 单个 robot 创建单人队，收到可解释的 `PARTY_INFO` 和实时信息。
 2. 两个独立 session 完成邀请、接受、双方名册广播；重连或会话替换不能把旧 session 当成成员。
@@ -75,7 +75,7 @@ S4A21 的组队能力不是一个单独的“发送邀请包”动作。服务�
 - 成员没有收到可证明 selection 投影完成的 `ENTER_SELECT_DUNGEON` 或 `START_MAP`；只观察到队伍名册、实时信息和 UDP 端点类通知。
 - 探针刻意不发送 `SELECT_DUNGEON`、`CHANGE_TUTORIAL_FLAG` 或 `FINISH_LOADING`，因此没有创建未经验证的 dungeon run。
 
-这说明“组队成功”与“组队副本 selection 已完成”之间仍存在未验证的教程标记、成员投影和 selection cohort 条件。当前 `party`、`dungeon_move` 及所有地下城能力继续保持 `backend_capability_unsupported`。后续若要推进，必须先取得成员投影完成和队伍 `SELECT_DUNGEON` 的真实回包，再研究 run/loading；不能只凭队长 ACK 开放入口。
+这说明“组队成功”与“组队副本 selection 已完成”之间仍存在未验证的教程标记、成员投影和 selection cohort 条件。当前 `party` 仅以 follower 模式开放；`dungeon_move`、主动建队/邀请及所有地下城战斗能力继续保持 `backend_capability_unsupported`。后续若要扩展，必须先取得成员投影完成和队伍 `SELECT_DUNGEON` 的真实回包，再研究 run/loading；不能只凭队长 ACK 开放入口。
 
 教程标记探针随后补发了队长的 `SELECT_DUNGEON(144)` 和 `CHANGE_TUTORIAL_FLAG(30,1)`：
 

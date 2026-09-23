@@ -70,6 +70,7 @@ func (s *Session) DisableDungeonFollower() {
 	s.followerGuard.Lock()
 	s.partyActive = false
 	s.partyID = 0
+	s.partyLeaderUID = 0
 	s.followerGuard.Unlock()
 	s.dungeonStateGuard.Lock()
 	s.dungeonState = nil
@@ -138,7 +139,7 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 		s.followerGuard.Lock()
 		selfUID, currentPartyID := s.selfUID, s.partyID
 		s.followerGuard.Unlock()
-		memberPartyID, clearedPartyIDs, ok := parsePartyInfoProjection(packet, selfUID)
+		memberPartyID, leaderUID, clearedPartyIDs, ok := parsePartyInfoProjectionWithLeader(packet, selfUID)
 		if ok {
 			active, changed := false, false
 			if memberPartyID != 0 {
@@ -154,6 +155,11 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 			s.followerGuard.Lock()
 			s.partyActive = active
 			s.partyID = currentPartyID
+			if active {
+				s.partyLeaderUID = leaderUID
+			} else {
+				s.partyLeaderUID = 0
+			}
 			s.followerGuard.Unlock()
 			if !active {
 				s.dungeonStateGuard.Lock()
@@ -161,10 +167,51 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 				s.dungeonStateGuard.Unlock()
 			}
 		}
+	case protocol.NotiUserPosition:
+		s.followLeaderPosition(ctx, packet)
+	case protocol.NotiUserArea:
+		s.followLeaderArea(ctx, packet)
 	case protocol.NotiStartMap:
 		s.acceptFollowerStartMap(ctx, packet)
 	case protocol.NotiFinishLoading:
 		s.commitFollowerFinishLoading(packet)
+	}
+}
+
+func (s *Session) followLeaderPosition(ctx context.Context, packet protocol.Packet) {
+	if packet.Command != 0 || len(packet.Body) < 9 {
+		return
+	}
+	uid := binary.LittleEndian.Uint16(packet.Body[:2])
+	s.followerGuard.Lock()
+	active, leaderUID, selfUID := s.partyActive, s.partyLeaderUID, s.selfUID
+	s.followerGuard.Unlock()
+	if !active || leaderUID == 0 || uid != leaderUID || uid == selfUID {
+		return
+	}
+	if err := s.client.SetUserPosition(ctx,
+		int16(binary.LittleEndian.Uint16(packet.Body[2:4])),
+		int16(binary.LittleEndian.Uint16(packet.Body[4:6])),
+		packet.Body[6], binary.LittleEndian.Uint16(packet.Body[7:9])); err != nil {
+		s.abortFollowerSession(ctx)
+	}
+}
+
+func (s *Session) followLeaderArea(ctx context.Context, packet protocol.Packet) {
+	if packet.Command != 0 || len(packet.Body) < 8 {
+		return
+	}
+	uid := binary.LittleEndian.Uint16(packet.Body[:2])
+	s.followerGuard.Lock()
+	active, leaderUID, selfUID := s.partyActive, s.partyLeaderUID, s.selfUID
+	s.followerGuard.Unlock()
+	if !active || leaderUID == 0 || uid != leaderUID || uid == selfUID || packet.Body[2] == 0xFF || packet.Body[3] == 0xFF {
+		return
+	}
+	if err := s.client.SetUserArea(ctx, packet.Body[2], packet.Body[3],
+		int16(binary.LittleEndian.Uint16(packet.Body[4:6])),
+		int16(binary.LittleEndian.Uint16(packet.Body[6:8]))); err != nil {
+		s.abortFollowerSession(ctx)
 	}
 }
 
@@ -238,34 +285,40 @@ func parsePartyInvite(packet protocol.Packet) (uint16, bool) {
 }
 
 func parsePartyInfoProjection(packet protocol.Packet, selfUID uint16) (uint16, []uint16, bool) {
+	partyID, _, cleared, ok := parsePartyInfoProjectionWithLeader(packet, selfUID)
+	return partyID, cleared, ok
+}
+
+func parsePartyInfoProjectionWithLeader(packet protocol.Packet, selfUID uint16) (uint16, uint16, []uint16, bool) {
 	if packet.Command != 0 || len(packet.Body) < 2 || selfUID == 0 || selfUID == 0xFFFF {
-		return 0, nil, false
+		return 0, 0, nil, false
 	}
 	// Deployed A21 packs six bytes after the optional party name. Newer
 	// ServerS4A21 builds pack eleven; require either shape to consume the
 	// complete packet so roster UIDs cannot be matched at an arbitrary offset.
-	shortPartyID, shortCleared, shortOK := parsePartyInfoBody(packet.Body, selfUID, 6)
-	longPartyID, longCleared, longOK := parsePartyInfoBody(packet.Body, selfUID, 11)
+	shortPartyID, shortLeader, shortCleared, shortOK := parsePartyInfoBody(packet.Body, selfUID, 6)
+	longPartyID, longLeader, longCleared, longOK := parsePartyInfoBody(packet.Body, selfUID, 11)
 	if shortOK && longOK {
-		if shortPartyID != longPartyID || !samePartyIDs(shortCleared, longCleared) {
-			return 0, nil, false
+		if shortPartyID != longPartyID || shortLeader != longLeader || !samePartyIDs(shortCleared, longCleared) {
+			return 0, 0, nil, false
 		}
-		return shortPartyID, shortCleared, true
+		return shortPartyID, shortLeader, shortCleared, true
 	}
 	if shortOK {
-		return shortPartyID, shortCleared, true
+		return shortPartyID, shortLeader, shortCleared, true
 	}
-	return longPartyID, longCleared, longOK
+	return longPartyID, longLeader, longCleared, longOK
 }
 
-func parsePartyInfoBody(body []byte, selfUID uint16, infoTailLength int) (uint16, []uint16, bool) {
+func parsePartyInfoBody(body []byte, selfUID uint16, infoTailLength int) (uint16, uint16, []uint16, bool) {
 	blocks := int(binary.LittleEndian.Uint16(body[:2]))
 	offset := 2
 	memberPartyID := uint16(0)
+	leaderUID := uint16(0)
 	clearedPartyIDs := make([]uint16, 0, blocks)
 	for i := 0; i < blocks; i++ {
 		if len(body)-offset < 3 {
-			return 0, nil, false
+			return 0, 0, nil, false
 		}
 		partyID := binary.LittleEndian.Uint16(body[offset : offset+2])
 		typ := body[offset+2]
@@ -275,40 +328,44 @@ func parsePartyInfoBody(body []byte, selfUID uint16, infoTailLength int) (uint16
 		case 3:
 			clearedPartyIDs = append(clearedPartyIDs, partyID)
 		default:
-			return 0, nil, false
+			return 0, 0, nil, false
 		}
 		// Types 0/1 contain the party-info block; type 0/2 contain the
 		// eight member slots. We only need to skip their wire shape here.
 		if typ == 0 || typ == 1 {
 			if len(body)-offset < 1+4+infoTailLength {
-				return 0, nil, false
+				return 0, 0, nil, false
 			}
 			if body[offset] == 0 {
 				offset++
 				if len(body)-offset < 4 {
-					return 0, nil, false
+					return 0, 0, nil, false
 				}
 				nameLength := int(binary.LittleEndian.Uint32(body[offset : offset+4]))
 				offset += 4
 				if nameLength > len(body)-offset {
-					return 0, nil, false
+					return 0, 0, nil, false
 				}
 				offset += nameLength
 			} else {
 				offset++
 			}
 			if len(body)-offset < infoTailLength {
-				return 0, nil, false
+				return 0, 0, nil, false
 			}
 			offset += infoTailLength
 		}
 		if typ == 0 || typ == 2 {
 			if len(body)-offset < 43 {
-				return 0, nil, false
+				return 0, 0, nil, false
 			}
 			for slot := 0; slot < 8; slot++ {
 				uidOffset := offset + slot*5
-				if binary.LittleEndian.Uint16(body[uidOffset:uidOffset+2]) == selfUID {
+				uid := binary.LittleEndian.Uint16(body[uidOffset : uidOffset+2])
+				if slot == 0 && uid != 0 && uid != 0xFFFF {
+					leaderUID = uid
+				}
+				if uid == selfUID {
 					memberPartyID = partyID
 				}
 			}
@@ -316,21 +373,21 @@ func parsePartyInfoBody(body []byte, selfUID uint16, infoTailLength int) (uint16
 		}
 		if typ == 5 {
 			if len(body)-offset < 1 {
-				return 0, nil, false
+				return 0, 0, nil, false
 			}
 			offset++
 		}
 		if typ <= 2 {
 			if len(body)-offset < 1 {
-				return 0, nil, false
+				return 0, 0, nil, false
 			}
 			offset++
 		}
 	}
 	if offset != len(body) {
-		return 0, nil, false
+		return 0, 0, nil, false
 	}
-	return memberPartyID, clearedPartyIDs, true
+	return memberPartyID, leaderUID, clearedPartyIDs, true
 }
 
 func samePartyIDs(left, right []uint16) bool {

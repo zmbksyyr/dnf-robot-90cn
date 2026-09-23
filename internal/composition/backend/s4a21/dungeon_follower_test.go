@@ -152,6 +152,46 @@ func TestDungeonFollowerIgnoresStartMapBeforeOwnPartyIsConfirmed(t *testing.T) {
 	}
 }
 
+func TestDungeonFollowerTracksLeaderTownPositionAndArea(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	session := &Session{client: protocol.NewClient(clientConn), selfUID: 0x1234, partyID: 7, partyLeaderUID: 0x5678, partyActive: true}
+
+	positionDone := make(chan error, 1)
+	go func() {
+		packet, err := protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
+		if err != nil {
+			positionDone <- err
+			return
+		}
+		if packet.Type != protocol.CmdSetUserPosition || len(packet.Body) != 7 ||
+			int16(binary.LittleEndian.Uint16(packet.Body[:2])) != 321 ||
+			int16(binary.LittleEndian.Uint16(packet.Body[2:4])) != 222 ||
+			packet.Body[4] != 3 || binary.LittleEndian.Uint16(packet.Body[5:7]) != 0x64 {
+			positionDone <- fmt.Errorf("leader position request = type 0x%04X body %X", packet.Type, packet.Body)
+			return
+		}
+		packet, err = protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
+		if err != nil {
+			positionDone <- err
+			return
+		}
+		if packet.Type != protocol.CmdSetUserArea || len(packet.Body) != 6 || packet.Body[0] != 2 || packet.Body[1] != 9 ||
+			int16(binary.LittleEndian.Uint16(packet.Body[2:4])) != 500 || int16(binary.LittleEndian.Uint16(packet.Body[4:6])) != 260 {
+			positionDone <- fmt.Errorf("leader area request = type 0x%04X body %X", packet.Type, packet.Body)
+			return
+		}
+		positionDone <- nil
+	}()
+
+	session.handleFollowerPacket(context.Background(), protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{0x78, 0x56, 0x41, 0x01, 0xDE, 0x00, 3, 0x64, 0x00}})
+	session.handleFollowerPacket(context.Background(), protocol.Packet{Type: protocol.NotiUserArea, Body: []byte{0x78, 0x56, 2, 9, 0xF4, 0x01, 0x04, 0x01}})
+	if err := <-positionDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDungeonFollowerCloseStopsWorker(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()

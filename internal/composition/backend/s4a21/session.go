@@ -40,6 +40,7 @@ type Session struct {
 	followerStarting   bool
 	selfUID            uint16
 	partyID            uint16
+	partyLeaderUID     uint16
 	partyActive        bool
 }
 
@@ -306,7 +307,8 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 	if followerEvents != nil {
 		switch packet.Type {
 		case protocol.NotiRequestPeer, protocol.NotiPartyInfo,
-			protocol.NotiStartMap, protocol.NotiFinishLoading:
+			protocol.NotiStartMap, protocol.NotiFinishLoading,
+			protocol.NotiUserPosition, protocol.NotiUserArea:
 			// Never send from drain. The follower worker owns all writes.
 			select {
 			case followerEvents <- packet:

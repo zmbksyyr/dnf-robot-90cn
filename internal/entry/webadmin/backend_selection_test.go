@@ -130,7 +130,7 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 	if simulator.Capabilities[shared.CapabilityDatabase].Mode != "sqlite_health" {
 		t.Fatalf("S4A21 database mode is not adapter-declared: %+v", simulator.Capabilities[shared.CapabilityDatabase])
 	}
-	for _, capability := range []shared.BackendCapability{shared.CapabilityDungeonMove, shared.CapabilityWorldShout, shared.CapabilityStore, shared.CapabilityParty, shared.CapabilityPartyCompatibility, shared.CapabilityPartyDebug, shared.CapabilitySkill, shared.CapabilityDangerousDelete, shared.CapabilityMailboxGuard, shared.CapabilityKeypair, shared.CapabilityDiagnostics, shared.CapabilitySystemAnnouncement} {
+	for _, capability := range []shared.BackendCapability{shared.CapabilityDungeonMove, shared.CapabilityWorldShout, shared.CapabilityStore, shared.CapabilityPartyCompatibility, shared.CapabilityPartyDebug, shared.CapabilitySkill, shared.CapabilityDangerousDelete, shared.CapabilityMailboxGuard, shared.CapabilityKeypair, shared.CapabilityDiagnostics, shared.CapabilitySystemAnnouncement} {
 		status := simulator.Capabilities[capability]
 		if status.Enabled || status.Reason == "" {
 			t.Fatalf("S4A21 capability %s must be disabled with a reason: %+v", capability, status)

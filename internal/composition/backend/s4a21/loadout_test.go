@@ -29,11 +29,19 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,level,delete_flag) VALUES(9,7,?,1,85,0)`, encodedName); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`INSERT INTO character_subtype0_fields(character_id) VALUES(9); INSERT INTO character_subtype1_fields(character_id) VALUES(9)`); err != nil {
+		t.Fatal(err)
+	}
 	db.Close()
 	rc := robotconfig.Default()
 	rc.EquipSlots = []int{1, 3}
 	rc.AvatarSlots = []int{0, 1}
 	rc.MinAvatarSlots = 2
+	rc.PetEnabled = true
+	rc.PetProbabilityPercent = 100
+	rc.PetArtifactEnabled = true
+	rc.PetArtifactSlots = []int{31, 32, 33}
+	rc.MinPetArtifactSlots, rc.MaxPetArtifactSlots = 1, 1
 	rc.EquipIntensifyMin, rc.EquipIntensifyMax = 7, 7
 	items := []shared.EquipmentCatalogItem{
 		{ID: 1001, ItemType: 1, Level: 80, Durability: 45, UseJob: []int{1}},
@@ -41,6 +49,8 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 		{ID: 2000, Name: "Hat", ItemType: 20, UseJob: []int{1}, Icon: "avatar/a.img"},
 		{ID: 2001, Name: "Hair", ItemType: 21, UseJob: []int{1}, Icon: "avatar/b.img"},
 		{ID: 2011, Name: "Wrong job hat", ItemType: 20, UseJob: []int{11}, Icon: "avatar/c.img"},
+		{ID: 3000, Name: "Creature", ItemType: 30, Icon: "creature/pet.img"},
+		{ID: 3100, Name: "Creature artifact", ItemType: 31, Path: "equipment/creature/artifact_red/hand.equ", Icon: "Item/creature/artifact_red.img"},
 	}
 	applier := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
 	info := robotcap.Info{Name: "机器人", Job: 10, Level: 85}
@@ -71,7 +81,7 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 		got[slot] = core
 	}
 	rows.Close()
-	if len(got) != 4 {
+	if len(got) != 5 {
 		t.Fatalf("equipped rows=%d slots=%v", len(got), got)
 	}
 	for slot, itemID := range map[int]int{0: 2000, 1: 2001, 12: 1001, 14: 1003} {
@@ -79,6 +89,23 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 		if len(core) != a21ItemCoreSize || int(binary.LittleEndian.Uint32(core[1:5])) != itemID {
 			t.Fatalf("slot=%d core=%v", slot, core)
 		}
+	}
+	if core := got[25]; len(core) != a21ItemCoreSize || int(binary.LittleEndian.Uint32(core[1:5])) != 3100 {
+		t.Fatalf("pet artifact slot=%v", core)
+	}
+	var creatureID int
+	if err := db.QueryRow(`SELECT creature_key FROM character_creatures WHERE character_id=9 AND sort_order=0`).Scan(&creatureID); err != nil {
+		t.Fatal(err)
+	}
+	if creatureID != 3000 {
+		t.Fatalf("creature id=%d", creatureID)
+	}
+	var creatureBuffer []byte
+	if err := db.QueryRow(`SELECT creature_buffer FROM character_subtype0_fields WHERE character_id=9`).Scan(&creatureBuffer); err != nil {
+		t.Fatal(err)
+	}
+	if len(creatureBuffer) < 4 || binary.LittleEndian.Uint32(creatureBuffer[:4]) != 3000 {
+		t.Fatalf("creature buffer=%x", creatureBuffer)
 	}
 	if got[12][9] != 7 || binary.LittleEndian.Uint16(got[12][10:12]) != 45 {
 		t.Fatalf("equipment defaults=%v", got[12][:13])
@@ -155,7 +182,10 @@ CREATE TABLE IF NOT EXISTS accounts(account_id INTEGER PRIMARY KEY,m_id TEXT UNI
 CREATE TABLE IF NOT EXISTS characters(character_id INTEGER PRIMARY KEY,account_id INTEGER,name TEXT,job INTEGER,grow_type INTEGER NOT NULL DEFAULT 0,level INTEGER,exp INTEGER NOT NULL DEFAULT 0,delete_flag INTEGER,updated_at TEXT);
 CREATE TABLE IF NOT EXISTS character_inventory_items(item_uid INTEGER PRIMARY KEY AUTOINCREMENT,character_id INTEGER,list_type INTEGER,slot_index INTEGER,item_core BLOB,created_at TEXT,updated_at TEXT,UNIQUE(character_id,list_type,slot_index));
 CREATE TABLE IF NOT EXISTS character_avatar_detail(item_uid INTEGER PRIMARY KEY,owner_id INTEGER,character_id INTEGER,item_id INTEGER,expire_date INTEGER,clear_avatar_id INTEGER,jewel_socket BLOB,color1 INTEGER,color2 INTEGER,delete_date INTEGER);
-CREATE TABLE IF NOT EXISTS character_avatar_uid_sequence(avatar_uid INTEGER PRIMARY KEY AUTOINCREMENT);`); err != nil {
+CREATE TABLE IF NOT EXISTS character_avatar_uid_sequence(avatar_uid INTEGER PRIMARY KEY AUTOINCREMENT);
+CREATE TABLE IF NOT EXISTS character_creatures(character_id INTEGER,sort_order INTEGER,creature_key INTEGER,field04 INTEGER,mode_flag INTEGER,progress_value INTEGER,mode1_field0a INTEGER,mode1_field0b INTEGER,field_after_value INTEGER,creature_text BLOB,tail_flag INTEGER,extra_json TEXT,PRIMARY KEY(character_id,sort_order));
+CREATE TABLE IF NOT EXISTS character_subtype0_fields(character_id INTEGER PRIMARY KEY,creature_buffer BLOB,pet_display_flag INTEGER);
+CREATE TABLE IF NOT EXISTS character_subtype1_fields(character_id INTEGER PRIMARY KEY,equipped_creature_level INTEGER);`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -234,5 +264,20 @@ func TestLiveSQLiteLoadoutAgainstDatabaseClone(t *testing.T) {
 	}
 	if equipmentCount < 1 || avatarCount < rc.MinAvatarSlots {
 		t.Fatalf("real clone loadout equipment=%d avatar=%d", equipmentCount, avatarCount)
+	}
+	if typeCounts[30] > 0 {
+		var creatureCount, artifactCount int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM character_creatures WHERE character_id=?`, characterID).Scan(&creatureCount); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRow(`SELECT COUNT(*) FROM character_inventory_items WHERE character_id=? AND list_type=3 AND slot_index BETWEEN 25 AND 27`, characterID).Scan(&artifactCount); err != nil {
+			t.Fatal(err)
+		}
+		if creatureCount != 1 {
+			t.Fatalf("real clone creature count=%d", creatureCount)
+		}
+		if typeCounts[31]+typeCounts[32]+typeCounts[33] > 0 && artifactCount < 1 {
+			t.Fatalf("real clone pet artifact count=%d", artifactCount)
+		}
 	}
 }
