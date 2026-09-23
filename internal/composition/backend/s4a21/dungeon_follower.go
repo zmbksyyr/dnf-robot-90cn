@@ -206,6 +206,22 @@ func (s *Session) abortFollowerSession(ctx context.Context) {
 	}
 }
 
+func (s *Session) abortFollowerQueue(events chan protocol.Packet) {
+	if s == nil {
+		return
+	}
+	// Serialize against DisableDungeonFollower. Once disable removes this
+	// exact queue, a late dispatch must not close the surviving town session.
+	s.followerGuard.Lock()
+	if s.followerEvents != events {
+		s.followerGuard.Unlock()
+		return
+	}
+	s.followerEvents = nil
+	s.followerGuard.Unlock()
+	s.abortFollowerSession(context.Background())
+}
+
 func (s *Session) commitFollowerFinishLoading(packet protocol.Packet) {
 	s.dungeonStateGuard.Lock()
 	defer s.dungeonStateGuard.Unlock()

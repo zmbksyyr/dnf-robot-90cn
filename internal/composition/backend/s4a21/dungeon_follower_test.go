@@ -274,6 +274,26 @@ func TestDungeonFollowerEventOverflowStopsSession(t *testing.T) {
 	}
 }
 
+func TestStaleFollowerEventOverflowKeepsDisabledTownSession(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	tracked := &closeTrackingConn{Conn: clientConn}
+	cancelled := false
+	events := make(chan protocol.Packet, 1)
+	session := &Session{
+		client:         protocol.NewClient(tracked),
+		cancel:         func() { cancelled = true },
+		followerEvents: events,
+	}
+
+	session.DisableDungeonFollower()
+	session.abortFollowerQueue(events)
+	if cancelled || tracked.closes != 0 {
+		t.Fatalf("stale overflow aborted town session: cancel=%t closes=%d", cancelled, tracked.closes)
+	}
+}
+
 func TestDungeonFollowerCancellationDoesNotAbortTownSession(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
