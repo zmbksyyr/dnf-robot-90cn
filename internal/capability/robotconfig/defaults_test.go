@@ -2,6 +2,23 @@ package robotconfig
 
 import "testing"
 
+func TestDefaultOnlineCapacitySupportsLargeSimulatorPopulations(t *testing.T) {
+	rc := Default()
+	if rc.MaxOnlineRobots != 10000 || rc.MaxOnlinePerCommand != 1000 {
+		t.Fatalf("online defaults = capacity %d command %d", rc.MaxOnlineRobots, rc.MaxOnlinePerCommand)
+	}
+}
+
+func TestDefaultConfigAcceptsTwoThousandOnlineTarget(t *testing.T) {
+	rc, err := Parse("[auto]\nauto_target_online_count = 2000\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc.AutoTargetOnlineCount != 2000 || rc.MaxOnlineRobots != 10000 {
+		t.Fatalf("online config = target %d capacity %d", rc.AutoTargetOnlineCount, rc.MaxOnlineRobots)
+	}
+}
+
 func TestNormalizeKeepsPVFDefinedVillageAboveLegacyRange(t *testing.T) {
 	rc := Default()
 	rc.SpawnVillage = 26

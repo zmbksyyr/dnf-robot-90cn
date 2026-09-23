@@ -9,7 +9,7 @@ func Default() RuntimeConfig {
 		NameASCIIFallback: false, NameASCIIPrefix: "twbot",
 		SpawnFixed: false, SpawnVillage: 3, SpawnFallbackVillage: 1, SpawnArea: 0, SpawnXMin: 240, SpawnXMax: 1800, SpawnYMin: 180, SpawnYMax: 460,
 		MoveSpeedMin: 180, MoveSpeedMax: 260, MoveType: 5, MoveSteps: 4, MoveStepDelayMS: 1200,
-		LoginDelayMS: 1000, ReconnectDelayMS: 5000, MaxReconnect: 2, MaxOnlineRobots: 1000, MaxOnlinePerCommand: 1000, OnlineDispatchIntervalMS: 1000, OnlineConfirmTimeoutMS: 90000,
+		LoginDelayMS: 1000, ReconnectDelayMS: 5000, MaxReconnect: 2, MaxOnlineRobots: 10000, MaxOnlinePerCommand: 1000, OnlineDispatchIntervalMS: 1000, OnlineConfirmTimeoutMS: 90000,
 		DefaultMoney: 1000000, DefaultCoin: 5, InventoryCapacity: 16,
 		EquipSlots: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, EquipRarityMin: 0, EquipRarityMax: 5, EquipIntensifyMin: 7, EquipIntensifyMax: 10, EquipSmithingMin: 0, EquipSmithingMax: 8,
 		PreferEquipSets: true, EquipSetMinSlots: 2,
@@ -32,7 +32,7 @@ func Default() RuntimeConfig {
 
 func Normalize(rc *RuntimeConfig) {
 	if rc.MaxOnlineRobots <= 0 {
-		rc.MaxOnlineRobots = 1000
+		rc.MaxOnlineRobots = 10000
 	}
 	if rc.MaxOnlinePerCommand <= 0 || rc.MaxOnlinePerCommand > rc.MaxOnlineRobots {
 		rc.MaxOnlinePerCommand = rc.MaxOnlineRobots

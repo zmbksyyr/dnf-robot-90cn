@@ -67,6 +67,12 @@ func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
 	}
 }
 
+func TestAutoDialogAllowsPlatformOnlineCapacity(t *testing.T) {
+	if !strings.Contains(appJS, `id="autoTarget" type="number" min="1" max="10000"`) {
+		t.Fatal("auto target input does not expose the platform online capacity")
+	}
+}
+
 func TestWebUsesSinglePreferredShoutAction(t *testing.T) {
 	if strings.Contains(indexHTML, `robotsShoutLocal`) || !strings.Contains(indexHTML, `runAction('robotsShout')`) {
 		t.Fatal("web must expose one preferred shout action")
