@@ -16,8 +16,8 @@ func TestEmbeddedWebAssetsContainRequiredContent(t *testing.T) {
 		{name: "login", content: loginHTML, required: []string{"Robot Web", `action="/login"`, "{{if .Error}}", i18nJSPlaceholder, `id="languageButton"`}},
 		{name: "index", content: indexHTML, required: []string{"TW Robot Web", appCSSPlaceholder, i18nJSPlaceholder, appJSPlaceholder, `id="languageButton"`, `id="partyCompatButton"`, `id="compatButton"`}},
 		{name: "css", content: appCSS, required: []string{":root{", ".service-lights", ".diagrow", ".market-policy-select", ".market-rule-article", ".market-rule-details", ".market-rule-chevrons"}},
-		{name: "i18n", content: i18nJS, required: []string{"I18N_MESSAGES", "tw_language", "toggleLanguage", "currentLanguage=localStorage.getItem(I18N_STORAGE_KEY)==='zh'?'zh':'en'", "auto.shout_interval", "喊话间隔", "validation.shout_interval", "market.section_status", "market.price_range_policy", "market.allowed_rarities", "上架稀有度（0-9）", "范围外回收概率"}},
-		{name: "javascript", content: appJS, required: []string{"async function api(", "openPartyCompatDialog", "openCompatDialog", "openDiagnosticsDialog", "restartRobot", "autoMailNotify", "autoShoutMin", "autoShoutMax", "auto.auto_shout_interval_min_sec", "auto.auto_shout_interval_max_sec", "marketEquipmentRarities", "marketOtherRarities", "marketBlockedItemIDs", "parseBlockedItemIDExpression", "formatBlockedItemIDs", "marketAllowedItemIDs", "parseAllowedItemIDExpression", "formatAllowedItemIDs", "allowed_item_id_expression", "Allowed item IDs", "物品 ID 白名单", "normalizeRarityDigits", "equipment_allowed_rarities", "other_allowed_rarities", "blocked_item_id_expression", "marketEquipmentLevelMin", "marketDetailsFormSection", "marketCategoryPriceRules", "marketEquipmentExtras", "marketCommonPriceSettings", "category_price_rules", "equipment_multiplier_min", "equipment_multiplier_max", "equipment_final_max_price", "equipment_trade_policy", "other_trade_policy", "marketInRangeProbability", "marketApplyListingConfig", "marketKindsProgress", "种类（实际 / 预期）"}},
+		{name: "i18n", content: i18nJS, required: []string{"I18N_MESSAGES", "tw_language", "toggleLanguage", "currentLanguage=localStorage.getItem(I18N_STORAGE_KEY)==='zh'?'zh':'en'", "auto.shout_interval", "auto.follow_account", "喊话间隔", "validation.shout_interval", "market.section_status", "market.price_range_policy", "market.allowed_rarities", "上架稀有度（0-9）", "范围外回收概率"}},
+		{name: "javascript", content: appJS, required: []string{"async function api(", "openPartyCompatDialog", "openCompatDialog", "openDiagnosticsDialog", "restartRobot", "autoMailNotify", "autoShoutMin", "autoShoutMax", "followAccount", "follow.follow_account", "auto.auto_shout_interval_min_sec", "auto.auto_shout_interval_max_sec", "marketEquipmentRarities", "marketOtherRarities", "marketBlockedItemIDs", "parseBlockedItemIDExpression", "formatBlockedItemIDs", "marketAllowedItemIDs", "parseAllowedItemIDExpression", "formatAllowedItemIDs", "allowed_item_id_expression", "Allowed item IDs", "物品 ID 白名单", "normalizeRarityDigits", "equipment_allowed_rarities", "other_allowed_rarities", "blocked_item_id_expression", "marketEquipmentLevelMin", "marketDetailsFormSection", "marketCategoryPriceRules", "marketEquipmentExtras", "marketCommonPriceSettings", "category_price_rules", "equipment_multiplier_min", "equipment_multiplier_max", "equipment_final_max_price", "equipment_trade_policy", "other_trade_policy", "marketInRangeProbability", "marketApplyListingConfig", "marketKindsProgress", "种类（实际 / 预期）"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -39,6 +39,19 @@ func TestAutoControlIsNotGatedByMarketCapability(t *testing.T) {
 	}
 	if strings.Contains(appJS, `cmd.includes("openMaxDialog")||cmd.includes("openScriptDialog")||cmd.includes("openAutoDialog")`) {
 		t.Fatal("auto control is incorrectly gated by market capability")
+	}
+}
+
+func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
+	for _, want := range []string{
+		`id="followAccount"`,
+		`cfg.follow_account`,
+		`'follow.follow_account'`,
+		`cmd.includes("openPartyCompat"))cap='party'`,
+	} {
+		if !strings.Contains(appJS, want) {
+			t.Fatalf("follower configuration boundary is missing %q", want)
+		}
 	}
 }
 
