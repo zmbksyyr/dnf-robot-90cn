@@ -84,6 +84,29 @@ func TestBackendSessionTransportBypassesNativeOnlinePath(t *testing.T) {
 	}
 }
 
+func TestSimulatorOnlineReappliesFixedTownToExistingRobot(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendSessionTransport(&backendSessionStub{})
+	m.SetTownMapCatalog([]shared.MapCatalogItem{{
+		Village: 3, Area: 4, Level: 1, Use: true,
+		Rectangles: []shared.MapRectangle{{XMin: 400, XMax: 500, YMin: 200, YMax: 260}},
+	}})
+	rc := m.loadRobotConfig()
+	rc.SpawnFixed = true
+	rc.SpawnVillage = 3
+	rc.SpawnArea = 4
+	rc.SpawnXMin, rc.SpawnXMax = 400, 500
+	rc.SpawnYMin, rc.SpawnYMax = 200, 260
+	prepared, err := (sessionActionEnv{manager: m}).PrepareOnlineRobot(
+		robotcap.Info{UID: 17000001, Level: 85, Village: 1, Area: 0, X: 10, Y: 20}, rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Village != 3 || prepared.Area != 4 || prepared.X < 400 || prepared.X > 500 || prepared.Y < 200 || prepared.Y > 260 {
+		t.Fatalf("prepared fixed town = %+v", prepared)
+	}
+}
+
 func TestBackendSessionTransportOptsS4A21FollowersFromFollowAccount(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "[follow]\nfollow_account = leader\n")
 	backend := &backendSessionStub{}

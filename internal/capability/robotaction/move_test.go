@@ -98,6 +98,36 @@ func TestAutoMovePreservesSourceWhenFollowingAcrossAreas(t *testing.T) {
 	}
 }
 
+func TestAutoMoveRelocatesExistingRobotToConfiguredFixedTown(t *testing.T) {
+	env := &captureMoveEnv{}
+	service := MoveService{Env: env}
+	source := robotcap.Info{UID: 101, Village: 1, Area: 2, X: 100, Y: 50}
+	rc := robotconfig.RuntimeConfig{
+		SpawnFixed: true, SpawnVillage: 3, SpawnArea: 4,
+		SpawnXMin: 410, SpawnXMax: 490, SpawnYMin: 210, SpawnYMax: 250,
+		MoveSteps: 2, MoveSpeedMin: 100, MoveSpeedMax: 100,
+	}
+	maps := []shared.MapCatalogItem{{
+		Village: 3, Area: 4, Use: true,
+		Rectangles: []shared.MapRectangle{{XMin: 400, XMax: 500, YMin: 200, YMax: 260}},
+	}}
+
+	if err := service.AutoMove(source, rc, maps, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.steps) != 2 {
+		t.Fatalf("move steps = %d, want 2", len(env.steps))
+	}
+	for _, step := range env.steps {
+		if step.targetVillage != 3 || step.targetArea != 4 {
+			t.Fatalf("fixed target area = %d/%d", step.targetVillage, step.targetArea)
+		}
+		if step.targetX < 410 || step.targetX > 490 || step.targetY < 210 || step.targetY > 250 {
+			t.Fatalf("fixed target position = %d/%d", step.targetX, step.targetY)
+		}
+	}
+}
+
 func TestAutoMoveStopsAfterDispatchFailure(t *testing.T) {
 	env := &captureMoveEnv{failAt: 2}
 	service := MoveService{Env: env}

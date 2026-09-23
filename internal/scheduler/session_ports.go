@@ -139,6 +139,9 @@ func (e sessionActionEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.
 }
 
 func (e sessionActionEnv) PrepareOnlineRobot(info robotcap.Info, rc robotconfig.RuntimeConfig) (robotcap.Info, error) {
+	if e.manager.backendSessions != nil && rc.SpawnFixed {
+		e.manager.applyConfiguredLocation(&info, rc, e.manager.loadMapCatalog())
+	}
 	if shared.GenericAreaAllowed(info.GuildID, info.Village) {
 		return info, nil
 	}

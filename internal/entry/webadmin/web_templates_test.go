@@ -120,6 +120,29 @@ func TestSimulatorDatabaseCapabilityDoesNotBlockProtocolActions(t *testing.T) {
 	}
 }
 
+func TestSimulatorKeypairCapabilityDoesNotBlockAutoControl(t *testing.T) {
+	if !strings.Contains(appJS, `backendCapabilities.keypair&&!backendCapabilities.keypair.enabled){keyBlocked=false`) {
+		t.Fatal("an unavailable simulator keypair must not disable shared robot controls")
+	}
+}
+
+func TestHeaderActionsStayRightAlignedAndBackendSelectorIsCompact(t *testing.T) {
+	for _, want := range []string{
+		`class="header-actions-spacer"`,
+		`.header-actions-spacer{margin-left:auto}`,
+		`anchor=byId('compatButton')`,
+		`anchor.parentElement.insertBefore(button,anchor)`,
+		`showModal(i18nFormat('backend.title'),body`,
+		`'backend',false`,
+		`dialog.backend{width:min(380px,96vw)`,
+		`button.textContent=selected?.display_name`,
+	} {
+		if !strings.Contains(indexHTML+appCSS+appJS, want) {
+			t.Fatalf("compact right-aligned backend controls are missing %q", want)
+		}
+	}
+}
+
 func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
 	for _, want := range []string{
 		"Category unit-price ranges", "分类单价范围",

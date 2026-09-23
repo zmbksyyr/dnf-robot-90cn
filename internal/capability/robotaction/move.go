@@ -131,6 +131,11 @@ func (s MoveService) AutoMove(info robotcap.Info, rc robotconfig.RuntimeConfig, 
 		targetInfo.Village = targetVillage
 		targetInfo.Area = targetArea
 		targetX, targetY = s.followTarget(targetInfo, *follow, rc, maps)
+	} else if rc.SpawnFixed && hasUsableMap(maps, rc.SpawnVillage, rc.SpawnArea) {
+		targetVillage, targetArea = rc.SpawnVillage, rc.SpawnArea
+		targetInfo := info
+		targetInfo.Village, targetInfo.Area = targetVillage, targetArea
+		targetX, targetY = s.randomTarget(targetInfo, rc, maps)
 	} else {
 		targetX, targetY = s.randomTarget(info, rc, maps)
 	}
