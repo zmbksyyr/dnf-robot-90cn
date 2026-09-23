@@ -233,7 +233,7 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 
 在此基础上已增加私有 `moveSingleDungeon`，真实验证了 64 字节 `MOVE_MAP`、第二个 `START_MAP` 和第二次 `FINISH_LOADING`。房间坐标采用 pending 提交语义，只有加载释放成功才更新当前房间；发送失败或超时不会伪造移动成功。该方法同样尚未接入共享能力。
 
-#### 阶段 7.2：最小组队跟随（当前阶段）
+#### 阶段 7.2：最小组队跟随（已完成）
 
 真实整合包已验证：新角色可在城镇通过 `CHANGE_TUTORIAL_FLAG(31,0)` 完成首次教程门禁准备；组队后，队长和队员进入同一 party dungeon instance。队长发送 `MOVE_MAP` 时，服务端分别向双方发送下一房间的 `START_MAP`，队员不应发送 `MOVE_MAP`，只需对自己的投影发送 `FINISH_LOADING`。
 
@@ -248,6 +248,8 @@ Follower 写入邀请接受或 `FINISH_LOADING` 失败时，当前 session 会�
 `follow_account` 在当前 S4A21 协议证据下只作为显式 follower 开关使用，不能据其账号文本校验邀请者。普通邀请通知只提供 inviter wire UID，现有已验证流程没有账号到该 UID 的可信协议映射；在补齐协议证据前，不查询模拟端数据库、不伪装成已经绑定指定邀请者。
 
 本阶段不开放完整 `party` 或主动 `dungeon_move` 能力。技能释放、战斗、结算、奖励、主动回城和 rejoin 没有并入 follower 状态机，仍返回 `backend_capability_unsupported`；Web 对应操作继续置灰。
+
+阶段 7.2 收口（2026-09-23）：当前约定的地下城范围到此结束。生产路径和真实满编队回归已经证明被动 follower 闭环，能力矩阵、数据库边界和城镇行为抑制均有自动化测试覆盖。在用户明确指定下一项能力并取得对应协议闭环证据前，不继续实现主动选图、主动移动、技能、战斗、结算、奖励、回城、rejoin 或通用地下城引擎；已有私有协议实验不构成公共能力。
 
 ## 验证要求
 

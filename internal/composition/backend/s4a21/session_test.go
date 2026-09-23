@@ -142,7 +142,7 @@ func TestSessionReturnsUnsupportedPartyShout(t *testing.T) {
 	session := &Session{client: protocol.NewClient(nil)}
 	err := session.Shout(context.Background(), shared.ShoutIntent{Channel: shared.ShoutChannelParty, Message: "hello"})
 	unsupported, ok := err.(shared.UnsupportedCapabilityError)
-	if !ok || unsupported.Operation != shared.CapabilityShout {
+	if !ok || unsupported.Operation != shared.CapabilityShout || unsupported.Reason != "S4A21 party-recipient message mode is not verified" {
 		t.Fatalf("error = %T %v", err, err)
 	}
 }
