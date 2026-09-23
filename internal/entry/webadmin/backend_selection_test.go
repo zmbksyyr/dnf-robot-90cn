@@ -105,7 +105,7 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 	if simulator == nil {
 		t.Fatal("backend payload does not include S4A21")
 	}
-	for _, capability := range []shared.BackendCapability{shared.CapabilityTownMove, shared.CapabilityShout} {
+	for _, capability := range []shared.BackendCapability{shared.CapabilityTownMove, shared.CapabilityShout, shared.CapabilityCleanup} {
 		if !simulator.Supports(capability) {
 			t.Fatalf("S4A21 capability %s unexpectedly disabled: %+v", capability, simulator.Capabilities[capability])
 		}

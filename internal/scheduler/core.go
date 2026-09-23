@@ -32,6 +32,7 @@ type RobotManager struct {
 	backendActions                  BackendActionTransport
 	backendSessions                 BackendSessionTransport
 	backendRobotCreator             BackendRobotCreator
+	backendRobotCleaner             BackendRobotCleaner
 	backendRobotBackend             shared.BackendID
 	worldShout                      WorldShout
 	locks                           *lockhub.Hub
@@ -137,10 +138,20 @@ type BackendRobotCreator interface {
 	CreateRobots(context.Context, robotcap.CreateRequest) ([]robotcap.Info, error)
 }
 
+type BackendRobotCleaner interface {
+	CleanupRobots(context.Context, robotcap.CleanupRequest) (robotcap.CleanupResult, error)
+}
+
 func (m *RobotManager) SetBackendRobotCreator(backend shared.BackendID, creator BackendRobotCreator) {
 	if m != nil {
 		m.backendRobotBackend = backend
 		m.backendRobotCreator = creator
+	}
+}
+
+func (m *RobotManager) SetBackendRobotCleaner(cleaner BackendRobotCleaner) {
+	if m != nil {
+		m.backendRobotCleaner = cleaner
 	}
 }
 

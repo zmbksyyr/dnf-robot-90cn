@@ -42,4 +42,16 @@ func TestFileStorePersistsRobotStateWithoutGameDatabase(t *testing.T) {
 	if err != nil || len(identities) != 1 || identities[0].Slot == nil || *identities[0].Slot != slot {
 		t.Fatalf("identities=%+v err=%v", identities, err)
 	}
+	if err := reloaded.RemoveRobots(context.Background(), []int{7}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err = OpenFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	robots, _ = reloaded.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 10})
+	identities, _ = reloaded.Identities(context.Background(), shared.BackendS4A21)
+	if len(robots) != 0 || len(identities) != 0 {
+		t.Fatalf("removed state was persisted: robots=%+v identities=%+v", robots, identities)
+	}
 }

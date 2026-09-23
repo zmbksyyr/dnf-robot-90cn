@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -83,16 +84,29 @@ func TestSimulatorVerifiedTownAndLocalShoutRemainAllowed(t *testing.T) {
 	}
 }
 
-func TestSimulatorCleanupIsRejectedWithStableCapabilityError(t *testing.T) {
+type cleanupRecorder struct{ called bool }
+
+func (c *cleanupRecorder) CleanupRobots(_ context.Context, req robotcap.CleanupRequest) (robotcap.CleanupResult, error) {
+	c.called = true
+	return robotcap.CleanupResult{DryRun: !req.Force, Requested: len(req.UIDs)}, nil
+}
+
+func TestSimulatorCleanupRoutesToProtocolAdapter(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
-	_, err := m.CleanupRobots(robotcap.CleanupRequest{UIDs: []int{7}, Force: true})
-	var unsupported shared.UnsupportedCapabilityError
-	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityCleanup {
-		t.Fatalf("error = %v, want cleanup unsupported", err)
+	cleaner := &cleanupRecorder{}
+	m.SetBackendRobotCleaner(cleaner)
+	result, err := m.CleanupRobots(robotcap.CleanupRequest{UIDs: []int{7}})
+	if err != nil || !cleaner.called || !result.DryRun || result.Requested != 1 {
+		t.Fatalf("result=%+v called=%t err=%v", result, cleaner.called, err)
 	}
-	if !strings.Contains(err.Error(), shared.CodeBackendCapabilityUnsupported) {
-		t.Fatalf("error = %v, missing stable capability code", err)
+}
+
+func TestSimulatorCleanupNeverFallsBackToNativeRepository(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	if _, err := m.CleanupRobots(robotcap.CleanupRequest{UIDs: []int{7}}); err == nil || !strings.Contains(err.Error(), "cleanup adapter is not configured") {
+		t.Fatalf("error = %v, want missing adapter failure", err)
 	}
 }
 

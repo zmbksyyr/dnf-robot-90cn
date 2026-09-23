@@ -234,6 +234,9 @@ func (m *RobotManager) CleanupRobots(req robotcap.CleanupRequest) (robotcap.Clea
 	if err := m.requireBackendCapability(shared.CapabilityCleanup); err != nil {
 		return robotcap.CleanupResult{}, err
 	}
+	if m.backendRobotBackend != "" && m.backendRobotBackend != shared.BackendNative && m.backendRobotCleaner == nil {
+		return robotcap.CleanupResult{}, fmt.Errorf("backend %s cleanup adapter is not configured", m.backendRobotBackend)
+	}
 	return m.cleanupRobots(req)
 }
 
@@ -253,10 +256,54 @@ func (m *RobotManager) cleanupRobots(req robotcap.CleanupRequest) (robotcap.Clea
 			}()
 		}
 	}
-	result, err := m.lifecycleCleaner(req).Cleanup(req)
+	var result robotcap.CleanupResult
+	var err error
+	if m.backendRobotCleaner != nil {
+		var finishDelete func()
+		if req.Force {
+			uids, selectErr := m.backendCleanupUIDs(req)
+			if selectErr != nil {
+				opErr = selectErr
+				return robotcap.CleanupResult{}, selectErr
+			}
+			finishDelete = (lifecycleCleanupEnv{manager: m, request: req}).PrepareDelete(uids)
+		}
+		if finishDelete != nil {
+			defer finishDelete()
+		}
+		result, err = m.backendRobotCleaner.CleanupRobots(context.Background(), req)
+	} else {
+		result, err = m.lifecycleCleaner(req).Cleanup(req)
+	}
 	opErr = err
 	opResult = result
 	return result, err
+}
+
+func (m *RobotManager) backendCleanupUIDs(req robotcap.CleanupRequest) ([]int, error) {
+	if m.robotState == nil {
+		return nil, fmt.Errorf("backend robot state is not configured")
+	}
+	robots, err := m.robotState.SelectRobots(context.Background(), robotcap.CommandRequest{Count: int(^uint(0) >> 1)})
+	if err != nil {
+		return nil, err
+	}
+	wanted := make(map[int]struct{}, len(req.UIDs))
+	for _, uid := range req.UIDs {
+		wanted[uid] = struct{}{}
+	}
+	uids := make([]int, 0, len(robots))
+	for _, robot := range robots {
+		if len(wanted) > 0 {
+			if _, ok := wanted[robot.UID]; !ok {
+				continue
+			}
+		} else if req.MinUID > 0 && robot.UID < req.MinUID || req.MaxUID > 0 && robot.UID > req.MaxUID {
+			continue
+		}
+		uids = append(uids, robot.UID)
+	}
+	return uids, nil
 }
 
 var errOperationConflict = fmt.Errorf("structural operation already running")

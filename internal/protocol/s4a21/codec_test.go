@@ -35,6 +35,13 @@ func TestDeleteCharacterBodyMatchesA21Layout(t *testing.T) {
 	}
 }
 
+func TestCharacterRosterRequestUsesGetUserInfoModeTwo(t *testing.T) {
+	body := CharacterRosterRequestBody()
+	if len(body) != 3 || body[0] != 0 || body[1] != 0 || body[2] != 2 {
+		t.Fatalf("roster request body = %X", body)
+	}
+}
+
 func TestEncodeDecodeFrame(t *testing.T) {
 	frame := make([]byte, ResponseHeaderSize+3)
 	frame[0] = 1

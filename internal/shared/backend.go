@@ -124,7 +124,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true, Reason: "coordinates and verified town-area transitions"}
 	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area channel only; party requires the separate party capability"}
 	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
-	capabilities[CapabilityCleanup] = CapabilityStatus{Reason: "S4A21 character deletion protocol is not integrated"}
+	capabilities[CapabilityCleanup] = CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
 	capabilities[CapabilityCompatibility] = CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
 	capabilities[CapabilityKeypair] = CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
 	capabilities[CapabilityDatabase] = CapabilityStatus{Reason: "simulator game databases are outside the robot boundary"}

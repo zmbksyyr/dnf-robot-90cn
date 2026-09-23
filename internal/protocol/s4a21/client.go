@@ -61,6 +61,10 @@ func (c *Client) DeleteCharacter(ctx context.Context, slot uint16, name []byte) 
 	return c.send(ctx, Encode(1, CmdDeleteCharacter, body))
 }
 
+func (c *Client) RequestCharacterRoster(ctx context.Context) error {
+	return c.send(ctx, Encode(1, CmdGetUserInfo, CharacterRosterRequestBody()))
+}
+
 func (c *Client) SelectCharacter(ctx context.Context, slot uint16) error {
 	return c.send(ctx, Encode(1, CmdSelectCharacter, SelectCharacterBody(slot)))
 }

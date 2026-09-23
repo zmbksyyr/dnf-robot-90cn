@@ -75,6 +75,10 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state, Config: rc, Names: nameTemplates, Maps: townMaps,
 		AccountPrefix: "robot", IDStart: rc.RobotUIDStart,
 	})
+	manager.SetBackendRobotCleaner(s4a21backend.RobotCleaner{
+		Protocol: s4a21backend.CharacterDeleter{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
+		State:    state, Sessions: transports.sessions,
+	})
 	defer func() {
 		if err := manager.Shutdown(); err != nil {
 			foundationlog.Robotf("SIMULATOR_MANAGER_SHUTDOWN_FAILED err=%v\n", err)

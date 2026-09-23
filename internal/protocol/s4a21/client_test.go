@@ -85,6 +85,27 @@ func TestClientDeleteCharacterWritesVerifiedPacket(t *testing.T) {
 	}
 }
 
+func TestClientCharacterRosterRequestWritesGetUserInfoModeTwo(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	client := NewClient(clientConn)
+	done := make(chan error, 1)
+	go func() {
+		packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
+		if err == nil && (packet.Type != CmdGetUserInfo || string(packet.Body) != string([]byte{0, 0, 2})) {
+			err = fmt.Errorf("roster request packet = %+v", packet)
+		}
+		done <- err
+	}()
+	if err := client.RequestCharacterRoster(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClientVerifiedDungeonPrimitives(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()

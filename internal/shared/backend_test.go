@@ -48,8 +48,8 @@ func TestS4A21MetadataReflectsVerifiedCapabilities(t *testing.T) {
 	if found.Supports(CapabilityWorldShout) || found.Capabilities[CapabilityWorldShout].Reason == "" {
 		t.Fatalf("world shout must remain disabled with reason: %+v", found.Capabilities[CapabilityWorldShout])
 	}
-	if found.Supports(CapabilityCleanup) || found.Capabilities[CapabilityCleanup].Reason == "" {
-		t.Fatalf("cleanup must remain disabled with reason: %+v", found.Capabilities[CapabilityCleanup])
+	if !found.Supports(CapabilityCleanup) {
+		t.Fatalf("verified cleanup capability is disabled: %+v", found.Capabilities[CapabilityCleanup])
 	}
 	if found.Supports(CapabilityDungeonMove) || found.Capabilities[CapabilityDungeonMove].Reason == "" {
 		t.Fatalf("dungeon movement must remain disabled with reason: %+v", found.Capabilities[CapabilityDungeonMove])

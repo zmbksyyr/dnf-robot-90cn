@@ -17,6 +17,7 @@ const (
 	CmdSelectCharacter      uint16 = 0x0004
 	CmdCreateCharacter      uint16 = 0x0005
 	CmdDeleteCharacter      uint16 = 0x0006
+	CmdGetUserInfo          uint16 = 0x0008
 	CmdSendMessage          uint16 = 0x0011
 	CmdRequestPeer          uint16 = 0x000A
 	CmdResponsePeer         uint16 = 0x000B
@@ -222,6 +223,10 @@ func DeleteCharacterBody(slot uint16, name []byte) ([]byte, error) {
 	binary.LittleEndian.PutUint32(out[2:6], uint32(len(name)))
 	copy(out[6:], name)
 	return out, nil
+}
+
+func CharacterRosterRequestBody() []byte {
+	return []byte{0, 0, 2}
 }
 
 func SelectCharacterBody(slot uint16) []byte {

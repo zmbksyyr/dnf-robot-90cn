@@ -56,6 +56,24 @@ func TestMemoryStoreRegistersBackendNeutralIdentity(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreRemovesRobotOwnedStateAndIdentity(t *testing.T) {
+	store := NewMemoryStore([]robotcap.Info{{UID: 7, Name: "robot"}, {UID: 8, Name: "keep"}})
+	if err := store.RegisterIdentities(context.Background(), []Identity{
+		{Backend: shared.BackendS4A21, Account: "acct7", CharacterName: "robot"},
+		{Backend: shared.BackendS4A21, Account: "acct8", CharacterName: "keep"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RemoveRobots(context.Background(), []int{7}); err != nil {
+		t.Fatal(err)
+	}
+	robots, _ := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 10})
+	identities, _ := store.Identities(context.Background(), shared.BackendS4A21)
+	if len(robots) != 1 || robots[0].UID != 8 || len(identities) != 1 || identities[0].CharacterName != "keep" {
+		t.Fatalf("robots=%+v identities=%+v", robots, identities)
+	}
+}
+
 func TestMemoryStoreSelectRobotsUsesStableUIDOrder(t *testing.T) {
 	store := NewMemoryStore([]robotcap.Info{{UID: 30, Name: "c"}, {UID: 10, Name: "a"}, {UID: 20, Name: "b"}})
 	robots, err := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 2})
