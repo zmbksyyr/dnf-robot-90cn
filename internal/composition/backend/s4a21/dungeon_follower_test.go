@@ -134,6 +134,24 @@ func TestDungeonFollowerIsExplicitlyOptIn(t *testing.T) {
 	session.DisableDungeonFollower()
 }
 
+func TestDungeonFollowerIgnoresStartMapBeforeOwnPartyIsConfirmed(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	session := &Session{client: protocol.NewClient(clientConn), selfUID: 0x1234}
+
+	session.handleFollowerPacket(context.Background(), protocol.Packet{
+		Type: protocol.NotiStartMap, Body: []byte{2, 4},
+	})
+	if session.dungeonState != nil {
+		t.Fatalf("unconfirmed START_MAP created dungeon state: %+v", session.dungeonState)
+	}
+	_ = serverConn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+	if packet, err := protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength); err == nil {
+		t.Fatalf("unconfirmed START_MAP produced request type=0x%04X", packet.Type)
+	}
+}
+
 func TestDungeonFollowerCloseStopsWorker(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()

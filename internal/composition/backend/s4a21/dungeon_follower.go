@@ -169,7 +169,7 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 }
 
 func (s *Session) acceptFollowerStartMap(ctx context.Context, packet protocol.Packet) {
-	if packet.Command != 0 {
+	if packet.Command != 0 || !s.PartyActive() {
 		return
 	}
 	s.dungeonStateGuard.Lock()

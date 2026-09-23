@@ -38,3 +38,8 @@ S4A21 的 `MOVE_MAP` 不是独立的地下城能力。服务端协议还涉及�
 - 不通过 SQLite、MySQL 或其他服务端数据库绕过协议；
 - 不因已解析出 `MOVE_MAP` opcode 而提前开放调度入口。
 
+## 当前最小例外
+
+S4A21 已实现显式启用的被动队员跟随，但这不等同于开放 `dungeon_move`：队员只有在 `PARTY_INFO` 名册确认自身 wire UID 后，才处理服务端投送的 `START_MAP` 并回复 `FINISH_LOADING`；队员从不发送 `MOVE_MAP`。生产 `SessionFactory` 路径已在真实整合包验证自动接邀、双端入场和一次连续换房。
+
+该流程不包含主动选图、主动移动、技能、战斗、结算、奖励、回城或 rejoin。`follow_account` 目前仅是显式启用开关，邀请包中的 wire UID 尚无已验证的账号映射，因此不能声称已经按账号绑定队长，也不得通过读取模拟端数据库补足映射。
