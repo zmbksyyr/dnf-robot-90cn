@@ -209,6 +209,11 @@ func runMain() int {
 		return 1
 	}
 	manager.SetRobotStateDirectory(backendState)
+	defer func() {
+		if err := backendState.Flush(); err != nil {
+			dnf.LogString(fmt.Sprintf("ROBOT_STATE_FLUSH_FAILED err=%v\n", err))
+		}
+	}()
 	transportBundle, err := composeBackendTransports(backendInfo, cfg)
 	if err != nil {
 		dnf.LogString(fmt.Sprintf("BACKEND_TRANSPORT_COMPOSE_FAILED backend=%s err=%v\n", backendInfo.ID, err))

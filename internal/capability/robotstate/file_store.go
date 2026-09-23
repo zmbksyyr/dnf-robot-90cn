@@ -90,6 +90,16 @@ func (s *FileStore) persist() error {
 	return atomicfile.WriteFile(s.path, data, 0600)
 }
 
+// Flush publishes the current Robot-owned snapshot. Mutating operations are
+// already persisted individually; the explicit barrier makes shutdown order
+// visible to callers and remains correct if batching is introduced later.
+func (s *FileStore) Flush() error {
+	if s == nil {
+		return errors.New("nil robot state store")
+	}
+	return s.persist()
+}
+
 func (s *FileStore) UpdateRobotPositions(ctx context.Context, updates []robotcap.PositionUpdate) error {
 	if err := s.MemoryStore.UpdateRobotPositions(ctx, updates); err != nil {
 		return err

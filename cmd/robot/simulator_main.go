@@ -78,6 +78,9 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 	manager.ConfigureBackendRuntime(info, s4a21backend.PersistenceInspector{DatabasePath: loadoutDB}, nil)
 	manager.SetBackendRobotCreator(info, nil)
 	manager.SetRobotStateDirectory(state)
+	defer func() {
+		if err := state.Flush(); err != nil { foundationlog.Robotf("SIMULATOR_STATE_FLUSH_FAILED err=%v\n", err) }
+	}()
 	manager.SetBackendActionTransport(transports.actions)
 	manager.SetBackendSessionTransport(transports.sessions)
 	manager.SetTownMapCatalog(townMaps)

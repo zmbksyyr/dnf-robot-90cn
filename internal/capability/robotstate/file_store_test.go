@@ -29,6 +29,9 @@ func TestFileStorePersistsRobotStateWithoutGameDatabase(t *testing.T) {
 	if err := store.CompleteCreateBatch(context.Background(), "batch"); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.Flush(); err != nil {
+		t.Fatal(err)
+	}
 
 	reloaded, err := OpenFileStore(path)
 	if err != nil {
