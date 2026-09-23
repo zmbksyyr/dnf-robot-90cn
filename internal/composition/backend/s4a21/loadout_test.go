@@ -12,14 +12,21 @@ import (
 	equipmentcap "robot/internal/capability/equipment"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
+	"robot/internal/foundation/charset"
 	"robot/internal/shared"
 )
 
 func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "inventory.db")
 	db := openLoadoutTestDB(t, path)
-	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot7');
-INSERT INTO characters(character_id,account_id,name,job,level,delete_flag) VALUES(9,7,'bot',1,85,0);`); err != nil {
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot7')`); err != nil {
+		t.Fatal(err)
+	}
+	encodedName, err := charset.EncodeGBKString("机器人")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,level,delete_flag) VALUES(9,7,?,1,85,0)`, encodedName); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -35,7 +42,7 @@ INSERT INTO characters(character_id,account_id,name,job,level,delete_flag) VALUE
 		{ID: 2001, Name: "Hair", ItemType: 21, UseJob: []int{1}, Icon: "avatar/b.img"},
 	}
 	applier := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
-	info := robotcap.Info{Name: "bot", Job: 1, Level: 85}
+	info := robotcap.Info{Name: "机器人", Job: 1, Level: 85}
 	if err := applier.ApplyCharacterLoadout(context.Background(), "robot7", info); err != nil {
 		t.Fatal(err)
 	}

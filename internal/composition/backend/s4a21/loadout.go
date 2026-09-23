@@ -11,6 +11,7 @@ import (
 	equipmentcap "robot/internal/capability/equipment"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
+	"robot/internal/foundation/charset"
 	"robot/internal/shared"
 
 	_ "modernc.org/sqlite"
@@ -49,10 +50,14 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 	if err := validateLoadoutSchema(ctx, db); err != nil {
 		return err
 	}
+	encodedName, err := charset.EncodeGBKString(info.Name)
+	if err != nil {
+		return fmt.Errorf("encode S4A21 loadout character name %q: %w", info.Name, err)
+	}
 	var accountID, characterID int
 	err = db.QueryRowContext(ctx, `SELECT a.account_id, c.character_id
 FROM accounts a JOIN characters c ON c.account_id = a.account_id
-WHERE a.m_id = ? AND CAST(c.name AS TEXT) = ? AND c.delete_flag = 0 LIMIT 1`, account, info.Name).Scan(&accountID, &characterID)
+WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag = 0 LIMIT 1`, account, encodedName, info.Name).Scan(&accountID, &characterID)
 	if err != nil {
 		return fmt.Errorf("resolve S4A21 loadout character %s/%s: %w", account, info.Name, err)
 	}
