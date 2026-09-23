@@ -22,6 +22,21 @@ func TestBuildRobotRestartScriptKeepsOtherBoundedLogSinks(t *testing.T) {
 	}
 }
 
+func TestRestartHelperRequestedRequiresFirstExactArgument(t *testing.T) {
+	if !RestartHelperRequested([]string{"--restart-helper", "--restart-parent-pid", "1"}) {
+		t.Fatal("restart helper argument was not recognized")
+	}
+	for _, args := range [][]string{
+		nil,
+		{"--web-admin", "--restart-helper"},
+		{"--restart-helper=true"},
+	} {
+		if RestartHelperRequested(args) {
+			t.Fatalf("unexpected restart helper match for %v", args)
+		}
+	}
+}
+
 func TestConfigPathRejectsMissingRuntimeRoot(t *testing.T) {
 	if got := (&Server{}).configPath(); got != "" {
 		t.Fatalf("config path = %q, want empty path without configured runtime root", got)

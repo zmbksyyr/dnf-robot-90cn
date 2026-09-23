@@ -40,6 +40,13 @@ func main() {
 }
 
 func runMain() int {
+	if webadmin.RestartHelperRequested(os.Args[1:]) {
+		if err := webadmin.RunRestartHelper(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "restart helper failed: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	webAdminMode := flag.Bool("web-admin", false, "run web admin child process")
 	robotAddr := flag.String("robot-addr", "", "robot TCP address for web admin")
 	webAddr := flag.String("web-addr", "", "web admin listen address")

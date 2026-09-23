@@ -5,9 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -257,20 +255,6 @@ func (s *Server) configPath() string {
 		return ""
 	}
 	return layout.New(s.cfg.ConfigDir).MainConfig()
-}
-
-func startRobotRestartHelper(exe, configDir string) error {
-	if runtime.GOOS != "linux" {
-		return fmt.Errorf("restart robot is only supported on linux")
-	}
-	if strings.TrimSpace(exe) == "" {
-		return fmt.Errorf("empty executable path")
-	}
-	cmd := exec.Command("/bin/sh", "-c", buildRobotRestartScript(exe, configDir))
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	return cmd.Process.Release()
 }
 
 func buildRobotRestartScript(exe, configDir string) string {
