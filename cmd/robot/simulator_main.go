@@ -30,10 +30,6 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		foundationlog.Robotf("SIMULATOR_RUNTIME_INIT_FAILED backend=%s err=%v\n", info.ID, err)
 		return 1
 	}
-	if err := runtimeinit.MarkBackendRuntimeApplied(paths, selection); err != nil {
-		foundationlog.Robotf("SIMULATOR_RUNTIME_MARK_FAILED err=%v\n", err)
-		return 1
-	}
 	rc, err := loadRequiredRobotConfig(paths.RobotConfig())
 	if err != nil {
 		foundationlog.Robotf("SIMULATOR_RUNTIME_CONFIG_FAILED err=%v\n", err)
@@ -57,6 +53,13 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 	townMaps, err := loadBackendTownMapCatalog(context.Background(), info, cfg)
 	if err != nil {
 		foundationlog.Robotf("SIMULATOR_TOWN_MAP_FAILED err=%v\n", err)
+		return 1
+	}
+	// Do not mark the generation as applied until simulator-specific
+	// initialization (including transport composition and PVF projection) has
+	// succeeded. A failed startup must retry the reinitialization next time.
+	if err := runtimeinit.MarkBackendRuntimeApplied(paths, selection); err != nil {
+		foundationlog.Robotf("SIMULATOR_RUNTIME_MARK_FAILED err=%v\n", err)
 		return 1
 	}
 	manager := scheduler.NewRobotManager(nil, cfg, nil)
