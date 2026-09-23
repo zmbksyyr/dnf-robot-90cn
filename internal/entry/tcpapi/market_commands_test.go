@@ -20,7 +20,8 @@ func TestManualMarketTargetsTreatsEmptyAsBothMarkets(t *testing.T) {
 
 func TestMarketCommandRejectsUnsupportedBackendBeforeAppLookup(t *testing.T) {
 	manager := scheduler.NewRobotManager(nil, nil, nil)
-	manager.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported in test backend"})
+	manager.SetBackendRobotCreator(shared.BackendInfo{ID: shared.BackendS4A21, Capabilities: capabilities}, nil)
 	response, handled := handleMarketCommand("marketStatus", "", manager)
 	if !handled || !strings.Contains(response, shared.CodeBackendCapabilityUnsupported) {
 		t.Fatalf("response=%q handled=%t", response, handled)

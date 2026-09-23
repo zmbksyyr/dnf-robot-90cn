@@ -10,7 +10,19 @@ import (
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
+	"robot/internal/shared"
 )
+
+func testS4BackendInfo() shared.BackendInfo {
+	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported in test backend"})
+	for _, capability := range []shared.BackendCapability{
+		shared.CapabilityProvision, shared.CapabilityTownMove, shared.CapabilityDungeonFollow,
+		shared.CapabilityShout, shared.CapabilityCleanup, shared.CapabilityDatabase,
+	} {
+		capabilities[capability] = shared.CapabilityStatus{Enabled: true}
+	}
+	return shared.BackendInfo{ID: shared.BackendS4A21, Capabilities: capabilities}
+}
 
 func newRobotActor(slotID int, mode actormodel.Mode, runtime actormodel.RobotRuntime) *actormodel.Actor {
 	return actormodel.NewActor(slotID, mode, runtime)

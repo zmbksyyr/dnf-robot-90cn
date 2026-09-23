@@ -42,6 +42,7 @@ type Server struct {
 	backendSelectionMu      lockhub.Locker
 	backend                 shared.BackendID
 	backendInfo             shared.BackendInfo
+	backendCatalog          []shared.BackendInfo
 	recoveryMode            bool
 }
 
@@ -55,23 +56,47 @@ func NewRecovery(cfg *config.SysConfig, robotAddr, webAddr string, selected shar
 	return server
 }
 
+func NewRecoveryWithCatalog(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID, catalog []shared.BackendInfo) *Server {
+	server := newServer(cfg, robotAddr, webAddr, selected, catalog)
+	server.recoveryMode = true
+	return server
+}
+
 type partySkillFileState struct {
 	enabled bool
 }
 
 func New(cfg *config.SysConfig, robotAddr, webAddr string, backend ...shared.BackendID) *Server {
+	selected := shared.BackendNative
+	if len(backend) > 0 && backend[0] != "" {
+		selected = backend[0]
+	}
+	info := shared.BackendInfo{ID: selected, DisplayName: string(selected), Selectable: true, Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{Enabled: true})}
+	return newServer(cfg, robotAddr, webAddr, selected, []shared.BackendInfo{info})
+}
+
+func NewWithCatalog(cfg *config.SysConfig, robotAddr, webAddr string, backend shared.BackendID, catalog []shared.BackendInfo) *Server {
+	return newServer(cfg, robotAddr, webAddr, backend, catalog)
+}
+
+func newServer(cfg *config.SysConfig, robotAddr, webAddr string, backend shared.BackendID, catalog []shared.BackendInfo) *Server {
 	if robotAddr == "" {
 		robotAddr = fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort)
 	}
 	if webAddr == "" {
 		webAddr = fmt.Sprintf("0.0.0.0:%d", cfg.WebPort)
 	}
-	selectedBackend := shared.BackendNative
-	if len(backend) > 0 && backend[0] != "" {
-		selectedBackend = backend[0]
+	selectedBackend := backend
+	if selectedBackend == "" {
+		selectedBackend = shared.BackendNative
 	}
-	selectedInfo := shared.BackendInfo{ID: selectedBackend}
-	for _, info := range shared.KnownBackends() {
+	if len(catalog) == 0 {
+		catalog = []shared.BackendInfo{{ID: selectedBackend, DisplayName: string(selectedBackend), Selectable: true, Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{Enabled: true})}}
+	} else {
+		catalog = append([]shared.BackendInfo(nil), catalog...)
+	}
+	selectedInfo := shared.BackendInfo{ID: selectedBackend, Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{})}
+	for _, info := range catalog {
 		if info.ID == selectedBackend {
 			selectedInfo = info
 			break
@@ -87,6 +112,7 @@ func New(cfg *config.SysConfig, robotAddr, webAddr string, backend ...shared.Bac
 		mailboxGuardWake: make(chan struct{}, 1),
 		backend:          selectedBackend,
 		backendInfo:      selectedInfo,
+		backendCatalog:   catalog,
 	}
 }
 

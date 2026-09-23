@@ -75,7 +75,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 	}
 	manager := scheduler.NewRobotManager(nil, cfg, nil)
 	manager.ConfigureBackendRuntime(info, s4a21backend.PersistenceInspector{DatabasePath: loadoutDB}, nil)
-	manager.SetBackendRobotCreator(info.ID, nil)
+	manager.SetBackendRobotCreator(info, nil)
 	manager.SetRobotStateDirectory(state)
 	manager.SetBackendActionTransport(transports.actions)
 	manager.SetBackendSessionTransport(transports.sessions)
@@ -88,7 +88,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		foundationlog.Robotf("SIMULATOR_LOADOUT_RECONCILE_FAILED err=%v\n", err)
 		return 1
 	}
-	manager.SetBackendRobotCreator(info.ID, s4a21backend.RobotCreator{
+	manager.SetBackendRobotCreator(info, s4a21backend.RobotCreator{
 		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state, Config: rc, Names: nameTemplates, Maps: townMaps,
 		AccountPrefix: "robot", IDStart: rc.RobotUIDStart,

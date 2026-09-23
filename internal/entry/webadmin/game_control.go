@@ -59,10 +59,12 @@ func (s *Server) handleGamePort(w http.ResponseWriter, _ *http.Request) {
 	}
 	_ = conn.Close()
 	out := map[string]interface{}{"ok": true, "addr": addr}
-	if maxUser, cfgName, cfgPath, ok := s.gameMaxUserNum(); ok {
-		out["max_user_num"] = maxUser
-		out["game_cfg_name"] = cfgName
-		out["game_cfg_path"] = cfgPath
+	if s.supportsBackendCapability(shared.CapabilityServiceControl) {
+		if maxUser, cfgName, cfgPath, ok := s.gameMaxUserNum(); ok {
+			out["max_user_num"] = maxUser
+			out["game_cfg_name"] = cfgName
+			out["game_cfg_path"] = cfgPath
+		}
 	}
 	writeJSON(w, out)
 }

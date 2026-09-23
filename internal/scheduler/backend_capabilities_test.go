@@ -37,7 +37,7 @@ func (t *shoutRecordingTransport) ShoutLocal(_ context.Context, command shared.R
 
 func TestSimulatorAutomaticShoutFallsBackToAreaChannel(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "[shout]\nshout_send_enabled = true\n")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	transport := &shoutRecordingTransport{}
 	m.SetBackendActionTransport(transport)
 	m.runtimeStatusCache = map[int]robotcap.RuntimeStatus{
@@ -67,7 +67,7 @@ func TestRobotRuntimeUsesLiveBackendPartyState(t *testing.T) {
 
 func TestSimulatorStoreIsRejectedWithStableCapabilityError(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	_, err := m.StoreManaged(robotcap.CommandRequest{Count: 1})
 	if err == nil {
 		t.Fatal("simulator store unexpectedly entered actor workflow")
@@ -83,7 +83,7 @@ func TestSimulatorStoreIsRejectedWithStableCapabilityError(t *testing.T) {
 
 func TestSimulatorPartyAndSkillEntrypointsAreRejectedWithStableCapabilityError(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	checks := []struct {
 		name string
 		run  func() error
@@ -108,7 +108,7 @@ func TestSimulatorPartyAndSkillEntrypointsAreRejectedWithStableCapabilityError(t
 
 func TestSimulatorWorldShoutIsRejectedBeforeActorWorkflow(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	_, err := m.ShoutManaged(robotcap.CommandRequest{Count: 1}, true)
 	var unsupported shared.UnsupportedCapabilityError
 	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityWorldShout {
@@ -121,7 +121,7 @@ func TestSimulatorWorldShoutIsRejectedBeforeActorWorkflow(t *testing.T) {
 
 func TestSimulatorAutoStoreIsSkippedWithStableCapabilityError(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	result := NewRobotRuntime(m).AutoStore(7, nil)
 	if result.State != robotcap.ActionStateCancelled || !strings.Contains(result.Message, shared.CodeBackendCapabilityUnsupported) {
 		t.Fatalf("result = %+v, want skipped unsupported store", result)
@@ -130,7 +130,7 @@ func TestSimulatorAutoStoreIsSkippedWithStableCapabilityError(t *testing.T) {
 
 func TestSimulatorAdaptiveSchedulerNeverEntersStoreMode(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "[auto]\nauto_target_online_count = 600\n")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	signals := adaptiveSchedulerSignals{
 		Live: true, Running: 600, Actors: 600, GamePortReady: true,
 		StoreUnsupported: m.requireBackendCapability(shared.CapabilityStore) != nil,
@@ -148,7 +148,7 @@ func TestSimulatorAdaptiveSchedulerNeverEntersStoreMode(t *testing.T) {
 
 func TestSimulatorVerifiedTownAndLocalShoutRemainAllowed(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	if err := m.requireBackendCapability(shared.CapabilityTownMove); err != nil {
 		t.Fatalf("town move unexpectedly unsupported: %v", err)
 	}
@@ -166,7 +166,7 @@ func (c *cleanupRecorder) CleanupRobots(_ context.Context, req robotcap.CleanupR
 
 func TestSimulatorCleanupRoutesToProtocolAdapter(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	cleaner := &cleanupRecorder{}
 	m.SetBackendRobotCleaner(cleaner)
 	result, err := m.CleanupRobots(robotcap.CleanupRequest{UIDs: []int{7}})
@@ -177,7 +177,7 @@ func TestSimulatorCleanupRoutesToProtocolAdapter(t *testing.T) {
 
 func TestSimulatorCleanupNeverFallsBackToNativeRepository(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	if _, err := m.CleanupRobots(robotcap.CleanupRequest{UIDs: []int{7}}); err == nil || !strings.Contains(err.Error(), "cleanup adapter is not configured") {
 		t.Fatalf("error = %v, want missing adapter failure", err)
 	}
@@ -185,7 +185,7 @@ func TestSimulatorCleanupNeverFallsBackToNativeRepository(t *testing.T) {
 
 func TestSimulatorKeypairOperationsAreRejectedWithStableCapabilityError(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	if status := m.KeypairStatus(); !strings.Contains(status.Error, shared.CodeBackendCapabilityUnsupported) {
 		t.Fatalf("status = %+v, want stable unsupported keypair error", status)
 	}
@@ -204,13 +204,8 @@ func (s persistenceInspectorStub) Status(context.Context) shared.PersistenceStat
 
 func TestSimulatorDatabaseStatusUsesBackendInspector(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
-	var info shared.BackendInfo
-	for _, candidate := range shared.KnownBackends() {
-		if candidate.ID == shared.BackendS4A21 {
-			info = candidate
-		}
-	}
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
+	info := testS4BackendInfo()
 	m.ConfigureBackendRuntime(info, persistenceInspectorStub{status: shared.PersistenceStatus{OK: true, Engine: "sqlite", Writable: true}}, nil)
 	status := m.DatabaseStatus()
 	if !status.OK || status.Engine != "sqlite" || !status.Writable {

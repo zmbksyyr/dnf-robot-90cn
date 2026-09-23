@@ -16,6 +16,7 @@ import (
 	"robot/internal/capability/marketapp"
 	"robot/internal/capability/robotconfig"
 	"robot/internal/composition/auctionapp"
+	backendregistry "robot/internal/composition/backend"
 	nativebackend "robot/internal/composition/backend/native"
 	"robot/internal/entry/tcpapi"
 	"robot/internal/entry/webadmin"
@@ -84,7 +85,7 @@ func runMain() int {
 		fmt.Fprintf(os.Stderr, "load backend selection error: %v\n", err)
 		return 1
 	}
-	backendInfo, err := shared.SelectBackend(backendSelection.BackendID, runtime.GOOS)
+	backendInfo, err := backendregistry.Select(backendSelection.BackendID, runtime.GOOS)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
 		fmt.Fprintln(os.Stderr, "starting Web admin recovery mode; select a backend and restart the robot")
@@ -325,9 +326,10 @@ func runWebAdmin(robotAddr, webAddr string, configFromStdin bool, backend shared
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	server := webadmin.New(cfg, robotAddr, webAddr, backend)
+	catalog := backendregistry.Available()
+	server := webadmin.NewWithCatalog(cfg, robotAddr, webAddr, backend, catalog)
 	if recovery {
-		server = webadmin.NewRecovery(cfg, robotAddr, webAddr, backend)
+		server = webadmin.NewRecoveryWithCatalog(cfg, robotAddr, webAddr, backend, catalog)
 	}
 	if err := server.Serve(ctx); err != nil {
 		return err

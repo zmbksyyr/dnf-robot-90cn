@@ -11,7 +11,7 @@ import (
 
 func TestCreateRobotsDoesNotFallBackToNativeForBackendWithoutCreator(t *testing.T) {
 	m := NewRobotManager(nil, nil, nil)
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	_, err := m.CreateRobots(robotcap.CreateRequest{Count: 1})
 	var unsupported shared.UnsupportedCapabilityError
 	if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendS4A21 || unsupported.Operation != shared.CapabilityProvision {
@@ -27,7 +27,7 @@ func (testBackendRobotCreator) CreateRobots(context.Context, robotcap.CreateRequ
 
 func TestCreateRobotsUsesBackendCreatorWhenConfigured(t *testing.T) {
 	m := NewRobotManager(nil, nil, nil)
-	m.SetBackendRobotCreator(shared.BackendS4A21, testBackendRobotCreator{})
+	m.SetBackendRobotCreator(testS4BackendInfo(), testBackendRobotCreator{})
 	robots, err := m.CreateRobots(robotcap.CreateRequest{Count: 1})
 	if err != nil || len(robots) != 1 || robots[0].Name != "robot" {
 		t.Fatalf("robots=%+v err=%v", robots, err)

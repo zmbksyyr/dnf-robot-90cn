@@ -15,6 +15,7 @@ import (
 	"robot/internal/foundation/atomicfile"
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
+	"robot/internal/shared"
 )
 
 func (s *Server) handleGameEndpoint(w http.ResponseWriter, r *http.Request) {
@@ -37,6 +38,17 @@ func (s *Server) handleGameEndpoint(w http.ResponseWriter, r *http.Request) {
 		if err := config.DecodeJSONLimit(r.Body, 64*1024, &req); err != nil {
 			writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
 			return
+		}
+		if !s.supportsBackendCapability(shared.CapabilityServiceControl) {
+			disk, err := s.loadDiskConfig()
+			if err != nil {
+				writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			req.MonitorPort = disk.MonitorPort
+			req.AuctionPort = disk.AuctionPort
+			req.PointPort = disk.PointPort
+			req.RelayPort = disk.RelayPort
 		}
 		if err := validateExternalPorts(req.GamePort, req.MonitorPort, req.AuctionPort, req.PointPort, req.RelayPort); err != nil {
 			writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
@@ -115,6 +127,13 @@ func (s *Server) gameEndpointPayload(cfg *config.SysConfig, message string) map[
 		"inner_ip":         innerIP,
 		"addr":             addr,
 		"config_path":      s.configPath(),
+	}
+	if !s.supportsBackendCapability(shared.CapabilityServiceControl) {
+		out["ports"] = map[string]int{"game": ports["game"]}
+		delete(out, "hosts")
+		delete(out, "service_root")
+		delete(out, "run_script")
+		delete(out, "inner_ip")
 	}
 	if s != nil && s.cfg != nil && cfg != nil {
 		fields := restartConfigDiff(s.cfg, cfg)

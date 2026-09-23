@@ -78,6 +78,9 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if s.rejectUnsupportedCapability(w, shared.CapabilityDiagnostics) {
+		return
+	}
 	writeJSON(w, s.buildDiagnostics())
 }
 
@@ -96,12 +99,10 @@ func (s *Server) buildDiagnostics() diagnosticsReport {
 	}
 	b.addRuntimeSection()
 	b.addFileSection()
-	if b.server == nil || b.server.supportsBackendCapability(shared.CapabilityDiagnostics) {
-		b.addDatabaseSection()
-		b.addMarketSection()
-		b.addPartySection()
-		b.addSkillSection()
-	}
+	b.addDatabaseSection()
+	b.addMarketSection()
+	b.addPartySection()
+	b.addSkillSection()
 	b.addLogSection()
 	for _, section := range b.report.Sections {
 		for _, check := range section.Checks {
@@ -172,21 +173,17 @@ func (b *diagnosticsBuilder) addRuntimeSection() {
 	} else {
 		checks = append(checks, diagnosticsCheck{Name: "robot api systemStatus", Status: diagError, Message: err.Error(), Expected: b.server.robotAddr})
 	}
-	if b.server == nil || b.server.supportsBackendCapability(shared.CapabilityDiagnostics) {
-		st := keypair.BuildKeypairStatus(cfg)
-		keyStatus := diagOK
-		keyMsg := "game keypair is valid"
-		if !st.GameValid {
-			keyStatus = diagError
-			keyMsg = st.Error
-			if strings.TrimSpace(keyMsg) == "" {
-				keyMsg = st.KeyReason
-			}
+	st := keypair.BuildKeypairStatus(cfg)
+	keyStatus := diagOK
+	keyMsg := "game keypair is valid"
+	if !st.GameValid {
+		keyStatus = diagError
+		keyMsg = st.Error
+		if strings.TrimSpace(keyMsg) == "" {
+			keyMsg = st.KeyReason
 		}
-		checks = append(checks, diagnosticsCheck{Name: "RSA keypair", Status: keyStatus, Message: keyMsg, Observed: st})
-	} else {
-		checks = append(checks, diagnosticsCheck{Name: "RSA keypair", Status: diagOK, Message: "not applicable to simulator backend"})
 	}
+	checks = append(checks, diagnosticsCheck{Name: "RSA keypair", Status: keyStatus, Message: keyMsg, Observed: st})
 	b.addSection("Runtime / Ports", checks...)
 }
 
@@ -224,15 +221,6 @@ func (b *diagnosticsBuilder) addDatabaseSection() {
 func (b *diagnosticsBuilder) addFileSection() {
 	configDir := b.cfg.ConfigDir
 	runtimePaths := layout.New(configDir)
-	if b.server != nil && !b.server.supportsBackendCapability(shared.CapabilityDiagnostics) {
-		checks := []diagnosticsCheck{
-			fileCheck("config.ini", runtimePaths.MainConfig(), true),
-			fileCheck("robot_config.ini", runtimePaths.RobotConfig(), true),
-			fileCheck("simulator Script.pvf", simulatorPVFPath(b.cfg.DFGameR), true),
-		}
-		b.addSection("Files / Simulator PVF", checks...)
-		return
-	}
 	gameDir := filepath.Dir(b.cfg.DFGameR)
 	serviceRoot := b.cfg.ServiceRoot
 	auctionItemInfo := filepath.Join(serviceRoot, "auction", "iteminfo.dat")
@@ -265,17 +253,6 @@ func (b *diagnosticsBuilder) addFileSection() {
 	b.addSection("Files / PVF / ItemInfo", checks...)
 }
 
-func simulatorPVFPath(gameRoot string) string {
-	value := strings.TrimSpace(gameRoot)
-	if strings.EqualFold(filepath.Ext(value), ".pvf") {
-		return value
-	}
-	if stat, err := os.Stat(value); err == nil && stat.IsDir() {
-		return filepath.Join(value, "Script.pvf")
-	}
-	return filepath.Join(filepath.Dir(value), "Script.pvf")
-}
-
 func (b *diagnosticsBuilder) addMarketSection() {
 	checks := []diagnosticsCheck{}
 	if raw, err := callRobot(b.server.robotAddr, "marketStatus", nil, 8*time.Second, b.cfg.MaxResponseBytes); err == nil {
@@ -301,10 +278,7 @@ func (b *diagnosticsBuilder) addLogSection() {
 	}
 	checks := []diagnosticsCheck{}
 	runtimePaths := layout.New(b.cfg.ConfigDir)
-	paths := []string{runtimePaths.RobotLog(), runtimePaths.StdoutLog(), runtimePaths.StartErrorLog()}
-	if b.server == nil || b.server.supportsBackendCapability(shared.CapabilityDiagnostics) {
-		paths = append(paths, runtimePaths.MarketLog())
-	}
+	paths := []string{runtimePaths.RobotLog(), runtimePaths.StdoutLog(), runtimePaths.StartErrorLog(), runtimePaths.MarketLog()}
 	for _, path := range paths {
 		checks = append(checks, logSizeCheck(path, limit))
 	}

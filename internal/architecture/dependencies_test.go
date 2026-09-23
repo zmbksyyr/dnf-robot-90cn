@@ -27,7 +27,7 @@ var allowedLayerImports = []struct {
 	allowed []string
 }{
 	{dir: "internal/bootstrap", allowed: []string{"robot/internal/capability", "robot/internal/foundation", "robot/internal/shared"}},
-	{dir: "internal/composition", allowed: []string{"robot/internal/capability", "robot/internal/foundation", "robot/internal/protocol", "robot/internal/shared"}},
+	{dir: "internal/composition", allowed: []string{"robot/internal/composition", "robot/internal/capability", "robot/internal/foundation", "robot/internal/protocol", "robot/internal/shared"}},
 	{dir: "internal/entry", allowed: []string{"robot/internal/scheduler", "robot/internal/capability", "robot/internal/foundation", "robot/internal/shared"}},
 	{dir: "internal/scheduler", allowed: []string{"robot/internal/scheduler", "robot/internal/actor", "robot/internal/capability", "robot/internal/foundation", "robot/internal/shared"}},
 	{dir: "internal/actor", allowed: []string{"robot/internal/capability", "robot/internal/foundation", "robot/internal/shared"}},

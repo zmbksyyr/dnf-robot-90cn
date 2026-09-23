@@ -16,7 +16,7 @@ func TestSimulatorDatabaseAccessIsIsolatedToPersistenceAdapter(t *testing.T) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
-		if entry.Name() == "loadout.go" {
+		if entry.Name() == "loadout.go" || entry.Name() == "descriptor.go" {
 			continue
 		}
 		path := filepath.Join(".", entry.Name())
@@ -29,7 +29,7 @@ func TestSimulatorDatabaseAccessIsIsolatedToPersistenceAdapter(t *testing.T) {
 			"database/sql", "sqlite", "mysql", "inventory.db", "taiwan_cain", "d_starsky",
 		} {
 			if strings.Contains(text, forbidden) {
-				t.Errorf("%s references database marker %q outside the explicit persistence adapter", path, forbidden)
+				t.Errorf("%s references database marker %q outside the persistence adapter or backend descriptor", path, forbidden)
 			}
 		}
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 func TestSimulatorKeypairDownloadIsUnsupported(t *testing.T) {
-	s := New(&config.SysConfig{}, "", "", shared.BackendS4A21)
+	s := newTestServerForBackend(&config.SysConfig{}, shared.BackendS4A21)
 	rec := httptest.NewRecorder()
 	s.handleKeypairDownload(rec, httptest.NewRequest("GET", "/api/keypair-download", nil))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), shared.CodeBackendCapabilityUnsupported) {

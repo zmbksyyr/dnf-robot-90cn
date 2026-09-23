@@ -21,7 +21,7 @@ func TestRobotsStatusUsesSimulatorRobotStateWithoutSchemaRepository(t *testing.T
 	}
 	manager := NewRobotManager(nil, nil, nil)
 	manager.SetRobotStateDirectory(store)
-	manager.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	manager.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	manager.SetTownMapCatalog([]shared.MapCatalogItem{{Village: 1, VillageName: "Town"}})
 
 	result, err := manager.RobotsStatus(robotcap.CommandRequest{Count: 1})
@@ -41,7 +41,7 @@ func TestSimulatorShoutNameUsesRobotStateWithoutSchemaRepository(t *testing.T) {
 	store := robotstate.NewMemoryStore([]robotcap.Info{{UID: 7, Name: "sim-robot"}})
 	manager := NewRobotManager(nil, nil, nil)
 	manager.SetRobotStateDirectory(store)
-	manager.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	manager.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	if got := (shoutActionEnv{manager: manager}).LookupRobotName(7); got != "sim-robot" {
 		t.Fatalf("name=%q, want sim-robot", got)
 	}

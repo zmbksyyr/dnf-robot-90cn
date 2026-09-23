@@ -13,7 +13,7 @@ import (
 
 func TestRuntimeFileWatcherOnlyTracksNativeBackendFiles(t *testing.T) {
 	cfg := &config.SysConfig{ConfigDir: t.TempDir()}
-	if entries := New(cfg, "", "", shared.BackendS4A21).runtimeFileEntries(); len(entries) != 0 {
+	if entries := newTestServerForBackend(cfg, shared.BackendS4A21).runtimeFileEntries(); len(entries) != 0 {
 		t.Fatalf("S4A21 runtime entries=%v, want none", entries)
 	}
 	if entries := NewRecovery(cfg, "", "", shared.BackendNative).runtimeFileEntries(); len(entries) != 0 {

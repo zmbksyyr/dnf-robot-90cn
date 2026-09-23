@@ -157,7 +157,7 @@ func TestReloadRobotConfigDisablingAutoStopsExistingActors(t *testing.T) {
 
 func TestRuntimeFileEntriesFollowBackendCapabilities(t *testing.T) {
 	manager := NewRobotManager(nil, &config.SysConfig{ConfigDir: t.TempDir()}, nil)
-	manager.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	manager.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	entries := manager.RuntimeFileEntries()
 	names := make(map[string]bool, len(entries))
 	for _, entry := range entries {

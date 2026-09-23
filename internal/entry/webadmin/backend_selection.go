@@ -39,35 +39,35 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 	defer s.backendSelectionMu.Unlock()
 	state, persisted, err := s.readBackendSelectionLocked()
 	if err != nil {
-		writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
+		writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Error: err.Error()})
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
 		state.Settings = s.backendSettingsWithDefaults(state)
-		writeJSON(w, backendSelectionResponse(state, persisted, ""))
+		writeJSON(w, s.backendSelectionResponse(state, persisted, ""))
 	case http.MethodPost:
 		var req struct {
 			BackendID shared.BackendID  `json:"backend_id"`
 			Settings  map[string]string `json:"settings"`
 		}
 		if err := config.DecodeJSONLimit(r.Body, 64*1024, &req); err != nil {
-			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
+			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Error: err.Error()})
 			return
 		}
-		info, err := shared.SelectBackend(req.BackendID, runtime.GOOS)
+		info, err := selectBackendFromCatalog(s.backendCatalog, req.BackendID, runtime.GOOS)
 		if err != nil {
-			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
+			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Error: err.Error()})
 			return
 		}
 		settings, err := validateBackendSettings(info, req.Settings)
 		if err != nil {
-			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
+			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Error: err.Error()})
 			return
 		}
 		if state.BackendID == info.ID && equalStringMap(state.Settings, settings) {
 			state.Settings = settings
-			writeJSON(w, backendSelectionResponse(state, persisted, "backend is already selected"))
+			writeJSON(w, s.backendSelectionResponse(state, persisted, "backend is already selected"))
 			return
 		}
 		state.BackendID = info.ID
@@ -75,10 +75,10 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 		state.ConfigGeneration++
 		state.SelectedAt = time.Now().UTC()
 		if err := s.writeBackendSelectionLocked(state); err != nil {
-			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Error: err.Error()})
+			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Error: err.Error()})
 			return
 		}
-		payload := backendSelectionResponse(state, true, "backend selected; stop robot, back up and reinitialize runtime/config before restart")
+		payload := s.backendSelectionResponse(state, true, "backend selected; stop robot, back up and reinitialize runtime/config before restart")
 		payload.RestartRequired = true
 		payload.ReinitializeNeeded = true
 		writeJSON(w, payload)
@@ -87,8 +87,8 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func backendSelectionResponse(state backendSelectionState, persisted bool, message string) backendSelectionPayload {
-	return backendSelectionPayload{OK: true, Selected: state.BackendID, ConfigGeneration: state.ConfigGeneration, SelectedAt: state.SelectedAt, Persisted: persisted, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(runtime.GOOS), Message: message, Settings: state.Settings}
+func (s *Server) backendSelectionResponse(state backendSelectionState, persisted bool, message string) backendSelectionPayload {
+	return backendSelectionPayload{OK: true, Selected: state.BackendID, ConfigGeneration: state.ConfigGeneration, SelectedAt: state.SelectedAt, Persisted: persisted, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Message: message, Settings: state.Settings}
 }
 
 func (s *Server) backendSettingsWithDefaults(state backendSelectionState) map[string]string {
@@ -100,7 +100,7 @@ func (s *Server) backendSettingsWithDefaults(state backendSelectionState) map[st
 		return settings
 	}
 	var selected shared.BackendInfo
-	for _, info := range shared.KnownBackends() {
+	for _, info := range s.backendCatalog {
 		if info.ID == state.BackendID {
 			selected = info
 			break
@@ -180,8 +180,8 @@ func equalStringMap(left, right map[string]string) bool {
 	return true
 }
 
-func backendCatalogForPlatform(platform string) []shared.BackendInfo {
-	backends := shared.KnownBackends()
+func backendCatalogForPlatform(catalog []shared.BackendInfo, platform string) []shared.BackendInfo {
+	backends := append([]shared.BackendInfo(nil), catalog...)
 	for i := range backends {
 		if !backends[i].Selectable {
 			continue
@@ -199,6 +199,19 @@ func backendCatalogForPlatform(platform string) []shared.BackendInfo {
 		}
 	}
 	return backends
+}
+
+func selectBackendFromCatalog(catalog []shared.BackendInfo, id shared.BackendID, platform string) (shared.BackendInfo, error) {
+	for _, info := range backendCatalogForPlatform(catalog, platform) {
+		if info.ID != id {
+			continue
+		}
+		if !info.Selectable {
+			return shared.BackendInfo{}, fmt.Errorf("backend %s is unavailable: %s", id, info.Reason)
+		}
+		return info, nil
+	}
+	return shared.BackendInfo{}, fmt.Errorf("unknown backend %q", id)
 }
 
 func (s *Server) readBackendSelectionLocked() (backendSelectionState, bool, error) {

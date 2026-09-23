@@ -20,7 +20,7 @@ func TestSystemAnnouncementMessage(t *testing.T) {
 
 func TestSimulatorAnnouncementDoesNotDereferenceNativeDatabase(t *testing.T) {
 	m := NewRobotManager(nil, nil, nil)
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	_, err := m.SystemAnnouncement()
 	var unsupported shared.UnsupportedCapabilityError
 	if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendS4A21 {

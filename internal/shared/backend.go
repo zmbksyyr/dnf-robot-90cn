@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"time"
 )
 
@@ -121,87 +120,16 @@ func DecodeBackendSelection(data []byte) (BackendSelection, error) {
 	return selection, nil
 }
 
-// KnownBackends is the explicit catalog exposed to composition and entry
-// layers. It only contains adapters whose protocol bundle is implemented.
-func KnownBackends() []BackendInfo {
+func CapabilityMatrix(status CapabilityStatus) map[BackendCapability]CapabilityStatus {
 	capabilities := make(map[BackendCapability]CapabilityStatus)
-	for _, operation := range []BackendCapability{
+	for _, capability := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
 		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement, CapabilityServiceControl,
 	} {
-		capabilities[operation] = CapabilityStatus{Enabled: true}
-	}
-	capabilities[CapabilityDungeonFollow] = CapabilityStatus{Enabled: true, Mode: "account"}
-	return []BackendInfo{{
-		ID: BackendNative, DisplayName: "Native", SupportedOS: []string{"linux"}, Selectable: true,
-		Capabilities: capabilities,
-	}, {
-		ID: BackendS4A21, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"},
-		Selectable:   true,
-		Capabilities: s4a21Capabilities(),
-		Settings: []BackendSetting{
-			{Key: "server_directory", Label: "Server directory", InputType: "path", Required: true, RuntimeSource: "server_directory"},
-			{Key: "server_host", Label: "Host", InputType: "text", Required: true, Default: "127.0.0.1", RuntimeSource: "game_host"},
-			{Key: "game_port", Label: "Port", InputType: "number", Required: true, Default: "10011", RuntimeSource: "game_port"},
-			{Key: "database_path", Label: "Database", InputType: "path", Placeholder: `Data\inventory.db (auto)`, DerivedFrom: "server_directory", PathSuffix: []string{"Data", "inventory.db"}},
-		},
-	}}
-}
-
-func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
-	capabilities := unavailableCapabilities("S4A21 protocol operation is not implemented yet")
-	capabilities[CapabilityProvision] = CapabilityStatus{Enabled: true}
-	capabilities[CapabilityTownMove] = CapabilityStatus{Enabled: true, Reason: "coordinates and verified town-area transitions"}
-	capabilities[CapabilityDungeonFollow] = CapabilityStatus{Enabled: true, Mode: "toggle", Reason: "accepts ordinary party invitations without filtering by inviter account"}
-	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area channel only; party requires the separate party capability"}
-	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
-	capabilities[CapabilityCleanup] = CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
-	capabilities[CapabilityDangerousDelete] = CapabilityStatus{Reason: "S4A21 supports protected protocol cleanup only"}
-	capabilities[CapabilityCompatibility] = CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
-	capabilities[CapabilityKeypair] = CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
-	capabilities[CapabilityDatabase] = CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
-	capabilities[CapabilityDiagnostics] = CapabilityStatus{Reason: "native runtime diagnostics are not available for S4A21"}
-	capabilities[CapabilitySystemAnnouncement] = CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}
-	capabilities[CapabilityServiceControl] = CapabilityStatus{Reason: "native service scripts and process discovery are not applicable to S4A21"}
-	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
-	return capabilities
-}
-
-func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStatus {
-	capabilities := make(map[BackendCapability]CapabilityStatus)
-	for _, operation := range []BackendCapability{
-		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
-		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement, CapabilityServiceControl,
-	} {
-		capabilities[operation] = CapabilityStatus{Reason: reason}
+		capabilities[capability] = status
 	}
 	return capabilities
-}
-
-func SelectBackend(id BackendID, platform string) (BackendInfo, error) {
-	if platform == "" {
-		platform = runtime.GOOS
-	}
-	for _, info := range KnownBackends() {
-		if info.ID != id {
-			continue
-		}
-		if !info.Selectable {
-			if info.Reason == "" {
-				info.Reason = "backend is not ready"
-			}
-			return BackendInfo{}, fmt.Errorf("backend %s is unavailable: %s", id, info.Reason)
-		}
-		for _, supported := range info.SupportedOS {
-			if supported == platform {
-				return info, nil
-			}
-		}
-		return BackendInfo{}, fmt.Errorf("backend %s does not support %s", id, platform)
-	}
-	return BackendInfo{}, fmt.Errorf("unknown backend %q", id)
 }
 
 func (b BackendInfo) Supports(capability BackendCapability) bool {

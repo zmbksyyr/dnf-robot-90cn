@@ -16,7 +16,7 @@ import (
 
 func TestBackendSelectionDefaultsWithoutWriting(t *testing.T) {
 	dir := t.TempDir()
-	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
 	req := httptest.NewRequest(http.MethodGet, "/api/backend", nil)
 	rec := httptest.NewRecorder()
 	s.handleBackend(rec, req)
@@ -36,8 +36,8 @@ func TestBackendSelectionDefaultsWithoutWriting(t *testing.T) {
 }
 
 func TestBackendCatalogDisablesPlatformUnsupportedBackends(t *testing.T) {
-	windows := backendCatalogForPlatform("windows")
-	linux := backendCatalogForPlatform("linux")
+	windows := backendCatalogForPlatform(testBackendCatalog(), "windows")
+	linux := backendCatalogForPlatform(testBackendCatalog(), "linux")
 	find := func(backends []shared.BackendInfo, id shared.BackendID) shared.BackendInfo {
 		for _, backend := range backends {
 			if backend.ID == id {
@@ -60,7 +60,7 @@ func TestBackendCatalogDisablesPlatformUnsupportedBackends(t *testing.T) {
 
 func TestBackendSelectionRejectsUnsupportedPlatform(t *testing.T) {
 	dir := t.TempDir()
-	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
 	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(`{"backend_id":"missing"}`))
 	rec := httptest.NewRecorder()
 	s.handleBackend(rec, req)
@@ -81,7 +81,7 @@ func TestBackendSelectionRejectsUnsupportedPlatform(t *testing.T) {
 
 func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) {
 	dir := t.TempDir()
-	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
 	serverDir := filepath.Join(dir, "DfoServer")
 	databasePath := filepath.Join(serverDir, "Data", "inventory.db")
 	body, err := json.Marshal(map[string]interface{}{
@@ -148,7 +148,7 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 
 func TestBackendSelectionRejectsIncompleteSimulatorSettings(t *testing.T) {
 	dir := t.TempDir()
-	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
 	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(`{"backend_id":"sim_a21","settings":{"server_host":"127.0.0.1"}}`))
 	rec := httptest.NewRecorder()
 	s.handleBackend(rec, req)
@@ -164,7 +164,7 @@ func TestBackendSelectionRejectsIncompleteSimulatorSettings(t *testing.T) {
 
 func TestBackendSelectionAcceptsDerivedSimulatorDatabase(t *testing.T) {
 	dir := t.TempDir()
-	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
 	body, err := json.Marshal(map[string]interface{}{
 		"backend_id": shared.BackendS4A21,
 		"settings": map[string]string{

@@ -25,13 +25,19 @@ func (s *Server) startRuntimeFileWatcher() func() {
 }
 
 func (s *Server) runtimeFileEntries() []filewatch.Entry {
-	if s == nil || s.cfg == nil || !s.supportsBackendCapability(shared.CapabilityCompatibility) {
+	if s == nil || s.cfg == nil {
 		return nil
 	}
 	paths := layout.New(s.cfg.ConfigDir)
-	return []filewatch.Entry{
-		{Name: "mailbox_guard", Path: paths.MailboxGuard(), Apply: s.reloadMailboxGuardFile},
-		{Name: "party_compatibility", Path: paths.PartyCompatibility(), Apply: s.reloadPartyCompatFile},
-		{Name: "party_skills", Path: paths.PartySkills(), Apply: s.reloadPartySkillFile},
+	var entries []filewatch.Entry
+	if s.supportsBackendCapability(shared.CapabilityCompatibility) {
+		entries = append(entries, filewatch.Entry{Name: "mailbox_guard", Path: paths.MailboxGuard(), Apply: s.reloadMailboxGuardFile})
 	}
+	if s.supportsBackendCapability(shared.CapabilityParty) {
+		entries = append(entries, filewatch.Entry{Name: "party_compatibility", Path: paths.PartyCompatibility(), Apply: s.reloadPartyCompatFile})
+	}
+	if s.supportsBackendCapability(shared.CapabilitySkill) {
+		entries = append(entries, filewatch.Entry{Name: "party_skills", Path: paths.PartySkills(), Apply: s.reloadPartySkillFile})
+	}
+	return entries
 }

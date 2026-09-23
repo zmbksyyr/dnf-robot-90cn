@@ -144,15 +144,10 @@ type BackendRobotCleaner interface {
 	CleanupRobots(context.Context, robotcap.CleanupRequest) (robotcap.CleanupResult, error)
 }
 
-func (m *RobotManager) SetBackendRobotCreator(backend shared.BackendID, creator BackendRobotCreator) {
+func (m *RobotManager) SetBackendRobotCreator(info shared.BackendInfo, creator BackendRobotCreator) {
 	if m != nil {
-		for _, info := range shared.KnownBackends() {
-			if info.ID == backend {
-				m.backendInfo = info
-				break
-			}
-		}
-		m.backendLifecycleOwned = backend != ""
+		m.backendInfo = info
+		m.backendLifecycleOwned = info.ID != ""
 		m.backendRobotCreator = creator
 	}
 }

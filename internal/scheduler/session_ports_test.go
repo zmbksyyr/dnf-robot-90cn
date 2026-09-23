@@ -163,7 +163,7 @@ func TestBackendSessionTransportResolvesRobotOwnedIdentity(t *testing.T) {
 	}
 	m := testRobotManagerWithConfig(t, "")
 	m.SetRobotStateDirectory(store)
-	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	backend := &backendSessionStub{}
 	m.SetBackendSessionTransport(backend)
 	if err := (sessionActionEnv{manager: m}).SendOnline([]shared.RuntimeOnlineUser{{UID: 17000001}}); err != nil {
