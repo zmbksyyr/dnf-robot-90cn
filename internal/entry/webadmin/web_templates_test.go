@@ -71,6 +71,7 @@ func TestWebApiSurfacesPerRobotActionFailure(t *testing.T) {
 
 func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
 	for _, want := range []string{
+		`cmd.includes("openKeyDialog")`,
 		`cmd.includes("robotsMove")`,
 		`cmd.includes("robotsShoutLocal")`,
 		`cap='world_shout'`,
