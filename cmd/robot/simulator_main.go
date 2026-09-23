@@ -24,10 +24,10 @@ import (
 	"robot/internal/shared"
 )
 
-// runSimulatorBackend is deliberately separate from native startup. It does
+// runS4A21Backend is deliberately separate from native startup. It does
 // not open MySQL, initialize native RSA/party services, or construct market
 // and mail adapters that require native tables.
-func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendInfo, selection shared.BackendSelection) int {
+func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendInfo, selection shared.BackendSelection) int {
 	if err := runtimeinit.InitConfigOnly(cfg); err != nil {
 		foundationlog.Robotf("SIMULATOR_RUNTIME_INIT_FAILED backend=%s err=%v\n", info.ID, err)
 		return 1

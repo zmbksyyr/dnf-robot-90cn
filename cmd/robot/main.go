@@ -124,8 +124,13 @@ func runMain() int {
 	dnf.LogString(fmt.Sprintf("NETWORK_CONFIG game=%s:%d setting=%s login_ip=%s relay=%s:%d auction=%s:%d point=%s:%d service_root=%s run_script=%s\n",
 		cfg.RobotConnectIP, cfg.RobotGamePort, cfg.RobotConnectIPSetting, cfg.RobotInnerIP,
 		cfg.RelayHost, cfg.RelayPort, cfg.AuctionHost, cfg.AuctionPort, cfg.PointHost, cfg.PointPort, cfg.ServiceRoot, cfg.ServiceRunScript))
-	if backendInfo.ID != shared.BackendNative {
-		return runSimulatorBackend(cfg, paths, backendInfo, backendSelection)
+	switch backendInfo.ID {
+	case shared.BackendS4A21:
+		return runS4A21Backend(cfg, paths, backendInfo, backendSelection)
+	case shared.BackendNative:
+	default:
+		dnf.LogString(fmt.Sprintf("BACKEND_START_UNAVAILABLE id=%s\n", backendInfo.ID))
+		return 1
 	}
 
 	if err := runtimeinit.Init(cfg); err != nil {

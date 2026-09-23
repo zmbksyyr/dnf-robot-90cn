@@ -33,7 +33,7 @@ func TestSimulatorStartupDoesNotMarkRuntimeBeforePVFInit(t *testing.T) {
 		RobotGamePort:  1,
 	}
 	selection := shared.BackendSelection{BackendID: shared.BackendS4A21, ConfigGeneration: 3}
-	if got := runSimulatorBackend(cfg, paths, shared.BackendInfo{ID: shared.BackendS4A21}, selection); got == 0 {
+	if got := runS4A21Backend(cfg, paths, shared.BackendInfo{ID: shared.BackendS4A21}, selection); got == 0 {
 		t.Fatal("simulator startup unexpectedly succeeded with missing PVF")
 	}
 	if _, err := os.Stat(paths.BackendRuntime()); !os.IsNotExist(err) {
