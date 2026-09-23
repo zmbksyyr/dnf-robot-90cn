@@ -35,4 +35,16 @@ func ReadTownMapCatalog(pvfPath string) ([]shared.MapCatalogItem, error) {
 	return maps, nil
 }
 
+func ReadItemCatalogs(pvfPath string) ([]shared.EquipmentCatalogItem, []shared.EquipmentCatalogItem, error) {
+	archive, err := openA21PVF(pvfPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	equipment, stackable, err := capabilitypvf.ProjectItemCatalogs(archive)
+	if err != nil {
+		return nil, nil, fmt.Errorf("project S4A21 item catalogs: %w", err)
+	}
+	return equipment, stackable, nil
+}
+
 var _ shared.TownMapCatalogProvider = TownMapCatalogProvider{}

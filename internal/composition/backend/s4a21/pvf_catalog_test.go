@@ -25,3 +25,18 @@ func TestLiveReadTownMapCatalog(t *testing.T) {
 	}
 	t.Logf("parsed %d town areas, %d with usable movement geometry", len(maps), usable)
 }
+
+func TestLiveReadItemCatalogs(t *testing.T) {
+	path := os.Getenv("S4A21_TEST_PVF")
+	if path == "" {
+		t.Skip("S4A21_TEST_PVF is not set")
+	}
+	equipment, stackable, err := ReadItemCatalogs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(equipment) == 0 || len(stackable) == 0 {
+		t.Fatalf("equipment=%d stackable=%d", len(equipment), len(stackable))
+	}
+	t.Logf("parsed %d equipment/avatar and %d stackable items", len(equipment), len(stackable))
+}

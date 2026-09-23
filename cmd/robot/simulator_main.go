@@ -55,6 +55,10 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		foundationlog.Robotf("SIMULATOR_TOWN_MAP_FAILED err=%v\n", err)
 		return 1
 	}
+	if err := exportBackendItemCatalogs(info, cfg, paths); err != nil {
+		foundationlog.Robotf("SIMULATOR_ITEM_CATALOG_FAILED err=%v\n", err)
+		return 1
+	}
 	// Do not mark the generation as applied until simulator-specific
 	// initialization (including transport composition and PVF projection) has
 	// succeeded. A failed startup must retry the reinitialization next time.

@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	capabilitypvf "robot/internal/capability/pvf"
 	s4a21backend "robot/internal/composition/backend/s4a21"
 	"robot/internal/foundation/config"
+	"robot/internal/foundation/layout"
 	"robot/internal/shared"
 )
 
@@ -28,6 +30,27 @@ func loadBackendTownMapCatalog(ctx context.Context, info shared.BackendInfo, cfg
 	default:
 		return nil, fmt.Errorf("backend %s has no town map catalog provider", info.ID)
 	}
+}
+
+func exportBackendItemCatalogs(info shared.BackendInfo, cfg *config.SysConfig, paths layout.Paths) error {
+	if info.ID != shared.BackendS4A21 {
+		return nil
+	}
+	pvfPath, err := s4a21PVFPath(cfg.DFGameR)
+	if err != nil {
+		return err
+	}
+	equipment, stackable, err := s4a21backend.ReadItemCatalogs(pvfPath)
+	if err != nil {
+		return err
+	}
+	if err := capabilitypvf.WriteJSON(paths.PVFEquipment(), equipment); err != nil {
+		return fmt.Errorf("write S4A21 equipment catalog: %w", err)
+	}
+	if err := capabilitypvf.WriteJSON(paths.PVFStackable(), stackable); err != nil {
+		return fmt.Errorf("write S4A21 stackable catalog: %w", err)
+	}
+	return nil
 }
 
 func s4a21PVFPath(dfGameR string) (string, error) {
