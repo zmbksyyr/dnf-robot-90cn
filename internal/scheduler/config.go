@@ -139,6 +139,7 @@ func (m *RobotManager) writeRobotConfigTextLocked(path, text string) error {
 	if err != nil {
 		return err
 	}
+	m.applyBackendConfigPolicy(&rc)
 	if err := m.validateBackendConfig(rc); err != nil {
 		return err
 	}
@@ -254,10 +255,10 @@ func (m *RobotManager) reloadRobotConfigFile(path string) error {
 
 func (m *RobotManager) prepareRobotConfigLocked(rc robotconfig.RuntimeConfig) (robotconfig.RuntimeConfig, *robotConfigSnapshot, error) {
 	robotconfig.Normalize(&rc)
+	m.applyBackendConfigPolicy(&rc)
 	if err := m.validateBackendConfig(rc); err != nil {
 		return robotconfig.RuntimeConfig{}, m.configSnapshot.Load(), err
 	}
-	m.applyBackendConfigPolicy(&rc)
 	base := robotconfig.Clone(rc)
 	previous := m.configSnapshot.Load()
 	if previous != nil && reflect.DeepEqual(previous.base, base) {
@@ -281,9 +282,6 @@ func (m *RobotManager) validateBackendConfig(rc robotconfig.RuntimeConfig) error
 	}
 	if limit := m.backendInfo.MaxOnline; limit > 0 && rc.AutoTargetOnlineCount > limit {
 		return fmt.Errorf("auto_target_online_count=%d exceeds backend %s limit %d", rc.AutoTargetOnlineCount, m.backendInfo.ID, limit)
-	}
-	if rc.AutoMailNotify && !m.backendInfo.Supports(shared.CapabilityMailNotification) {
-		return m.backendInfo.Require(shared.CapabilityMailNotification)
 	}
 	return nil
 }
