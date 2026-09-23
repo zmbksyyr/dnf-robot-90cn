@@ -69,6 +69,15 @@ func (m *RobotManager) ShoutManaged(req robotcap.CommandRequest, world bool) (ro
 	return m.actorCommandManaged(req, cmd, name)
 }
 
+// ShoutPreferredManaged keeps one user action and selects the strongest
+// channel declared by the active backend.
+func (m *RobotManager) ShoutPreferredManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
+	if m.requireBackendCapability(shared.CapabilityWorldShout) == nil {
+		return m.ShoutManaged(req, true)
+	}
+	return m.ShoutManaged(req, false)
+}
+
 func (m *RobotManager) ShoutBothManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
 	m.mutationMu.RLock()
 	defer m.mutationMu.RUnlock()

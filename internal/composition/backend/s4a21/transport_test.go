@@ -194,6 +194,22 @@ func TestActionTransportOwnsSessionLifecycle(t *testing.T) {
 	}
 }
 
+func TestActionTransportReportsSessionUptime(t *testing.T) {
+	transport := NewActionTransport()
+	if err := transport.Attach(7, &actionTestSession{}); err != nil {
+		t.Fatal(err)
+	}
+	transport.mu.Lock()
+	status := transport.status[7]
+	status.RunStartTime = time.Now().Unix() - 5
+	transport.status[7] = status
+	transport.mu.Unlock()
+	status = transport.RuntimeStatusMap()[7]
+	if status.RunStartTime == 0 || status.UptimeSeconds < 5 {
+		t.Fatalf("runtime status did not report uptime: %+v", status)
+	}
+}
+
 func TestActionTransportReapsUnexpectedSessionEnd(t *testing.T) {
 	session := &actionTestSession{done: make(chan struct{})}
 	transport := NewActionTransport()

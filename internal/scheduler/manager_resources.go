@@ -30,6 +30,14 @@ func (m *RobotManager) randBetween(min, max int) int {
 	return min + m.randIntn(max-min+1)
 }
 
+func (m *RobotManager) RandIntn(n int) int {
+	return m.randIntn(n)
+}
+
+func (m *RobotManager) RandBetween(min, max int) int {
+	return m.randBetween(min, max)
+}
+
 func (m *RobotManager) randomFrom(vals []int) int {
 	if len(vals) == 0 {
 		return 0

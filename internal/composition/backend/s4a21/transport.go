@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"robot/internal/foundation/lockhub"
 	"robot/internal/shared"
@@ -64,7 +65,7 @@ func (t *ActionTransport) Attach(uid int, session shared.RobotSession) error {
 		return fmt.Errorf("S4A21 session already attached for uid %d", uid)
 	}
 	t.sessions[uid] = session
-	t.status[uid] = shared.RuntimeStatus{UID: uid, StateName: shared.RuntimeStateRunning, State: 3}
+	t.status[uid] = shared.RuntimeStatus{UID: uid, StateName: shared.RuntimeStateRunning, State: 3, RunStartTime: time.Now().Unix()}
 	delete(t.locationKnown, uid)
 	if lifecycle, ok := session.(interface{ Done() <-chan struct{} }); ok {
 		done := lifecycle.Done()
@@ -143,6 +144,12 @@ func (t *ActionTransport) RuntimeStatusMap() map[int]shared.RuntimeStatus {
 	defer t.mu.RUnlock()
 	out := make(map[int]shared.RuntimeStatus, len(t.status))
 	for uid, status := range t.status {
+		if status.StateName == shared.RuntimeStateRunning && status.RunStartTime > 0 {
+			status.UptimeSeconds = int(time.Now().Unix() - status.RunStartTime)
+			if status.UptimeSeconds < 0 {
+				status.UptimeSeconds = 0
+			}
+		}
 		if session := t.sessions[uid]; session != nil {
 			if party, ok := session.(interface{ PartyActive() bool }); ok {
 				status.PartyActive = party.PartyActive()

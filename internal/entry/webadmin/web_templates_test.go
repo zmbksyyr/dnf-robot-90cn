@@ -63,24 +63,24 @@ func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
 	}
 }
 
-func TestWebSeparatesLocalAndWorldShoutCapabilities(t *testing.T) {
-	if !strings.Contains(appJS, `cmd.includes("robotsShoutLocal")`) || !strings.Contains(appJS, `cap='world_shout'`) {
-		t.Fatal("web shout actions are not separated by capability")
+func TestWebUsesSinglePreferredShoutAction(t *testing.T) {
+	if strings.Contains(indexHTML, `robotsShoutLocal`) || !strings.Contains(indexHTML, `runAction('robotsShout')`) {
+		t.Fatal("web must expose one preferred shout action")
 	}
-	if !strings.Contains(indexHTML, `data-i18n="action.shout_local"`) {
-		t.Fatal("local shout button is missing")
+	if !strings.Contains(appJS, `backendCapabilities.world_shout?.enabled?'world_shout':'shout'`) {
+		t.Fatal("preferred shout capability fallback is missing")
 	}
 }
 
-func TestWebLabelsMovementAsTownMovement(t *testing.T) {
-	if !strings.Contains(indexHTML, `data-i18n="action.town_move"`) || !strings.Contains(indexHTML, `Town move`) {
-		t.Fatal("movement action is not explicitly labeled as town movement")
+func TestWebKeepsOriginalMovementLabel(t *testing.T) {
+	if !strings.Contains(indexHTML, `data-i18n="action.move"`) || !strings.Contains(indexHTML, `>Move</button>`) {
+		t.Fatal("movement action label is missing")
 	}
-	if !strings.Contains(i18nJS, "'action.town_move':'Town move'") || !strings.Contains(i18nJS, "'action.town_move':'城镇移动'") {
-		t.Fatal("town movement translations are missing")
+	if !strings.Contains(i18nJS, "'action.move':'Move'") || !strings.Contains(i18nJS, "'action.move':'移动'") {
+		t.Fatal("movement translations are missing")
 	}
-	if !strings.Contains(appJS, "robotsMove:'Town move'") {
-		t.Fatal("action summary does not distinguish town movement")
+	if !strings.Contains(appJS, "robotsMove:'Move'") {
+		t.Fatal("action summary does not use the original movement label")
 	}
 }
 
@@ -94,8 +94,9 @@ func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
 	for _, want := range []string{
 		`cmd.includes("openKeyDialog")`,
 		`cmd.includes("robotsMove")`,
-		`cmd.includes("robotsShoutLocal")`,
-		`cap='world_shout'`,
+		`cmd.includes("robotsShout")`,
+		`backendCapabilities.world_shout?.enabled?'world_shout':'shout'`,
+		`cmd.includes("openDiagnosticsDialog"))cap='diagnostics'`,
 		`cmd.includes("robotsStore")`,
 		`cmd.includes("openPartyCompat")`,
 		`cmd.includes("openCompatDialog")`,
@@ -319,8 +320,8 @@ func TestStoreColumnStaysEnglish(t *testing.T) {
 
 func TestAutoDialogUsesStandardFooterWithoutWrapping(t *testing.T) {
 	for _, want := range []string{
-		`const foot='<button onclick="submitAuto(null)">Save settings</button>`,
-		"showModal('Auto',body,foot)",
+		`const foot='<button onclick="submitAuto(null)">'+i18nFormat('auto.save')+'</button>`,
+		"showModal(i18nFormat('action.auto'),body,foot)",
 		".auto-form>input[type=number]{width:120px}",
 		".auto-option{white-space:nowrap}",
 		"grid-template-columns:68px 16px 68px max-content",

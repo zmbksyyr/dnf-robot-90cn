@@ -74,6 +74,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state, Config: rc, Names: nameTemplates, Maps: townMaps,
 		AccountPrefix: "robot", IDStart: rc.RobotUIDStart,
+		RandIntn: manager.RandIntn, RandBetween: manager.RandBetween,
 	})
 	manager.SetBackendRobotCleaner(s4a21backend.RobotCleaner{
 		Protocol: s4a21backend.CharacterDeleter{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},

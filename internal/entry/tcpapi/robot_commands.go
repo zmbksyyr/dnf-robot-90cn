@@ -43,7 +43,7 @@ func handleRobotCommand(cmd, pkt string, manager *scheduler.RobotManager) (strin
 		if err != nil {
 			return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()}), true
 		}
-		res, err := manager.ShoutBothManaged(req)
+		res, err := manager.ShoutPreferredManaged(req)
 		return wrapResult(map[string]interface{}{"ok": err == nil && res.Failed == 0, "error": errString(err), "result": res}), true
 	case "robotsShoutWorld":
 		req, err := parseRobotCommand(pkt)

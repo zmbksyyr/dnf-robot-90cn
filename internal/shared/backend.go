@@ -29,6 +29,7 @@ const (
 	CapabilityCompatibility BackendCapability = "compatibility"
 	CapabilityKeypair       BackendCapability = "keypair"
 	CapabilityDatabase      BackendCapability = "database"
+	CapabilityDiagnostics   BackendCapability = "diagnostics"
 )
 
 type CapabilityStatus struct {
@@ -104,7 +105,7 @@ func KnownBackends() []BackendInfo {
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase,
+		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
@@ -128,6 +129,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityCompatibility] = CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
 	capabilities[CapabilityKeypair] = CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
 	capabilities[CapabilityDatabase] = CapabilityStatus{Reason: "simulator game databases are outside the robot boundary"}
+	capabilities[CapabilityDiagnostics] = CapabilityStatus{Reason: "native runtime diagnostics are not available for S4A21"}
 	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
 	return capabilities
 }
@@ -137,7 +139,7 @@ func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStat
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase,
+		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
 	} {
 		capabilities[operation] = CapabilityStatus{Reason: reason}
 	}
