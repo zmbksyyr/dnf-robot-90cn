@@ -68,6 +68,62 @@ func TestLiveSessionTownMoveAndShout(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
+func TestSessionFactoryEnablesPartyDungeonFollower(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	release := make(chan struct{})
+	serverDone := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			serverDone <- acceptErr
+			return
+		}
+		defer conn.Close()
+		for _, typ := range []uint16{
+			protocol.CmdLogin,
+			protocol.CmdSelectCharacter,
+			protocol.CmdCheckConnection,
+			protocol.CmdChangeTutorialFlag,
+		} {
+			packet, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+			if readErr != nil {
+				serverDone <- readErr
+				return
+			}
+			if packet.Type != typ {
+				serverDone <- fmt.Errorf("request type=0x%04X want=0x%04X", packet.Type, typ)
+				return
+			}
+			if _, writeErr := conn.Write(protocol.EncodeResponse(1, typ, []byte{1})); writeErr != nil {
+				serverDone <- writeErr
+				return
+			}
+		}
+		<-release
+		serverDone <- nil
+	}()
+
+	session, err := (SessionFactory{Address: listener.Addr().String(), Timeout: time.Second}).OpenSession(
+		context.Background(), shared.OpenSessionRequest{
+			AccountName: "robot", EnablePartyDungeonFollower: true,
+		})
+	if err != nil {
+		close(release)
+		t.Fatal(err)
+	}
+	close(release)
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionReturnsUnsupportedWorldShout(t *testing.T) {
 	session := &Session{client: protocol.NewClient(nil)}
 	err := session.Shout(context.Background(), shared.ShoutIntent{Channel: shared.ShoutChannelWorld, Message: "hello"})

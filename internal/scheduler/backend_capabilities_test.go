@@ -10,6 +10,27 @@ import (
 	"robot/internal/shared"
 )
 
+type partyStateActionTransport struct{ activeUID int }
+
+func (t partyStateActionTransport) MoveTown(context.Context, shared.RuntimeMoveCommand) error {
+	return nil
+}
+
+func (t partyStateActionTransport) ShoutLocal(context.Context, shared.RuntimeShoutCommand) error {
+	return nil
+}
+
+func (t partyStateActionTransport) PartyActive(uid int) bool { return uid == t.activeUID }
+
+func TestRobotRuntimeUsesLiveBackendPartyState(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendActionTransport(partyStateActionTransport{activeUID: 7})
+	runtime := NewRobotRuntime(m)
+	if !runtime.PartyActive(7) || runtime.PartyActive(8) {
+		t.Fatal("robot runtime did not use live backend party state")
+	}
+}
+
 func TestSimulatorStoreIsRejectedWithStableCapabilityError(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	m.SetBackendRobotCreator(shared.BackendS4A21, nil)

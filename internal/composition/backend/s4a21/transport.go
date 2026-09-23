@@ -153,6 +153,17 @@ func (t *ActionTransport) RuntimeStatusMap() map[int]shared.RuntimeStatus {
 	return out
 }
 
+func (t *ActionTransport) PartyActive(uid int) bool {
+	if t == nil || uid <= 0 {
+		return false
+	}
+	t.mu.RLock()
+	session := t.sessions[uid]
+	t.mu.RUnlock()
+	party, ok := session.(interface{ PartyActive() bool })
+	return ok && party.PartyActive()
+}
+
 func (t *ActionTransport) session(uid int) (shared.RobotSession, error) {
 	if t == nil {
 		return nil, fmt.Errorf("S4A21 action transport is nil")

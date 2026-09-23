@@ -82,6 +82,9 @@ func TestActionTransportProjectsFollowerPartyState(t *testing.T) {
 	if status := transport.RuntimeStatusMap()[7]; !status.PartyActive {
 		t.Fatalf("runtime status did not project party state: %+v", status)
 	}
+	if !transport.PartyActive(7) || transport.PartyActive(8) {
+		t.Fatal("live party lookup did not match the attached follower")
+	}
 }
 
 func TestActionTransportRoutesVerifiedTownAreaTransition(t *testing.T) {

@@ -113,6 +113,8 @@ func (s *Session) followerLoop(ctx context.Context, events <-chan protocol.Packe
 		select {
 		case <-ctx.Done():
 			return
+		case <-s.Done():
+			return
 		case packet := <-events:
 			s.handleFollowerPacket(ctx, packet)
 		}

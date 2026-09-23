@@ -164,6 +164,35 @@ func TestDungeonFollowerCloseStopsWorker(t *testing.T) {
 	}
 }
 
+func TestDungeonFollowerStopsWhenSessionDrainEnds(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	session, stopDrain := testSessionWithDrain(clientConn)
+	defer stopDrain()
+	go func() {
+		packet, err := protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
+		if err == nil && packet.Type == protocol.CmdChangeTutorialFlag {
+			_, _ = serverConn.Write(protocol.EncodeResponse(1, protocol.CmdChangeTutorialFlag, []byte{1}))
+		}
+	}()
+	if err := session.EnableDungeonFollower(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	session.followerGuard.Lock()
+	followerDone := session.followerDone
+	session.followerGuard.Unlock()
+	_ = serverConn.Close()
+	select {
+	case <-session.Done():
+	case <-time.After(time.Second):
+		t.Fatal("session drain did not stop")
+	}
+	select {
+	case <-followerDone:
+	case <-time.After(time.Second):
+		t.Fatal("follower worker survived session drain")
+	}
+}
+
 func TestParsePartyInfoActiveHandlesRosterAndClearBlocks(t *testing.T) {
 	active, ok := parsePartyInfoActive(protocol.Packet{
 		Type: protocol.NotiPartyInfo, Body: followerPartyRosterBody(7, 11, 12),

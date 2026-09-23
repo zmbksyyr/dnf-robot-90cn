@@ -36,6 +36,9 @@ func (r *RobotRuntime) Status(uid int) (robotcap.RuntimeStatus, bool) {
 }
 
 func (r *RobotRuntime) PartyActive(uid int) bool {
+	if provider, ok := r.manager.backendActions.(interface{ PartyActive(int) bool }); ok {
+		return provider.PartyActive(uid)
+	}
 	return r.manager.doll.PartyActive(uid)
 }
 
