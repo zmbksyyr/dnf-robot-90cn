@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -85,8 +86,14 @@ func (c RobotCleaner) CleanupRobots(ctx context.Context, request robotcap.Cleanu
 			}
 		}
 		identity := identityByName[candidate.Name]
-		if _, err := c.Protocol.DeleteCharacter(ctx, identity); err != nil {
+		confirmed, err := c.Protocol.DeleteCharacter(ctx, identity)
+		if err != nil {
 			candidate.Protected, candidate.Reason = true, err.Error()
+			result.Skipped++
+			continue
+		}
+		if !confirmed {
+			candidate.Protected, candidate.Reason = true, "S4A21 account cleanup was not confirmed"
 			result.Skipped++
 			continue
 		}
@@ -121,9 +128,9 @@ type CharacterDeleter struct {
 	PasswordHash string
 }
 
-// DeleteCharacter deletes through the public game protocol only. A missing
-// roster entry is treated as already deleted so interrupted cleanup can be
-// retried without touching the simulator database.
+// DeleteCharacter clears the roster of one robot-owned account through the
+// public game protocol. One account represents one robot identity; clearing
+// stale siblings prevents interrupted cleanup from exhausting character slots.
 func (d CharacterDeleter) DeleteCharacter(ctx context.Context, identity robotstate.Identity) (bool, error) {
 	if strings.TrimSpace(identity.Account) == "" || strings.TrimSpace(identity.CharacterName) == "" {
 		return false, fmt.Errorf("S4A21 delete requires account and character name")
@@ -155,38 +162,63 @@ func (d CharacterDeleter) DeleteCharacter(ctx context.Context, identity robotsta
 	if err != nil {
 		return false, fmt.Errorf("S4A21 delete character list: %w", err)
 	}
-	return deleteCharacterFromRoster(ctx, client, identity.CharacterName, rosterPacket.Body)
+	if err := clearRobotAccountRoster(ctx, client, rosterPacket.Body); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
-func deleteCharacterFromRoster(ctx context.Context, client *protocol.Client, characterName string, rosterBody []byte) (bool, error) {
+func clearRobotAccountRoster(ctx context.Context, client *protocol.Client, rosterBody []byte) error {
 	roster, err := protocol.DecodeCharacterRoster(rosterBody)
 	if err != nil {
-		return false, fmt.Errorf("S4A21 delete character list decode: %w", err)
+		return fmt.Errorf("S4A21 delete character list decode: %w", err)
 	}
-	var slot uint16
-	found := false
+	if len(roster) == 0 {
+		return nil
+	}
+	// Delete from the highest slot so lower indices remain valid while the
+	// server compacts the account roster after every successful deletion.
+	sort.Slice(roster, func(i, j int) bool { return roster[i].Slot > roster[j].Slot })
 	for _, character := range roster {
-		if character.Name == characterName {
-			slot, found = character.Slot, true
-			break
+		if err := deleteRosterEntry(ctx, client, character); err != nil {
+			return err
 		}
 	}
-	if !found {
-		return false, nil
+	if err := client.RequestCharacterRoster(ctx); err != nil {
+		return err
 	}
-	name, err := charset.EncodeGBKString(characterName)
+	packet, err := waitPacket(ctx, client, protocol.NotiCharacterList, 0)
 	if err != nil {
-		return false, err
+		return fmt.Errorf("S4A21 confirm deleted character list: %w", err)
 	}
-	if err := client.DeleteCharacter(ctx, slot, name); err != nil {
-		return false, err
+	remaining, err := protocol.DecodeCharacterRoster(packet.Body)
+	if err != nil {
+		return fmt.Errorf("S4A21 confirm deleted character list decode: %w", err)
+	}
+	if len(remaining) != 0 {
+		return fmt.Errorf("S4A21 account roster still contains %d characters after cleanup", len(remaining))
+	}
+	return nil
+}
+
+func deleteRosterEntry(ctx context.Context, client *protocol.Client, character protocol.CharacterRosterEntry) error {
+	name := character.NameRaw
+	if len(name) == 0 {
+		var err error
+		name, err = charset.EncodeGBKString(character.Name)
+		if err != nil {
+			return err
+		}
+	}
+	if err := client.DeleteCharacter(ctx, character.Slot, name); err != nil {
+		return err
 	}
 	ack, err := waitPacket(ctx, client, protocol.CmdDeleteCharacter, 1)
 	if err != nil {
-		return false, fmt.Errorf("S4A21 delete character: %w", err)
+		return fmt.Errorf("S4A21 delete character: %w", err)
 	}
-	if len(ack.Body) != 4 || ack.Body[0] != 1 || binary.LittleEndian.Uint16(ack.Body[2:4]) != slot {
-		return false, fmt.Errorf("S4A21 delete character returned invalid ACK %v", ack.Body)
+	if len(ack.Body) != 4 || ack.Body[0] != 1 || binary.LittleEndian.Uint16(ack.Body[2:4]) != character.Slot {
+		return fmt.Errorf("S4A21 delete character returned invalid ACK %v", ack.Body)
 	}
-	return true, nil
+	return nil
 }

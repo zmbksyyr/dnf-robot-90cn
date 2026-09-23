@@ -10,11 +10,12 @@ import (
 // CharacterRosterEntry is the backend-native identity exposed by A21's
 // character-list notification. A21 has no native UID/CID pair in this packet.
 type CharacterRosterEntry struct {
-	Slot  uint16
-	Name  string
-	Job   byte
-	Grow  byte
-	Level byte
+	Slot    uint16
+	Name    string
+	NameRaw []byte
+	Job     byte
+	Grow    byte
+	Level   byte
 }
 
 // DecodeCharacterRoster parses the A21 type=2 character-list body. The tail
@@ -42,6 +43,7 @@ func DecodeCharacterRoster(body []byte) ([]CharacterRosterEntry, error) {
 		if r.skip(2+4+4) != nil { // reserved flags and two zero IDs
 			return nil, fmt.Errorf("character roster entry %d: %w", i, r.err)
 		}
+		entry.NameRaw = append([]byte(nil), name...)
 		entry.Name = charset.DecodePVFBytes(name)
 		appearanceCount := int(r.byte())
 		if r.err != nil {

@@ -97,6 +97,7 @@ func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
 		`cmd.includes("robotsShout")`,
 		`backendCapabilities.world_shout?.enabled?'world_shout':'shout'`,
 		`cmd.includes("openDiagnosticsDialog"))cap='diagnostics'`,
+		`cmd.includes("openDangerousDelete"))cap='dangerous_delete'`,
 		`cmd.includes("robotsStore")`,
 		`cmd.includes("openPartyCompat")`,
 		`cmd.includes("openCompatDialog")`,

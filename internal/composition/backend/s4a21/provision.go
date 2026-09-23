@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"robot/internal/foundation/charset"
@@ -15,6 +16,8 @@ type Provisioner struct {
 	Address string
 	Timeout time.Duration
 }
+
+var provisionNameSequence atomic.Uint64
 
 // ProvisionCharacters executes the same verified network workflow for each
 // request and returns partial results when the batch is interrupted. Account
@@ -80,7 +83,7 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	}
 	for _, candidate := range []string{requestedName, fallbackName} {
 		for _, character := range roster {
-			if character.Name != candidate {
+			if !rosterNameMatches(character, candidate) {
 				continue
 			}
 			slot := character.Slot
@@ -96,20 +99,28 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 			return result, nil
 		}
 	}
-	createdName := ""
-	for index, candidate := range []string{requestedName, fallbackName} {
-		if index == 1 && candidate == requestedName {
-			break
+	if len(roster) > 0 {
+		// A robot-owned account must contain at most its registered identity.
+		// Interrupted cleanups can leave stale siblings that consume slots.
+		if err := clearRobotAccountRoster(ctx, client, rosterPacket.Body); err != nil {
+			return result, fmt.Errorf("S4A21 clear stale character roster: %w", err)
 		}
+	}
+	createdName := ""
+	candidates := provisionCharacterNameCandidates(request, requestedName)
+	for index, candidate := range candidates {
 		name, err := charset.EncodeGBKString(candidate)
 		if err != nil {
+			if index < len(candidates)-1 {
+				continue
+			}
 			return result, err
 		}
 		if len(name) < 2 || len(name) > 18 {
-			if index == 0 {
+			if index < len(candidates)-1 {
 				continue
 			}
-			return result, fmt.Errorf("S4A21 fallback character name must be 2..18 GBK bytes")
+			return result, fmt.Errorf("S4A21 character name candidates must be 2..18 GBK bytes")
 		}
 		if err := client.CheckCharacterName(ctx, name); err != nil {
 			return result, fmt.Errorf("S4A21 check character name: %w", err)
@@ -120,7 +131,7 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 		}
 		if !commandAccepted(nameAck.Body) {
 			code := commandErrorCode(nameAck.Body)
-			if index == 0 && (code == 24 || code == 159) {
+			if (code == 24 || code == 159) && index < len(candidates)-1 {
 				continue
 			}
 			return result, fmt.Errorf("S4A21 check character name: command 0x%04X rejected with body %v", protocol.CmdCheckCharacterName, nameAck.Body)
@@ -139,7 +150,10 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 		code := commandErrorCode(ack.Body)
 		// Keep the same fallback for the race between availability check and
 		// creation, where another session may reserve the requested name.
-		if index == 0 && (code == 24 || code == 159) {
+		// Code 4 is S4A21's generic persistence failure. Soft-deleted names
+		// remain under a unique index even though CHECK_NAME reports them as
+		// available, so retry with a fresh protocol name.
+		if (code == 4 || code == 24 || code == 159) && index < len(candidates)-1 {
 			continue
 		}
 		return result, fmt.Errorf("S4A21 create character: command 0x%04X rejected with body %v", protocol.CmdCreateCharacter, ack.Body)
@@ -176,6 +190,65 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	return result, nil
 }
 
+func rosterNameMatches(character protocol.CharacterRosterEntry, candidate string) bool {
+	candidate = strings.TrimSpace(candidate)
+	if strings.EqualFold(strings.TrimSpace(character.Name), candidate) {
+		return true
+	}
+	encoded, err := charset.EncodeGBKString(candidate)
+	return err == nil && len(character.NameRaw) > 0 && string(character.NameRaw) == string(encoded)
+}
+
+func provisionCharacterNameCandidates(request shared.ProvisionCharacterRequest, requestedName string) []string {
+	candidates := make([]string, 0, 14)
+	seen := make(map[string]struct{}, 14)
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		if _, exists := seen[name]; exists {
+			return
+		}
+		seen[name] = struct{}{}
+		candidates = append(candidates, name)
+	}
+	add(requestedName)
+	add(fallbackCharacterName(request))
+	seed := uint64(time.Now().UnixNano()) ^ provisionNameSequence.Add(1)*0x9e3779b97f4a7c15
+	for _, value := range []byte(request.AccountName) {
+		seed ^= uint64(value)
+		seed *= 1099511628211
+	}
+	for attempt := 0; attempt < 12; attempt++ {
+		base := requestedName
+		if attempt >= 8 {
+			base = "旅人"
+		}
+		add(freshCharacterName(base, seed+uint64(attempt)*0x9e3779b97f4a7c15))
+	}
+	return candidates
+}
+
+func freshCharacterName(base string, seed uint64) string {
+	suffix := fmt.Sprintf("%012x", seed&0xffffffffffff)
+	remaining := 18 - len(suffix)
+	var prefix strings.Builder
+	used := 0
+	for _, r := range strings.TrimSpace(base) {
+		encoded, err := charset.EncodeGBKString(string(r))
+		if err != nil || used+len(encoded) > remaining {
+			break
+		}
+		prefix.WriteRune(r)
+		used += len(encoded)
+	}
+	if prefix.Len() == 0 {
+		prefix.WriteString("r")
+	}
+	return prefix.String() + suffix
+}
+
 func fallbackCharacterName(request shared.ProvisionCharacterRequest) string {
 	if request.RobotUID > 0 {
 		return fmt.Sprintf("rb%d", request.RobotUID)
@@ -193,10 +266,16 @@ func commandAccepted(body []byte) bool {
 }
 
 func commandErrorCode(body []byte) byte {
-	if len(body) < 2 || body[0] != 0 {
+	if len(body) == 1 {
+		if body[0] != 1 {
+			return body[0]
+		}
 		return 0
 	}
-	return body[1]
+	if len(body) >= 2 && body[0] == 0 {
+		return body[1]
+	}
+	return 0
 }
 
 func waitFor(ctx context.Context, client *protocol.Client, typ uint16, command byte) error {

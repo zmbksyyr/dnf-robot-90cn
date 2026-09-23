@@ -16,20 +16,21 @@ const BackendS4A21 BackendID = "sim_a21"
 type BackendCapability string
 
 const (
-	CapabilityProvision     BackendCapability = "provision"
-	CapabilityTownMove      BackendCapability = "town_move"
-	CapabilityDungeonMove   BackendCapability = "dungeon_move"
-	CapabilityShout         BackendCapability = "shout"
-	CapabilityWorldShout    BackendCapability = "world_shout"
-	CapabilityStore         BackendCapability = "store"
-	CapabilityParty         BackendCapability = "party"
-	CapabilitySkill         BackendCapability = "skill"
-	CapabilityMarket        BackendCapability = "market"
-	CapabilityCleanup       BackendCapability = "cleanup"
-	CapabilityCompatibility BackendCapability = "compatibility"
-	CapabilityKeypair       BackendCapability = "keypair"
-	CapabilityDatabase      BackendCapability = "database"
-	CapabilityDiagnostics   BackendCapability = "diagnostics"
+	CapabilityProvision       BackendCapability = "provision"
+	CapabilityTownMove        BackendCapability = "town_move"
+	CapabilityDungeonMove     BackendCapability = "dungeon_move"
+	CapabilityShout           BackendCapability = "shout"
+	CapabilityWorldShout      BackendCapability = "world_shout"
+	CapabilityStore           BackendCapability = "store"
+	CapabilityParty           BackendCapability = "party"
+	CapabilitySkill           BackendCapability = "skill"
+	CapabilityMarket          BackendCapability = "market"
+	CapabilityCleanup         BackendCapability = "cleanup"
+	CapabilityDangerousDelete BackendCapability = "dangerous_delete"
+	CapabilityCompatibility   BackendCapability = "compatibility"
+	CapabilityKeypair         BackendCapability = "keypair"
+	CapabilityDatabase        BackendCapability = "database"
+	CapabilityDiagnostics     BackendCapability = "diagnostics"
 )
 
 type CapabilityStatus struct {
@@ -120,7 +121,7 @@ func KnownBackends() []BackendInfo {
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
+		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
@@ -147,6 +148,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityShout] = CapabilityStatus{Enabled: true, Reason: "area channel only; party requires the separate party capability"}
 	capabilities[CapabilityWorldShout] = CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
 	capabilities[CapabilityCleanup] = CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
+	capabilities[CapabilityDangerousDelete] = CapabilityStatus{Reason: "S4A21 supports protected protocol cleanup only"}
 	capabilities[CapabilityCompatibility] = CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
 	capabilities[CapabilityKeypair] = CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
 	capabilities[CapabilityDatabase] = CapabilityStatus{Reason: "simulator game databases are outside the robot boundary"}
@@ -160,7 +162,7 @@ func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStat
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
+		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
 	} {
 		capabilities[operation] = CapabilityStatus{Reason: reason}
 	}

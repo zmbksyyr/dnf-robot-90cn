@@ -54,7 +54,16 @@ func TestCharacterDeleterResolvesCurrentSlotAndChecksAck(t *testing.T) {
 			done <- fmt.Errorf("delete request=%+v err=%v", request, err)
 			return
 		}
-		_, err = conn.Write(protocol.EncodeResponse(1, protocol.CmdDeleteCharacter, []byte{1, 0, 4, 0}))
+		if _, err = conn.Write(protocol.EncodeResponse(1, protocol.CmdDeleteCharacter, []byte{1, 0, 4, 0})); err != nil {
+			done <- err
+			return
+		}
+		confirm, err := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+		if err != nil || confirm.Type != protocol.CmdGetUserInfo {
+			done <- fmt.Errorf("confirm roster request=%+v err=%v", confirm, err)
+			return
+		}
+		_, err = conn.Write(protocol.EncodeResponse(0, protocol.NotiCharacterList, emptyRosterBody()))
 		done <- err
 	}()
 
@@ -70,13 +79,14 @@ func TestCharacterDeleterResolvesCurrentSlotAndChecksAck(t *testing.T) {
 }
 
 type recordingDeleteProtocol struct {
-	identities []robotstate.Identity
-	err        error
+	identities  []robotstate.Identity
+	err         error
+	unconfirmed bool
 }
 
 func (p *recordingDeleteProtocol) DeleteCharacter(_ context.Context, identity robotstate.Identity) (bool, error) {
 	p.identities = append(p.identities, identity)
-	return p.err == nil, p.err
+	return p.err == nil && !p.unconfirmed, p.err
 }
 
 type recordingSessionCloser struct{ uids []int }
@@ -122,6 +132,86 @@ func TestRobotCleanerDryRunDoesNotSendDelete(t *testing.T) {
 	}
 }
 
+func TestRobotCleanerKeepsStateWhenProtocolDoesNotConfirmDelete(t *testing.T) {
+	state := robotstate.NewMemoryStore([]robotcap.Info{{UID: 7, Name: "robot07"}})
+	if err := state.RegisterIdentity(context.Background(), robotstate.Identity{Backend: shared.BackendS4A21, Account: "acct07", CharacterName: "robot07"}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := (RobotCleaner{Protocol: &recordingDeleteProtocol{unconfirmed: true}, State: state}).CleanupRobots(
+		context.Background(), robotcap.CleanupRequest{UIDs: []int{7}, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Deleted != 0 || result.Skipped != 1 || !result.Candidates[0].Protected {
+		t.Fatalf("result=%+v", result)
+	}
+	robots, _ := state.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 10})
+	if len(robots) != 1 || robots[0].UID != 7 {
+		t.Fatalf("robot state must remain after unconfirmed delete: %+v", robots)
+	}
+}
+
+func TestCharacterDeleterClearsRosterFromHighestSlot(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	done := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			done <- acceptErr
+			return
+		}
+		defer conn.Close()
+		steps := []struct {
+			wantType     uint16
+			wantSlot     uint16
+			responseType uint16
+			response     []byte
+		}{
+			{wantType: protocol.CmdLogin, responseType: protocol.CmdLogin, response: []byte{1}},
+			{wantType: protocol.CmdGetUserInfo, responseType: protocol.NotiCharacterList, response: testRosterBodies(
+				protocol.CharacterRosterEntry{Slot: 1, Name: "robot01", Job: 1, Level: 1},
+				protocol.CharacterRosterEntry{Slot: 4, Name: "stale04", Job: 2, Level: 70},
+			)},
+			{wantType: protocol.CmdDeleteCharacter, wantSlot: 4, responseType: protocol.CmdDeleteCharacter, response: []byte{1, 0, 4, 0}},
+			{wantType: protocol.CmdDeleteCharacter, wantSlot: 1, responseType: protocol.CmdDeleteCharacter, response: []byte{1, 0, 1, 0}},
+			{wantType: protocol.CmdGetUserInfo, responseType: protocol.NotiCharacterList, response: emptyRosterBody()},
+		}
+		for _, step := range steps {
+			request, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+			if readErr != nil || request.Type != step.wantType {
+				done <- fmt.Errorf("request type=0x%04X want=0x%04X err=%v", request.Type, step.wantType, readErr)
+				return
+			}
+			if step.wantType == protocol.CmdDeleteCharacter && binary.LittleEndian.Uint16(request.Body[:2]) != step.wantSlot {
+				done <- fmt.Errorf("delete slot=%d want=%d", binary.LittleEndian.Uint16(request.Body[:2]), step.wantSlot)
+				return
+			}
+			command := byte(1)
+			if step.responseType == protocol.NotiCharacterList {
+				command = 0
+			}
+			if _, writeErr := conn.Write(protocol.EncodeResponse(command, step.responseType, step.response)); writeErr != nil {
+				done <- writeErr
+				return
+			}
+		}
+		done <- nil
+	}()
+
+	deleted, err := (CharacterDeleter{Address: listener.Addr().String(), Timeout: time.Second}).DeleteCharacter(
+		context.Background(), robotstate.Identity{Backend: shared.BackendS4A21, Account: "robot1", CharacterName: "robot01"})
+	if err != nil || !deleted {
+		t.Fatalf("deleted=%t err=%v", deleted, err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLiveDeleteCharacterThroughProtocol(t *testing.T) {
 	address := os.Getenv("S4A21_TEST_ADDR")
 	if address == "" {
@@ -150,21 +240,27 @@ func TestLiveDeleteCharacterThroughProtocol(t *testing.T) {
 		t.Fatalf("robot state was not removed: %+v", robots)
 	}
 	deleted, err := deleter.DeleteCharacter(context.Background(), identity)
-	if err != nil || deleted {
-		t.Fatalf("second delete must observe missing roster entry: deleted=%t err=%v", deleted, err)
+	if err != nil || !deleted {
+		t.Fatalf("second delete must confirm the account is already empty: deleted=%t err=%v", deleted, err)
 	}
 }
 
 func testRosterBody(slot uint16, name string) []byte {
+	return testRosterBodies(protocol.CharacterRosterEntry{Slot: slot, Name: name, Job: 1, Level: 1})
+}
+
+func testRosterBodies(entries ...protocol.CharacterRosterEntry) []byte {
 	var body bytes.Buffer
 	body.Write(make([]byte, 16))
-	_ = binary.Write(&body, binary.LittleEndian, uint16(1))
-	_ = binary.Write(&body, binary.LittleEndian, slot)
-	_ = binary.Write(&body, binary.LittleEndian, uint32(len(name)))
-	body.WriteString(name)
-	body.Write([]byte{0, 0, 1, 0, 1, 0, 0})
-	body.Write(make([]byte, 8))
-	body.WriteByte(0)
-	body.Write(make([]byte, 36))
+	_ = binary.Write(&body, binary.LittleEndian, uint16(len(entries)))
+	for _, entry := range entries {
+		_ = binary.Write(&body, binary.LittleEndian, entry.Slot)
+		_ = binary.Write(&body, binary.LittleEndian, uint32(len(entry.Name)))
+		body.WriteString(entry.Name)
+		body.Write([]byte{0, 0, entry.Job, entry.Grow, entry.Level, 0, 0})
+		body.Write(make([]byte, 8))
+		body.WriteByte(0)
+		body.Write(make([]byte, 36))
+	}
 	return body.Bytes()
 }

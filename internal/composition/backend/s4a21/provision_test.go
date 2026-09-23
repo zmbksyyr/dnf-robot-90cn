@@ -141,6 +141,75 @@ func TestProvisionCharacterChecksGlobalNameAndUsesStableFallback(t *testing.T) {
 	}
 }
 
+func TestProvisionCharacterRetriesFreshNameAfterSoftDeleteConflict(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	done := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			done <- acceptErr
+			return
+		}
+		defer conn.Close()
+		steps := []struct {
+			wantType     uint16
+			responseType uint16
+			response     []byte
+		}{
+			{protocol.CmdLogin, protocol.CmdLogin, []byte{1}},
+			{protocol.CmdGetUserInfo, protocol.NotiCharacterList, emptyRosterBody()},
+			{protocol.CmdCheckCharacterName, protocol.CmdCheckCharacterName, []byte{1}},
+			{protocol.CmdCreateCharacter, protocol.CmdCreateCharacter, []byte{4}},
+			{protocol.CmdCheckCharacterName, protocol.CmdCheckCharacterName, []byte{1}},
+			{protocol.CmdCreateCharacter, protocol.CmdCreateCharacter, []byte{4}},
+			{protocol.CmdCheckCharacterName, protocol.CmdCheckCharacterName, []byte{1}},
+			{protocol.CmdCreateCharacter, protocol.CmdCreateCharacter, []byte{1}},
+		}
+		var createNames []string
+		for _, step := range steps {
+			request, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+			if readErr != nil || request.Type != step.wantType {
+				done <- fmt.Errorf("request type=0x%04X want=0x%04X err=%v", request.Type, step.wantType, readErr)
+				return
+			}
+			if request.Type == protocol.CmdCreateCharacter {
+				nameLength := int(binary.LittleEndian.Uint32(request.Body[1:5]))
+				createNames = append(createNames, string(request.Body[5:5+nameLength]))
+			}
+			command := byte(1)
+			if step.responseType == protocol.NotiCharacterList {
+				command = 0
+			}
+			if _, writeErr := conn.Write(protocol.EncodeResponse(command, step.responseType, step.response)); writeErr != nil {
+				done <- writeErr
+				return
+			}
+		}
+		if len(createNames) != 3 || createNames[0] != "robotOld" || createNames[1] != "rb42" || createNames[2] == createNames[1] {
+			done <- fmt.Errorf("unexpected create candidates: %q", createNames)
+			return
+		}
+		_, writeErr := conn.Write(protocol.EncodeResponse(0, protocol.NotiCharacterList, []byte{0}))
+		done <- writeErr
+	}()
+
+	result, err := (Provisioner{Address: listener.Addr().String(), Timeout: time.Second}).ProvisionCharacter(
+		context.Background(), shared.ProvisionCharacterRequest{AccountName: "robot42", CharacterName: "robotOld", RobotUID: 42, Job: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !result.Created || result.CharacterName == "robotOld" || result.CharacterName == "rb42" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
 func TestProvisionCharacterAdoptsExistingRosterIdentity(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

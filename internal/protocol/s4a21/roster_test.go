@@ -33,4 +33,7 @@ func TestDecodeCharacterRoster(t *testing.T) {
 	if len(entries) != 1 || entries[0].Slot != 3 || entries[0].Name != "abcde" || entries[0].Job != 7 || entries[0].Grow != 2 || entries[0].Level != 85 {
 		t.Fatalf("entries = %+v", entries)
 	}
+	if !bytes.Equal(entries[0].NameRaw, []byte("abcde")) {
+		t.Fatalf("raw name = %v", entries[0].NameRaw)
+	}
 }
