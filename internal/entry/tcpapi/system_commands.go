@@ -46,7 +46,8 @@ func handleSystemCommand(cmd, pkt string, manager *scheduler.RobotManager) (stri
 	case "goroutineDump":
 		return wrapResult(map[string]interface{}{"ok": true, "result": goroutineDump()}), true
 	case "databaseStatus":
-		return wrapResult(map[string]interface{}{"ok": true, "result": manager.DatabaseStatus()}), true
+		status := manager.DatabaseStatus()
+		return wrapResult(map[string]interface{}{"ok": status.Error == "", "error": status.Error, "result": status}), true
 	case "keypairStatus":
 		status := manager.KeypairStatus()
 		return wrapResult(map[string]interface{}{"ok": status.Error == "", "error": func() string {

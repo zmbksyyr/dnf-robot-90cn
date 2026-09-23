@@ -28,6 +28,7 @@ const (
 	CapabilityCleanup       BackendCapability = "cleanup"
 	CapabilityCompatibility BackendCapability = "compatibility"
 	CapabilityKeypair       BackendCapability = "keypair"
+	CapabilityDatabase      BackendCapability = "database"
 )
 
 type CapabilityStatus struct {
@@ -103,7 +104,7 @@ func KnownBackends() []BackendInfo {
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair,
+		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
@@ -126,6 +127,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityCleanup] = CapabilityStatus{Reason: "S4A21 character deletion protocol is not integrated"}
 	capabilities[CapabilityCompatibility] = CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
 	capabilities[CapabilityKeypair] = CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
+	capabilities[CapabilityDatabase] = CapabilityStatus{Reason: "simulator game databases are outside the robot boundary"}
 	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "dungeon entry workflow is not integrated yet"}
 	return capabilities
 }
@@ -135,7 +137,7 @@ func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStat
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair,
+		CapabilityMarket, CapabilityCleanup, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase,
 	} {
 		capabilities[operation] = CapabilityStatus{Reason: reason}
 	}

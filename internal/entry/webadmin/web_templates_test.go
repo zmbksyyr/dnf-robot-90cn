@@ -86,6 +86,18 @@ func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
 	}
 }
 
+func TestSimulatorDatabaseCapabilityDoesNotBlockProtocolActions(t *testing.T) {
+	for _, want := range []string{
+		`backendCapabilities.database`,
+		`dbBlocked=false`,
+		`textContent='N/A'`,
+	} {
+		if !strings.Contains(appJS, want) {
+			t.Fatalf("simulator database boundary is missing %q", want)
+		}
+	}
+}
+
 func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
 	for _, want := range []string{
 		"Category unit-price ranges", "分类单价范围",

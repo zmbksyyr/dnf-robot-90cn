@@ -39,6 +39,9 @@ func (m *RobotManager) SystemStatus() SystemStatus {
 }
 
 func (m *RobotManager) DatabaseStatus() dbstatus.Status {
+	if err := m.requireBackendCapability(shared.CapabilityDatabase); err != nil {
+		return dbstatus.Status{Error: err.Error(), CheckedAt: time.Now()}
+	}
 	return dbstatus.Check(m.database, m.cfg)
 }
 

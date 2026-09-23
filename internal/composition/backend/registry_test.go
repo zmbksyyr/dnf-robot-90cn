@@ -37,6 +37,8 @@ func TestAvailableBackendsExposeCompleteCapabilityMatrix(t *testing.T) {
 		shared.CapabilityMarket,
 		shared.CapabilityCleanup,
 		shared.CapabilityCompatibility,
+		shared.CapabilityKeypair,
+		shared.CapabilityDatabase,
 	}
 	for _, backend := range Available() {
 		for _, capability := range want {

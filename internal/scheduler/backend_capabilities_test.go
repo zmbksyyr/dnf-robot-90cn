@@ -108,3 +108,12 @@ func TestSimulatorKeypairOperationsAreRejectedWithStableCapabilityError(t *testi
 		t.Fatalf("error = %v, want keypair unsupported", err)
 	}
 }
+
+func TestSimulatorDatabaseStatusDoesNotProbeNativeDatabase(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	status := m.DatabaseStatus()
+	if status.OK || !strings.Contains(status.Error, shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("status = %+v, want stable unsupported database result", status)
+	}
+}
