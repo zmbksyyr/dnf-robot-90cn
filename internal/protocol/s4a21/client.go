@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"robot/internal/foundation/lockhub"
+	"robot/internal/foundation/network"
 )
 
 const DefaultMaxPacketLength = 1024 * 1024
@@ -169,17 +170,9 @@ func (c *Client) Read(ctx context.Context) (Packet, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	stop := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = c.conn.SetReadDeadline(time.Now())
-		case <-stop:
-		}
-	}()
+	resetDeadline := interruptOnCancel(ctx, c.conn.SetReadDeadline)
 	packet, err := ReadFrame(c.conn, c.maxSize)
-	close(stop)
-	_ = c.conn.SetReadDeadline(time.Time{})
+	resetDeadline()
 	if err != nil && ctx.Err() != nil {
 		return Packet{}, ctx.Err()
 	}
@@ -217,10 +210,36 @@ func (c *Client) send(ctx context.Context, frame []byte) error {
 	}
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = c.conn.SetWriteDeadline(deadline)
-		defer c.conn.SetWriteDeadline(time.Time{})
 	}
-	_, err := c.conn.Write(frame)
+	resetDeadline := interruptOnCancel(ctx, c.conn.SetWriteDeadline)
+	defer resetDeadline()
+	err := network.WriteFull(c.conn, frame)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	return err
+}
+
+// interruptOnCancel unblocks a pending socket operation and waits for the
+// cancellation callback before clearing the deadline. Waiting prevents an old
+// operation from installing an expired deadline after the next one begins.
+func interruptOnCancel(ctx context.Context, setDeadline func(time.Time) error) func() {
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		_ = setDeadline(time.Now())
+		close(done)
+	})
+	return func() {
+		if !stop() {
+			<-done
+		}
+		_ = setDeadline(time.Time{})
+	}
 }
