@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -52,5 +54,16 @@ func TestWebAdminChildReceivesBackendIdentity(t *testing.T) {
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "--backend-id sim_a21") {
 		t.Fatalf("child args=%q", args)
+	}
+}
+
+func TestSimulatorPVFPathAcceptsConfiguredDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Script.pvf")
+	if err := os.WriteFile(path, []byte("pvf"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := simulatorPVFPath(dir); got != path {
+		t.Fatalf("pvf path=%q, want %q", got, path)
 	}
 }
