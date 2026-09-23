@@ -15,6 +15,12 @@
 
 ## 原生/其他版本参考
 
+本轮对后续镜像做了只读确认：
+
+- `86JP.git/Server/DfoServer` 明确包含 `Sqlite*Repository`、`inventory.db` 和 SQLite 角色/账号持久化；它不能成为 Robot 直接读写模拟端数据库的先例，后续若接入仍必须先建立协议建号、状态查询和动作回包证据。
+- `90.git/go-server` 同时包含独立的 MySQL 打包/控制面和大量 PVF、地下城分析工具；这些资料可用于协议/PVF 研究，但不能把其 MySQL schema 或控制程序依赖引入共享 scheduler。
+- 上述两个镜像与 S4A21 的 PVF、协议和存储形态均不同，新增 adapter 的最小准入条件仍是：自己的 PVF 解析器、自己的协议 DTO/封包、公共 `MapCatalogItem`/能力契约投影，以及明确的 unsupported 能力矩阵。
+
 `90.git/go-server` 的 `worldmap` 与 `dnfbridge` 实现展示了完整地下城拓扑、房间访问、清理状态、分层地图和结算约束；这说明地下城移动不是单个 `MOVE_MAP` 包即可完成的动作。该实现只作为后续协议研究资料，不进入当前 S4A21 城镇移动路径。
 
 `86JPGMTool.git` 与 `S4A21GmTool.git` 都包含 PVF archive、脚本解析和 `TownFile`/`MapFile` 模型，但版本字段与解析扩展不同。因此后续新增模拟端时，应在各自 adapter 内完成 PVF 读取，再投影到公共地图目录；公共调度、随机目标、移动间隔和运行时状态不重复实现。
