@@ -59,14 +59,3 @@ func TestRecoveryWebRejectsNativeCompatibilityOperations(t *testing.T) {
 		t.Fatalf("payload=%v", payload)
 	}
 }
-
-func TestWebAdminChildReceivesBackendIdentity(t *testing.T) {
-	cmd := newCommand(&config.SysConfig{RobotPort: 8111, WebPort: 8112}, shared.BackendS4A21)
-	if cmd == nil {
-		t.Fatal("web admin child command is nil")
-	}
-	args := strings.Join(cmd.Args, " ")
-	if !strings.Contains(args, "--backend-id sim_a21") {
-		t.Fatalf("child args=%q", args)
-	}
-}

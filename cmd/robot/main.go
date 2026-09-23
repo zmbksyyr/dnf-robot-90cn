@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -43,27 +42,6 @@ func runMain() int {
 	if webadmin.RestartHelperRequested(os.Args[1:]) {
 		if err := webadmin.RunRestartHelper(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "restart helper failed: %v\n", err)
-			return 1
-		}
-		return 0
-	}
-	webAdminMode := flag.Bool("web-admin", false, "run web admin child process")
-	robotAddr := flag.String("robot-addr", "", "robot TCP address for web admin")
-	webAddr := flag.String("web-addr", "", "web admin listen address")
-	webConfigStdin := flag.Bool("web-config-stdin", false, "read the parent runtime config snapshot from stdin")
-	webBackendID := flag.String("backend-id", string(shared.BackendNative), "backend identity for the Web admin child")
-	flag.Parse()
-	if boundedLogSinkRequested() {
-		if err := runBoundedLogSink(os.Stdin); err != nil {
-			fmt.Fprintf(os.Stderr, "bounded log sink failed: %v\n", err)
-			return 1
-		}
-		return 0
-	}
-
-	if *webAdminMode {
-		if err := runWebAdmin(*robotAddr, *webAddr, *webConfigStdin, shared.BackendID(*webBackendID), false); err != nil {
-			fmt.Fprintf(os.Stderr, "web admin failed: %v\n", err)
 			return 1
 		}
 		return 0
