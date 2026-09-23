@@ -98,7 +98,12 @@ func TestSessionFactoryEnablesPartyDungeonFollower(t *testing.T) {
 				serverDone <- fmt.Errorf("request type=0x%04X want=0x%04X", packet.Type, typ)
 				return
 			}
-			if _, writeErr := conn.Write(protocol.EncodeResponse(1, typ, []byte{1})); writeErr != nil {
+			body := []byte{1}
+			if typ == protocol.CmdSelectCharacter {
+				body = make([]byte, 11)
+				body[0], body[9], body[10] = 1, 0x34, 0x12
+			}
+			if _, writeErr := conn.Write(protocol.EncodeResponse(1, typ, body)); writeErr != nil {
 				serverDone <- writeErr
 				return
 			}

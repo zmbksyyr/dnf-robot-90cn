@@ -235,6 +235,20 @@ func SelectCharacterBody(slot uint16) []byte {
 	return out
 }
 
+// SelectCharacterUID returns the wire UID carried by a successful A21
+// SELECT_CHARACTER response. PARTY_INFO roster slots use this same identity.
+func SelectCharacterUID(body []byte) (uint16, error) {
+	const uidOffset = 9
+	if len(body) < uidOffset+2 {
+		return 0, fmt.Errorf("select character response is truncated")
+	}
+	uid := binary.LittleEndian.Uint16(body[uidOffset : uidOffset+2])
+	if uid == 0 || uid == 0xFFFF {
+		return 0, fmt.Errorf("select character response has invalid UID %d", uid)
+	}
+	return uid, nil
+}
+
 func SetUserPositionBody(x, y int16, direction byte, motion uint16) []byte {
 	out := make([]byte, 7)
 	binary.LittleEndian.PutUint16(out[0:2], uint16(x))

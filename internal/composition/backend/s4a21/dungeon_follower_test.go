@@ -15,6 +15,7 @@ func TestDungeonFollowerAcceptsInviteAndFollowsServerMap(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()
 	session, stopDrain := testSessionWithDrain(clientConn)
+	session.selfUID = 0x1234
 	defer stopDrain()
 	defer session.DisableDungeonFollower()
 
@@ -48,7 +49,7 @@ func TestDungeonFollowerAcceptsInviteAndFollowsServerMap(t *testing.T) {
 			serverDone <- fmt.Errorf("party acceptance = type 0x%04X body %X", packet.Type, packet.Body)
 			return
 		}
-		if _, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiPartyInfo, followerPartyInfoBody(1))); err != nil {
+		if _, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiPartyInfo, followerPartyRosterBody(1, 0x5678, 0x1234))); err != nil {
 			serverDone <- err
 			return
 		}
@@ -137,9 +138,10 @@ func TestDungeonFollowerCloseStopsWorker(t *testing.T) {
 	defer serverConn.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &Session{
-		client: protocol.NewClient(clientConn),
-		cancel: cancel,
-		done:   make(chan struct{}),
+		client:  protocol.NewClient(clientConn),
+		cancel:  cancel,
+		done:    make(chan struct{}),
+		selfUID: 0x1234,
 	}
 	go session.drain(ctx)
 	go func() {
@@ -167,6 +169,7 @@ func TestDungeonFollowerCloseStopsWorker(t *testing.T) {
 func TestDungeonFollowerStopsWhenSessionDrainEnds(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	session, stopDrain := testSessionWithDrain(clientConn)
+	session.selfUID = 0x1234
 	defer stopDrain()
 	go func() {
 		packet, err := protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
@@ -193,29 +196,49 @@ func TestDungeonFollowerStopsWhenSessionDrainEnds(t *testing.T) {
 	}
 }
 
-func TestParsePartyInfoActiveHandlesRosterAndClearBlocks(t *testing.T) {
-	active, ok := parsePartyInfoActive(protocol.Packet{
+func TestParsePartyInfoProjectionRequiresOwnRosterMembership(t *testing.T) {
+	partyID, cleared, ok := parsePartyInfoProjection(protocol.Packet{
 		Type: protocol.NotiPartyInfo, Body: followerPartyRosterBody(7, 11, 12),
-	})
-	if !ok || !active {
-		t.Fatalf("party roster parsed as active=%t ok=%t", active, ok)
+	}, 12)
+	if !ok || partyID != 7 || len(cleared) != 0 {
+		t.Fatalf("own roster projection = party=%d cleared=%v ok=%t", partyID, cleared, ok)
 	}
-	active, ok = parsePartyInfoActive(protocol.Packet{
+
+	partyID, cleared, ok = parsePartyInfoProjection(protocol.Packet{
+		Type: protocol.NotiPartyInfo, Body: followerPartyRosterBody(8, 21, 22),
+	}, 12)
+	if !ok || partyID != 0 || len(cleared) != 0 {
+		t.Fatalf("public roster projection = party=%d cleared=%v ok=%t", partyID, cleared, ok)
+	}
+
+	partyID, cleared, ok = parsePartyInfoProjection(protocol.Packet{
 		Type: protocol.NotiPartyInfo, Body: []byte{1, 0, 7, 0, 3},
-	})
-	if !ok || active {
-		t.Fatalf("party clear parsed as active=%t ok=%t", active, ok)
+	}, 12)
+	if !ok || partyID != 0 || len(cleared) != 1 || cleared[0] != 7 {
+		t.Fatalf("party clear projection = party=%d cleared=%v ok=%t", partyID, cleared, ok)
 	}
 }
 
-func followerPartyInfoBody(partyID uint16) []byte {
-	body := make([]byte, 18)
-	binary.LittleEndian.PutUint16(body[:2], 1)
-	binary.LittleEndian.PutUint16(body[2:4], partyID)
-	body[4] = 1
-	body[5] = 1
-	body[17] = 0
-	return body
+func TestDungeonFollowerIgnoresPublicPartyRosterAndUnrelatedClear(t *testing.T) {
+	session := &Session{selfUID: 12, partyID: 7, partyActive: true, dungeonState: &dungeonRunState{phase: dungeonPhaseReady}}
+	session.handleFollowerPacket(context.Background(), protocol.Packet{
+		Type: protocol.NotiPartyInfo, Body: followerPartyRosterBody(8, 21, 22),
+	})
+	if !session.PartyActive() || session.partyID != 7 || session.dungeonState == nil {
+		t.Fatalf("public roster changed follower state: active=%t party=%d state=%v", session.PartyActive(), session.partyID, session.dungeonState)
+	}
+	session.handleFollowerPacket(context.Background(), protocol.Packet{
+		Type: protocol.NotiPartyInfo, Body: []byte{1, 0, 8, 0, 3},
+	})
+	if !session.PartyActive() || session.partyID != 7 || session.dungeonState == nil {
+		t.Fatalf("unrelated clear changed follower state: active=%t party=%d state=%v", session.PartyActive(), session.partyID, session.dungeonState)
+	}
+	session.handleFollowerPacket(context.Background(), protocol.Packet{
+		Type: protocol.NotiPartyInfo, Body: []byte{1, 0, 7, 0, 3},
+	})
+	if session.PartyActive() || session.partyID != 0 || session.dungeonState != nil {
+		t.Fatalf("matching clear did not reset follower: active=%t party=%d state=%v", session.PartyActive(), session.partyID, session.dungeonState)
+	}
 }
 
 func followerPartyRosterBody(partyID, leaderUID, memberUID uint16) []byte {

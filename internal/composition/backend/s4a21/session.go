@@ -35,6 +35,8 @@ type Session struct {
 	followerEvents     chan protocol.Packet
 	followerDone       chan struct{}
 	followerStarting   bool
+	selfUID            uint16
+	partyID            uint16
 	partyActive        bool
 }
 
@@ -74,8 +76,13 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	if err := client.SelectCharacter(openCtx, request.CharacterSlot); err != nil {
 		return nil, err
 	}
-	if err := waitFor(openCtx, client, protocol.CmdSelectCharacter, 1); err != nil {
+	selectPacket, err := waitPacket(openCtx, client, protocol.CmdSelectCharacter, 1)
+	if err != nil {
 		return nil, fmt.Errorf("S4A21 select character: %w", err)
+	}
+	selfUID, identityErr := protocol.SelectCharacterUID(selectPacket.Body)
+	if request.EnablePartyDungeonFollower && identityErr != nil {
+		return nil, fmt.Errorf("S4A21 follower identity: %w", identityErr)
 	}
 	if err := client.CheckConnection(openCtx); err != nil {
 		return nil, err
@@ -84,7 +91,7 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 		return nil, fmt.Errorf("S4A21 session readiness: %w", err)
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	session := &Session{client: client, cancel: cancel, done: make(chan struct{}), keepaliveDone: make(chan struct{})}
+	session := &Session{client: client, cancel: cancel, done: make(chan struct{}), keepaliveDone: make(chan struct{}), selfUID: selfUID}
 	go session.drain(runCtx)
 	go session.keepalive(runCtx)
 	if request.EnablePartyDungeonFollower {

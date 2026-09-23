@@ -19,6 +19,9 @@ func (s *Session) EnableDungeonFollower(ctx context.Context) error {
 	if s == nil || s.client == nil {
 		return fmt.Errorf("S4A21 session is not ready")
 	}
+	if s.selfUID == 0 || s.selfUID == 0xFFFF {
+		return fmt.Errorf("S4A21 dungeon follower identity is unavailable")
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -66,6 +69,7 @@ func (s *Session) DisableDungeonFollower() {
 	s.stopDungeonFollower(true)
 	s.followerGuard.Lock()
 	s.partyActive = false
+	s.partyID = 0
 	s.followerGuard.Unlock()
 	s.dungeonStateGuard.Lock()
 	s.dungeonState = nil
@@ -129,9 +133,25 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 			_ = s.client.AcceptPartyInvite(ctx, inviterUID)
 		}
 	case protocol.NotiPartyInfo:
-		if active, ok := parsePartyInfoActive(packet); ok {
+		s.followerGuard.Lock()
+		selfUID, currentPartyID := s.selfUID, s.partyID
+		s.followerGuard.Unlock()
+		memberPartyID, clearedPartyIDs, ok := parsePartyInfoProjection(packet, selfUID)
+		if ok {
+			active, changed := false, false
+			if memberPartyID != 0 {
+				active, changed = true, true
+				currentPartyID = memberPartyID
+			} else if containsPartyID(clearedPartyIDs, currentPartyID) {
+				changed = true
+				currentPartyID = 0
+			}
+			if !changed {
+				return
+			}
 			s.followerGuard.Lock()
 			s.partyActive = active
+			s.partyID = currentPartyID
 			s.followerGuard.Unlock()
 			if !active {
 				s.dungeonStateGuard.Lock()
@@ -185,40 +205,38 @@ func parsePartyInvite(packet protocol.Packet) (uint16, bool) {
 	return binary.LittleEndian.Uint16(packet.Body[:2]), true
 }
 
-func parsePartyInfoActive(packet protocol.Packet) (bool, bool) {
-	if packet.Command != 0 || len(packet.Body) < 5 {
-		return false, false
+func parsePartyInfoProjection(packet protocol.Packet, selfUID uint16) (uint16, []uint16, bool) {
+	if packet.Command != 0 || len(packet.Body) < 2 || selfUID == 0 || selfUID == 0xFFFF {
+		return 0, nil, false
 	}
 	blocks := int(binary.LittleEndian.Uint16(packet.Body[:2]))
-	if blocks == 0 {
-		return false, false
-	}
 	offset := 2
-	active := false
+	memberPartyID := uint16(0)
+	clearedPartyIDs := make([]uint16, 0, blocks)
 	for i := 0; i < blocks; i++ {
 		if len(packet.Body)-offset < 3 {
-			return false, false
+			return 0, nil, false
 		}
+		partyID := binary.LittleEndian.Uint16(packet.Body[offset : offset+2])
 		typ := packet.Body[offset+2]
 		offset += 3
 		switch typ {
-		case 0, 1, 2:
-			active = true
+		case 0, 1, 2, 5:
 		case 3:
-			// Clear blocks do not contribute to an active party state.
+			clearedPartyIDs = append(clearedPartyIDs, partyID)
 		default:
-			return false, false
+			return 0, nil, false
 		}
 		// Types 0/1 contain the party-info block; type 0/2 contain the
 		// eight member slots. We only need to skip their wire shape here.
 		if typ == 0 || typ == 1 {
 			if len(packet.Body)-offset < 13 {
-				return false, false
+				return 0, nil, false
 			}
 			if packet.Body[offset] == 0 {
 				offset++
 				if len(packet.Body)-offset < 4 {
-					return false, false
+					return 0, nil, false
 				}
 				offset += 4
 			} else {
@@ -228,18 +246,45 @@ func parsePartyInfoActive(packet protocol.Packet) (bool, bool) {
 		}
 		if typ == 0 || typ == 2 {
 			if len(packet.Body)-offset < 43 {
-				return false, false
+				return 0, nil, false
+			}
+			for slot := 0; slot < 8; slot++ {
+				uidOffset := offset + slot*5
+				if binary.LittleEndian.Uint16(packet.Body[uidOffset:uidOffset+2]) == selfUID {
+					memberPartyID = partyID
+				}
 			}
 			offset += 43
 		}
+		if typ == 5 {
+			if len(packet.Body)-offset < 1 {
+				return 0, nil, false
+			}
+			offset++
+		}
 		if typ <= 2 {
 			if len(packet.Body)-offset < 1 {
-				return false, false
+				return 0, nil, false
 			}
 			offset++
 		}
 	}
-	return active, true
+	if offset != len(packet.Body) {
+		return 0, nil, false
+	}
+	return memberPartyID, clearedPartyIDs, true
+}
+
+func containsPartyID(ids []uint16, want uint16) bool {
+	if want == 0 {
+		return false
+	}
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Session) stopDungeonFollower(wait bool) {

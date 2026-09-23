@@ -239,6 +239,8 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 
 S4A21 Session 仅在配置了 `follow_account` 时显式启用该 follower 工作流：通过协议准备教程标记，接受普通组队邀请，异步消费服务端 `START_MAP`，维护适配器私有的房间加载状态并回复 `FINISH_LOADING`。组队状态投影到公共运行状态后，现有 Actor 会暂停城镇移动和喊话，避免在地下城期间发送错误动作。该实现不读取或写入模拟端数据库。
 
+Follower 的组队状态以选角 ACK 中的本角色 wire UID 为身份边界：只有 `PARTY_INFO` 八槽名册实际包含该 UID 时才进入 PartyActive，且仅匹配当前 party ID 的 type-3 clear 才退出。这样不会把同区域公开队伍列表或无关队伍清除块误判为自己的组队状态。当前整合包真实回归只观察到自身队伍名册；公开列表区分由服务端 builder 格式和协议级边界测试覆盖，不伪装成当前整合包的真机结果。
+
 本阶段不开放完整 `party` 或主动 `dungeon_move` 能力。技能释放、战斗、结算、奖励、主动回城和 rejoin 没有并入 follower 状态机，仍返回 `backend_capability_unsupported`；Web 对应操作继续置灰。
 
 ## 验证要求

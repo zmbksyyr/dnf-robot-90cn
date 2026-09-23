@@ -125,6 +125,21 @@ func TestSelectCharacterBodyUsesTwoByteSlot(t *testing.T) {
 	}
 }
 
+func TestSelectCharacterUIDUsesVerifiedAckOffset(t *testing.T) {
+	body := make([]byte, 11)
+	body[0] = 1
+	binary.LittleEndian.PutUint16(body[9:11], 0x1234)
+	uid, err := SelectCharacterUID(body)
+	if err != nil || uid != 0x1234 {
+		t.Fatalf("uid=%d err=%v", uid, err)
+	}
+	for _, invalid := range [][]byte{body[:10], make([]byte, 11)} {
+		if _, err := SelectCharacterUID(invalid); err == nil {
+			t.Fatalf("invalid select response %X unexpectedly parsed", invalid)
+		}
+	}
+}
+
 func TestMoveMapBodyIsFixedWidth(t *testing.T) {
 	body := MoveMapBody(MoveMapRequest{NextX: 2, NextY: 3, PathPositionX: 100, PathPositionY: 200})
 	if len(body) != 64 || body[0] != 2 || body[1] != 3 {
