@@ -18,6 +18,23 @@ func TestCreateCharacterBodyMatchesA21Layout(t *testing.T) {
 	}
 }
 
+func TestDeleteCharacterBodyMatchesA21Layout(t *testing.T) {
+	body, err := DeleteCharacterBody(0x0102, []byte("robot01"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) != 13 || binary.LittleEndian.Uint16(body[0:2]) != 0x0102 ||
+		binary.LittleEndian.Uint32(body[2:6]) != 7 || string(body[6:]) != "robot01" {
+		t.Fatalf("delete body = %X", body)
+	}
+	if _, err := DeleteCharacterBody(0, nil); err == nil {
+		t.Fatal("empty delete name unexpectedly accepted")
+	}
+	if _, err := DeleteCharacterBody(0, make([]byte, 31)); err == nil {
+		t.Fatal("oversized delete name unexpectedly accepted")
+	}
+}
+
 func TestEncodeDecodeFrame(t *testing.T) {
 	frame := make([]byte, ResponseHeaderSize+3)
 	frame[0] = 1

@@ -16,6 +16,7 @@ const (
 	CmdLogin                uint16 = 0x0001
 	CmdSelectCharacter      uint16 = 0x0004
 	CmdCreateCharacter      uint16 = 0x0005
+	CmdDeleteCharacter      uint16 = 0x0006
 	CmdSendMessage          uint16 = 0x0011
 	CmdRequestPeer          uint16 = 0x000A
 	CmdResponsePeer         uint16 = 0x000B
@@ -209,6 +210,17 @@ func CreateCharacterBody(job byte, name []byte) ([]byte, error) {
 	out[0] = job
 	binary.LittleEndian.PutUint32(out[1:5], uint32(len(name)))
 	copy(out[5:], name)
+	return out, nil
+}
+
+func DeleteCharacterBody(slot uint16, name []byte) ([]byte, error) {
+	if len(name) < 1 || len(name) > 30 {
+		return nil, fmt.Errorf("character name must be 1..30 bytes")
+	}
+	out := make([]byte, 6+len(name))
+	binary.LittleEndian.PutUint16(out[0:2], slot)
+	binary.LittleEndian.PutUint32(out[2:6], uint32(len(name)))
+	copy(out[6:], name)
 	return out, nil
 }
 

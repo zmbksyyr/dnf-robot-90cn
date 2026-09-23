@@ -2,6 +2,7 @@ package s4a21
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"testing"
@@ -56,6 +57,27 @@ func TestClientMethodsUseS4A21Widths(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := client.MoveMap(context.Background(), MoveMapRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClientDeleteCharacterWritesVerifiedPacket(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	client := NewClient(clientConn)
+	done := make(chan error, 1)
+	go func() {
+		packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
+		if err == nil && (packet.Type != CmdDeleteCharacter || len(packet.Body) != 13 || binary.LittleEndian.Uint16(packet.Body[:2]) != 2 || string(packet.Body[6:]) != "robot01") {
+			err = fmt.Errorf("delete packet = %+v", packet)
+		}
+		done <- err
+	}()
+	if err := client.DeleteCharacter(context.Background(), 2, []byte("robot01")); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
