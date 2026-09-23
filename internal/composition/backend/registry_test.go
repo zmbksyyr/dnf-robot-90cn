@@ -23,3 +23,26 @@ func TestSelectNativeOnlyOnLinux(t *testing.T) {
 		}
 	}
 }
+
+func TestAvailableBackendsExposeCompleteCapabilityMatrix(t *testing.T) {
+	want := []shared.BackendCapability{
+		shared.CapabilityProvision,
+		shared.CapabilityTownMove,
+		shared.CapabilityDungeonMove,
+		shared.CapabilityShout,
+		shared.CapabilityWorldShout,
+		shared.CapabilityStore,
+		shared.CapabilityParty,
+		shared.CapabilitySkill,
+		shared.CapabilityMarket,
+		shared.CapabilityCleanup,
+		shared.CapabilityCompatibility,
+	}
+	for _, backend := range Available() {
+		for _, capability := range want {
+			if _, ok := backend.Capabilities[capability]; !ok {
+				t.Fatalf("backend %s omitted capability %s", backend.ID, capability)
+			}
+		}
+	}
+}
