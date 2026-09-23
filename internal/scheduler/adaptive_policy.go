@@ -7,6 +7,7 @@ import (
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/foundation/process"
+	"robot/internal/shared"
 )
 
 type schedulerPolicyMode string
@@ -38,23 +39,24 @@ const (
 )
 
 type adaptiveSchedulerSignals struct {
-	Live           bool
-	Running        int
-	Connecting     int
-	StoreRunning   int
-	Actors         int
-	Idle           int
-	ActorIdle      int
-	ActorAssigned  int
-	ActorOnline    int
-	ActorRunning   int
-	ActorBusy      int
-	ActorReleasing int
-	GamePortReady  bool
-	BreakerActive  bool
-	CPUPercent     float64
-	MemoryMB       int
-	Goroutines     int
+	Live             bool
+	Running          int
+	Connecting       int
+	StoreRunning     int
+	StoreUnsupported bool
+	Actors           int
+	Idle             int
+	ActorIdle        int
+	ActorAssigned    int
+	ActorOnline      int
+	ActorRunning     int
+	ActorBusy        int
+	ActorReleasing   int
+	GamePortReady    bool
+	BreakerActive    bool
+	CPUPercent       float64
+	MemoryMB         int
+	Goroutines       int
 }
 
 type schedulerPolicyDecision struct {
@@ -85,23 +87,24 @@ func (m *RobotManager) adaptiveSchedulerSignals() adaptiveSchedulerSignals {
 
 	cpu, mem, threads := process.ResourceSnapshot()
 	return adaptiveSchedulerSignals{
-		Live:           live,
-		Running:        stats.Running,
-		Connecting:     stats.Connecting,
-		StoreRunning:   stats.StoreRunning,
-		Actors:         stats.Actors,
-		Idle:           stats.Idle,
-		ActorIdle:      stats.ActorIdle,
-		ActorAssigned:  stats.ActorAssigned,
-		ActorOnline:    stats.ActorOnline,
-		ActorRunning:   stats.ActorRunning,
-		ActorBusy:      stats.ActorBusy,
-		ActorReleasing: stats.ActorReleasing,
-		GamePortReady:  !live || stats.GamePortReady,
-		BreakerActive:  breaker,
-		CPUPercent:     cpu,
-		MemoryMB:       mem,
-		Goroutines:     threads,
+		Live:             live,
+		Running:          stats.Running,
+		Connecting:       stats.Connecting,
+		StoreRunning:     stats.StoreRunning,
+		StoreUnsupported: m.requireBackendCapability(shared.CapabilityStore) != nil,
+		Actors:           stats.Actors,
+		Idle:             stats.Idle,
+		ActorIdle:        stats.ActorIdle,
+		ActorAssigned:    stats.ActorAssigned,
+		ActorOnline:      stats.ActorOnline,
+		ActorRunning:     stats.ActorRunning,
+		ActorBusy:        stats.ActorBusy,
+		ActorReleasing:   stats.ActorReleasing,
+		GamePortReady:    !live || stats.GamePortReady,
+		BreakerActive:    breaker,
+		CPUPercent:       cpu,
+		MemoryMB:         mem,
+		Goroutines:       threads,
 	}
 }
 
@@ -130,7 +133,7 @@ func (m *RobotManager) updateSchedulerStatus(rc robotconfig.RuntimeConfig, sig a
 		ActorBusy:               sig.ActorBusy,
 		ActorReleasing:          sig.ActorReleasing,
 		StoreRunning:            sig.StoreRunning,
-		StoreTarget:             adaptiveActiveStoreTarget(target),
+		StoreTarget:             adaptiveStoreTarget(target, sig.StoreUnsupported),
 		GamePortReady:           sig.GamePortReady,
 		BreakerActive:           sig.BreakerActive,
 		CPUPercent:              sig.CPUPercent,
@@ -194,6 +197,10 @@ func applyAdaptiveSchedulerConfig(rc *robotconfig.RuntimeConfig, sig adaptiveSch
 	rc.AutoStoreTickSec = robotconfig.Clamp(5+scale, 10, 30)
 	rc.AutoStoreMaxPositionTries = robotconfig.Clamp(4+scale, 5, 20)
 	rc.AutoStoreFailCooldownSec = robotconfig.Clamp(60+scale*15, 60, 240)
+	if sig.StoreUnsupported {
+		rc.SchedulerStoreConcurrent = 0
+		rc.AutoStoreProbabilityPercent = 0
+	}
 
 	rc.SchedulerBreakerAbnormalPct = 30
 	rc.SchedulerBreakerPauseSec = robotconfig.Clamp(120+scale*30, 180, 600)
@@ -214,7 +221,7 @@ func applyLiveSchedulerFeedback(rc *robotconfig.RuntimeConfig, target int, sig a
 	connectingLimit := robotconfig.Clamp(target/20, 2, 30)
 	runningUpperBound := target + connectingLimit
 	healthyOnline := sig.Running >= target*95/100 && sig.Running <= runningUpperBound && sig.Connecting <= connectingLimit && sig.GamePortReady && !sig.BreakerActive
-	storeTarget := adaptiveActiveStoreTarget(target)
+	storeTarget := adaptiveStoreTarget(target, sig.StoreUnsupported)
 	storeRoom := sig.StoreRunning < storeTarget
 	idleRoom := sig.Idle >= robotconfig.Clamp(target/50, 2, 20)
 	resourcePressure := sig.CPUPercent >= 85 || sig.MemoryMB >= 4096 || sig.Goroutines >= 20000
@@ -292,4 +299,11 @@ func adaptiveActiveStoreTarget(target int) int {
 		return 0
 	}
 	return robotconfig.Clamp((target+3)/4, 1, adaptiveActiveStoreCapacity)
+}
+
+func adaptiveStoreTarget(target int, unsupported bool) int {
+	if unsupported {
+		return 0
+	}
+	return adaptiveActiveStoreTarget(target)
 }

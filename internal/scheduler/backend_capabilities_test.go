@@ -94,6 +94,24 @@ func TestSimulatorAutoStoreIsSkippedWithStableCapabilityError(t *testing.T) {
 	}
 }
 
+func TestSimulatorAdaptiveSchedulerNeverEntersStoreMode(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "[auto]\nauto_target_online_count = 600\n")
+	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	signals := adaptiveSchedulerSignals{
+		Live: true, Running: 600, Actors: 600, GamePortReady: true,
+		StoreUnsupported: m.requireBackendCapability(shared.CapabilityStore) != nil,
+	}
+	rc, decision := m.refreshAdaptiveRobotConfig(signals)
+	if decision.Mode != schedulerPolicyStable || rc.SchedulerStoreConcurrent != 0 || rc.AutoStoreProbabilityPercent != 0 {
+		t.Fatalf("decision=%+v concurrent=%d probability=%d", decision, rc.SchedulerStoreConcurrent, rc.AutoStoreProbabilityPercent)
+	}
+	m.updateSchedulerStatus(rc, signals, decision)
+	status := m.SchedulerStatus()
+	if status.Mode == robotcap.SchedulerModeStore || status.StoreTarget != 0 {
+		t.Fatalf("status=%+v, want stable scheduler with no store target", status)
+	}
+}
+
 func TestSimulatorVerifiedTownAndLocalShoutRemainAllowed(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
