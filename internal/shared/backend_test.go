@@ -54,7 +54,7 @@ func TestS4A21MetadataReflectsVerifiedCapabilities(t *testing.T) {
 	if found.Supports(CapabilityDungeonMove) || found.Capabilities[CapabilityDungeonMove].Reason == "" {
 		t.Fatalf("dungeon movement must remain disabled with reason: %+v", found.Capabilities[CapabilityDungeonMove])
 	}
-	for _, capability := range []BackendCapability{CapabilityParty, CapabilitySkill, CapabilityStore, CapabilityMarket} {
+	for _, capability := range []BackendCapability{CapabilityParty, CapabilitySkill, CapabilityStore, CapabilityMarket, CapabilityCompatibility} {
 		if found.Supports(capability) || found.Capabilities[capability].Reason == "" {
 			t.Fatalf("S4A21 %s must remain disabled with reason: %+v", capability, found.Capabilities[capability])
 		}
