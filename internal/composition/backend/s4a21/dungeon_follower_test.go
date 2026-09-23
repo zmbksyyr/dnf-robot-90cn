@@ -3,6 +3,7 @@ package s4a21
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -194,6 +195,87 @@ func TestDungeonFollowerStopsWhenSessionDrainEnds(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("follower worker survived session drain")
 	}
+}
+
+func TestDungeonFollowerWriteFailureStopsSession(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	wrapped := &failWriteConn{Conn: clientConn, failAt: 2}
+	session, stopDrain := testSessionWithDrain(wrapped)
+	session.selfUID = 0x1234
+	defer stopDrain()
+	defer serverConn.Close()
+
+	serverDone := make(chan error, 1)
+	go func() {
+		packet, err := protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		if packet.Type != protocol.CmdChangeTutorialFlag {
+			serverDone <- fmt.Errorf("prepare type=0x%04X", packet.Type)
+			return
+		}
+		if _, err := serverConn.Write(protocol.EncodeResponse(1, protocol.CmdChangeTutorialFlag, []byte{1})); err != nil {
+			serverDone <- err
+			return
+		}
+		_, err = serverConn.Write(protocol.EncodeResponse(0, protocol.NotiRequestPeer, []byte{0x34, 0x12, 0}))
+		serverDone <- err
+	}()
+
+	if err := session.EnableDungeonFollower(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-session.Done():
+	case <-time.After(time.Second):
+		t.Fatal("party acceptance write failure did not terminate session")
+	}
+}
+
+func TestDungeonFollowerCancellationDoesNotAbortTownSession(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	tracked := &closeTrackingConn{Conn: clientConn}
+	cancelled := false
+	session := &Session{client: protocol.NewClient(tracked), cancel: func() { cancelled = true }}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	session.abortFollowerSession(ctx)
+
+	if cancelled || tracked.closes != 0 {
+		t.Fatalf("follower cancellation aborted town session: cancel=%t closes=%d", cancelled, tracked.closes)
+	}
+}
+
+type failWriteConn struct {
+	net.Conn
+	writes int
+	failAt int
+}
+
+type closeTrackingConn struct {
+	net.Conn
+	closes int
+}
+
+func (c *closeTrackingConn) Close() error {
+	c.closes++
+	return c.Conn.Close()
+}
+
+func (c *failWriteConn) Write(data []byte) (int, error) {
+	c.writes++
+	if c.writes == c.failAt {
+		return 0, errors.New("injected follower write failure")
+	}
+	return c.Conn.Write(data)
 }
 
 func TestParsePartyInfoProjectionRequiresOwnRosterMembership(t *testing.T) {

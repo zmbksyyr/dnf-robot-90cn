@@ -130,7 +130,9 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 	case protocol.NotiRequestPeer:
 		inviterUID, ok := parsePartyInvite(packet)
 		if ok && !s.PartyActive() {
-			_ = s.client.AcceptPartyInvite(ctx, inviterUID)
+			if err := s.client.AcceptPartyInvite(ctx, inviterUID); err != nil {
+				s.abortFollowerSession(ctx)
+			}
 		}
 	case protocol.NotiPartyInfo:
 		s.followerGuard.Lock()
@@ -186,7 +188,21 @@ func (s *Session) acceptFollowerStartMap(ctx context.Context, packet protocol.Pa
 		// This is deliberately outside the drain callback and outside the
 		// dungeon state lock. The server expects a follower to acknowledge
 		// loading, but never expects a follower MOVE_MAP.
-		_ = s.client.FinishLoading(ctx)
+		if err := s.client.FinishLoading(ctx); err != nil {
+			s.abortFollowerSession(ctx)
+		}
+	}
+}
+
+func (s *Session) abortFollowerSession(ctx context.Context) {
+	if s == nil || ctx == nil || ctx.Err() != nil {
+		return
+	}
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.client != nil {
+		_ = s.client.Close()
 	}
 }
 

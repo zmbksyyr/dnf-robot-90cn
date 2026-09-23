@@ -241,6 +241,8 @@ S4A21 Session 仅在配置了 `follow_account` 时显式启用该 follower 工�
 
 Follower 的组队状态以选角 ACK 中的本角色 wire UID 为身份边界：只有 `PARTY_INFO` 八槽名册实际包含该 UID 时才进入 PartyActive，且仅匹配当前 party ID 的 type-3 clear 才退出。这样不会把同区域公开队伍列表或无关队伍清除块误判为自己的组队状态。当前整合包真实回归只观察到自身队伍名册；公开列表区分由服务端 builder 格式和协议级边界测试覆盖，不伪装成当前整合包的真机结果。
 
+Follower 写入邀请接受或 `FINISH_LOADING` 失败时，当前 session 会结束并交给既有在线调度重连，不能在服务端与 robot 状态已经分叉后继续伪装在线。显式禁用 follower 产生的 context cancel 只停止 follower，不关闭仍可用的城镇 session。
+
 本阶段不开放完整 `party` 或主动 `dungeon_move` 能力。技能释放、战斗、结算、奖励、主动回城和 rejoin 没有并入 follower 状态机，仍返回 `backend_capability_unsupported`；Web 对应操作继续置灰。
 
 ## 验证要求
