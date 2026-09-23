@@ -201,7 +201,7 @@ S4A21 适配代码不得依赖其整合包使用的数据库类型，也不得�
 - 选择、入场费用、加载释放、房间身份或回城任一环节证据不足时，继续保持 `backend_capability_unsupported`。
 - 阶段出口：形成可复现的单角色协议样本和失败样本；只有全部通过，才进入阶段 7.1 的最小适配层设计。
 
-当前阶段状态（2026-09-23）：已完成普通单角色入口、教程标记分支、`START_MAP`/`FINISH_LOADING`、合法与非法 `MOVE_MAP`、教程回城及断线不自动恢复的真实样本。组队、技能、战斗、结算、奖励和显式 rejoin 仍未验证，继续留在后续阶段；因此运行代码和 Web 能力矩阵不变，`dungeon_move` 仍为占位不支持。
+当前阶段状态（2026-09-23）：已完成普通单角色入口、教程标记分支、`START_MAP`/`FINISH_LOADING`、合法与非法 `MOVE_MAP`、教程回城及断线不自动恢复的真实样本。组队双端入场和服务端驱动的队员跟随换房也已形成真实样本；技能、战斗、结算、奖励、主动回城和显式 rejoin 仍未验证，继续留在后续阶段。`dungeon_move` 代表主动地下城移动，因此能力矩阵仍保持占位不支持。
 
 #### 阶段 7.1：最小单角色地下城入口（后续）
 
@@ -232,6 +232,14 @@ Session drain 协调的第一步已完成：S4A21 session 现在提供私有、�
 随后已实现并真实回归私有 `enterSingleDungeon`：普通/教程分支均只覆盖入口、首图 `START_MAP` 和 `FINISH_LOADING`，教程状态由调用方显式传入，不做猜测。该方法尚未接入 `RobotSession`、调度器或 Web；组队、战斗、结算、回城和 rejoin 仍是后续独立阶段。
 
 在此基础上已增加私有 `moveSingleDungeon`，真实验证了 64 字节 `MOVE_MAP`、第二个 `START_MAP` 和第二次 `FINISH_LOADING`。房间坐标采用 pending 提交语义，只有加载释放成功才更新当前房间；发送失败或超时不会伪造移动成功。该方法同样尚未接入共享能力。
+
+#### 阶段 7.2：最小组队跟随（当前阶段）
+
+真实整合包已验证：新角色可在城镇通过 `CHANGE_TUTORIAL_FLAG(31,0)` 完成首次教程门禁准备；组队后，队长和队员进入同一 party dungeon instance。队长发送 `MOVE_MAP` 时，服务端分别向双方发送下一房间的 `START_MAP`，队员不应发送 `MOVE_MAP`，只需对自己的投影发送 `FINISH_LOADING`。
+
+S4A21 Session 仅在配置了 `follow_account` 时显式启用该 follower 工作流：通过协议准备教程标记，接受普通组队邀请，异步消费服务端 `START_MAP`，维护适配器私有的房间加载状态并回复 `FINISH_LOADING`。组队状态投影到公共运行状态后，现有 Actor 会暂停城镇移动和喊话，避免在地下城期间发送错误动作。该实现不读取或写入模拟端数据库。
+
+本阶段不开放完整 `party` 或主动 `dungeon_move` 能力。技能释放、战斗、结算、奖励、主动回城和 rejoin 没有并入 follower 状态机，仍返回 `backend_capability_unsupported`；Web 对应操作继续置灰。
 
 ## 验证要求
 
