@@ -244,6 +244,10 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 			select {
 			case followerEvents <- packet:
 			default:
+				// Dropping a party or loading projection would leave the
+				// adapter out of sync while the session still appeared healthy.
+				// End it so the existing scheduler can reconnect cleanly.
+				s.abortFollowerSession(context.Background())
 			}
 		}
 	}

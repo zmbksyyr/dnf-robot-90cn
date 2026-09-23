@@ -255,6 +255,25 @@ func TestDungeonFollowerWriteFailureStopsSession(t *testing.T) {
 	}
 }
 
+func TestDungeonFollowerEventOverflowStopsSession(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+	tracked := &closeTrackingConn{Conn: clientConn}
+	cancelled := false
+	session := &Session{
+		client:         protocol.NewClient(tracked),
+		cancel:         func() { cancelled = true },
+		followerEvents: make(chan protocol.Packet, 1),
+	}
+	packet := protocol.Packet{Type: protocol.NotiPartyInfo}
+	session.dispatchPacket(packet)
+	session.dispatchPacket(packet)
+
+	if !cancelled || tracked.closes != 1 {
+		t.Fatalf("overflow did not abort session: cancel=%t closes=%d", cancelled, tracked.closes)
+	}
+}
+
 func TestDungeonFollowerCancellationDoesNotAbortTownSession(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
