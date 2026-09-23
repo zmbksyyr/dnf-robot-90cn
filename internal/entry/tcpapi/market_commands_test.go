@@ -2,7 +2,11 @@ package tcpapi
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"robot/internal/scheduler"
+	"robot/internal/shared"
 )
 
 func TestManualMarketTargetsTreatsEmptyAsBothMarkets(t *testing.T) {
@@ -11,5 +15,17 @@ func TestManualMarketTargetsTreatsEmptyAsBothMarkets(t *testing.T) {
 	}
 	if got, want := manualMarketTargets("auction"), []string{"auction"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("manualMarketTargets(auction)=%v, want %v", got, want)
+	}
+}
+
+func TestMarketCommandRejectsUnsupportedBackendBeforeAppLookup(t *testing.T) {
+	manager := scheduler.NewRobotManager(nil, nil, nil)
+	manager.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	response, handled := handleMarketCommand("marketStatus", "", manager)
+	if !handled || !strings.Contains(response, shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("response=%q handled=%t", response, handled)
+	}
+	if strings.Contains(response, "market app is not initialized") {
+		t.Fatalf("backend boundary was bypassed: %q", response)
 	}
 }

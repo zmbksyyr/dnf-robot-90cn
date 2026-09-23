@@ -53,7 +53,7 @@ func TestLoadRequiredRobotConfigAcceptsValidFile(t *testing.T) {
 	}
 }
 
-func TestRequiresValidKeypair(t *testing.T) {
+func TestRequiresGameRuntime(t *testing.T) {
 	blocked := []string{
 		"createRobots",
 		"robotsOnline",
@@ -69,8 +69,8 @@ func TestRequiresValidKeypair(t *testing.T) {
 		"autoStart",
 	}
 	for _, cmd := range blocked {
-		if !tcpapi.RequiresValidKeypair(cmd) {
-			t.Fatalf("expected %s to require a valid keypair", cmd)
+		if !tcpapi.RequiresGameRuntime(cmd) {
+			t.Fatalf("expected %s to require the game runtime", cmd)
 		}
 	}
 
@@ -94,8 +94,8 @@ func TestRequiresValidKeypair(t *testing.T) {
 		"dangerousDeleteAsync",
 	}
 	for _, cmd := range allowed {
-		if tcpapi.RequiresValidKeypair(cmd) {
-			t.Fatalf("expected %s to be allowed without a valid keypair", cmd)
+		if tcpapi.RequiresGameRuntime(cmd) {
+			t.Fatalf("expected %s to be allowed without the game runtime", cmd)
 		}
 	}
 }

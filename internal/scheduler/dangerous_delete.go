@@ -3,6 +3,7 @@ package scheduler
 import (
 	"fmt"
 	robotcap "robot/internal/capability/robot"
+	"robot/internal/shared"
 )
 
 func (m *RobotManager) DangerousDeleteDefaults() (int, int) {
@@ -11,6 +12,9 @@ func (m *RobotManager) DangerousDeleteDefaults() (int, int) {
 }
 
 func (m *RobotManager) DangerousDelete(req robotcap.DangerousDeleteRequest) (robotcap.DangerousDeleteResult, error) {
+	if err := m.requireBackendCapability(shared.CapabilityDangerousDelete); err != nil {
+		return robotcap.DangerousDeleteResult{}, err
+	}
 	_, finishOperation, err := m.beginTrackedStructuralOperation("dangerous_delete", dangerousDeleteRequestScope(req))
 	if err != nil {
 		return robotcap.DangerousDeleteResult{}, err

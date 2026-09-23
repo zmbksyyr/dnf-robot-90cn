@@ -182,6 +182,7 @@ func runMain() int {
 	robotSvc := dnfruntime.NewRobotService()
 	defer robotSvc.Shutdown()
 	manager := scheduler.NewRobotManager(schedulerrepo.NewSQLRepository(db), cfg, robotSvc)
+	manager.SetGameCommandGate(nativebackend.GameCommandGate{Config: cfg})
 	defer func() {
 		if err := manager.Shutdown(); err != nil {
 			dnf.LogString(fmt.Sprintf("ROBOT_MANAGER_SHUTDOWN_FAILED err=%v\n", err))

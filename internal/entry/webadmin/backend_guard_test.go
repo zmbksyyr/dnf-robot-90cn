@@ -15,14 +15,25 @@ import (
 
 func TestSimulatorWebRejectsNativeCompatibilityOperations(t *testing.T) {
 	s := New(&config.SysConfig{ConfigDir: t.TempDir()}, "", "", shared.BackendS4A21)
-	for _, path := range []string{"/api/compat", "/api/party-compat"} {
+	for _, path := range []string{"/api/compat", "/api/party-compat", "/api/max-user", "/api/server-script", "/api/service-ports", "/api/monitor-service", "/api/relay-service"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
-			if path == "/api/compat" {
+			switch path {
+			case "/api/compat":
 				s.handleCompat(rec, req)
-			} else {
+			case "/api/party-compat":
 				s.handlePartyCompat(rec, req)
+			case "/api/max-user":
+				s.handleMaxUser(rec, req)
+			case "/api/server-script":
+				s.handleServerScript(rec, req)
+			case "/api/service-ports":
+				s.handleServicePorts(rec, req)
+			case "/api/monitor-service":
+				s.handleMonitorService(rec, req)
+			case "/api/relay-service":
+				s.handleRelayService(rec, req)
 			}
 			var payload map[string]interface{}
 			if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {

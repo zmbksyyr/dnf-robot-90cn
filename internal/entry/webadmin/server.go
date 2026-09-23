@@ -95,12 +95,16 @@ func (s *Server) rejectUnsupportedCapability(w http.ResponseWriter, operation sh
 		return false
 	}
 	backend := shared.BackendID("")
+	reason := "Web operation is unavailable for the selected backend"
 	if s != nil {
 		backend = s.backend
+		if status, ok := s.backendInfo.Capabilities[operation]; ok && status.Reason != "" {
+			reason = status.Reason
+		}
 	}
 	writeJSON(w, map[string]interface{}{
 		"ok":    false,
-		"error": shared.UnsupportedCapabilityError{Backend: backend, Operation: operation, Reason: "Web operation is unavailable for the selected backend"}.Error(),
+		"error": shared.UnsupportedCapabilityError{Backend: backend, Operation: operation, Reason: reason}.Error(),
 	})
 	return true
 }

@@ -28,7 +28,7 @@ type RobotManager struct {
 	robotState                      robotstate.Directory
 	cfg                             *config.SysConfig
 	doll                            Runtime
-	nativeKeypairRequired           bool
+	gameCommandGate                 shared.GameCommandGate
 	backendActions                  BackendActionTransport
 	backendSessions                 BackendSessionTransport
 	backendRobotCreator             BackendRobotCreator
@@ -181,16 +181,18 @@ func (m *RobotManager) SetBackendSessionTransport(transport BackendSessionTransp
 	}
 }
 
-// SetNativeKeypairRequired controls only the native RSA gate in the command
-// entrypoint. It defaults to true; protocol backends explicitly disable it.
-func (m *RobotManager) SetNativeKeypairRequired(required bool) {
-	if m != nil {
-		m.nativeKeypairRequired = required
+// SetGameCommandGate installs the selected backend's runtime precondition.
+func (m *RobotManager) SetGameCommandGate(gate shared.GameCommandGate) {
+	if m != nil && gate != nil {
+		m.gameCommandGate = gate
 	}
 }
 
-func (m *RobotManager) NativeKeypairRequired() bool {
-	return m == nil || m.nativeKeypairRequired
+func (m *RobotManager) CheckGameCommand() error {
+	if m == nil || m.gameCommandGate == nil {
+		return nil
+	}
+	return m.gameCommandGate.Check()
 }
 
 func (m *RobotManager) SetBackendActionTransport(transport BackendActionTransport) {
@@ -220,22 +222,26 @@ func NewRobotManager(database dbstatus.Database, cfg *config.SysConfig, doll Run
 		doll = noopRuntime{}
 	}
 	manager := &RobotManager{
-		database:              database,
-		cfg:                   cfg,
-		doll:                  doll,
-		nativeKeypairRequired: true,
-		worldShout:            noopWorldShout{},
-		locks:                 lockhub.New(),
-		startedAt:             time.Now(),
-		rand:                  rand.New(rand.NewSource(time.Now().UnixNano())),
-		cleanupPendingUIDs:    make(map[int]time.Time),
-		sessionLastLogout:     make(map[int]time.Time),
-		sessionReloginDelay:   15 * time.Second,
-		worldHornCache:        storecap.NewWorldHornCache(),
+		database:            database,
+		cfg:                 cfg,
+		doll:                doll,
+		gameCommandGate:     allowGameCommandGate{},
+		worldShout:          noopWorldShout{},
+		locks:               lockhub.New(),
+		startedAt:           time.Now(),
+		rand:                rand.New(rand.NewSource(time.Now().UnixNano())),
+		cleanupPendingUIDs:  make(map[int]time.Time),
+		sessionLastLogout:   make(map[int]time.Time),
+		sessionReloginDelay: 15 * time.Second,
+		worldHornCache:      storecap.NewWorldHornCache(),
 	}
 	manager.positionWrites = newPositionBatcher(manager.positionRepo(), defaultPositionBatchOptions())
 	return manager
 }
+
+type allowGameCommandGate struct{}
+
+func (allowGameCommandGate) Check() error { return nil }
 
 // SetRobotStateDirectory injects backend-independent robot state. Native
 // callers may leave it unset and continue using the legacy repository.

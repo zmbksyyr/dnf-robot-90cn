@@ -1,10 +1,6 @@
 package tcpapi
 
-import (
-	"fmt"
-
-	"robot/internal/scheduler"
-)
+import "robot/internal/scheduler"
 
 func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (response string) {
 	defer func() {
@@ -18,8 +14,10 @@ func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (respon
 	}
 
 	cmd := extractTagContent(pkt, "c")
-	if err := requireValidKeypair(cmd, manager); err != nil {
-		return wrapResult(map[string]interface{}{"ok": false, "error": err.Error(), "result": manager.KeypairStatus()})
+	if RequiresGameRuntime(cmd) {
+		if err := manager.CheckGameCommand(); err != nil {
+			return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()})
+		}
 	}
 	if response, handled := handleProtocolCommand(cmd); handled {
 		return response
@@ -33,7 +31,7 @@ func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (respon
 	if response, handled := handleSystemCommand(cmd, pkt, manager); handled {
 		return response
 	}
-	if response, handled := handleMarketCommand(cmd, pkt); handled {
+	if response, handled := handleMarketCommand(cmd, pkt, manager); handled {
 		return response
 	}
 
@@ -52,24 +50,7 @@ func handleProtocolCommand(cmd string) (string, bool) {
 	}
 }
 
-func requireValidKeypair(cmd string, manager *scheduler.RobotManager) error {
-	if !RequiresValidKeypair(cmd) || !manager.NativeKeypairRequired() {
-		return nil
-	}
-	st := manager.KeypairStatus()
-	if st.GameValid {
-		return nil
-	}
-	if st.Error != "" {
-		return fmt.Errorf("RSA key unavailable: %s", st.Error)
-	}
-	if st.KeyReason != "" {
-		return fmt.Errorf("RSA key unavailable: %s", st.KeyReason)
-	}
-	return fmt.Errorf("RSA key unavailable")
-}
-
-func RequiresValidKeypair(cmd string) bool {
+func RequiresGameRuntime(cmd string) bool {
 	switch cmd {
 	case "createRobots",
 		"robotsOnline",

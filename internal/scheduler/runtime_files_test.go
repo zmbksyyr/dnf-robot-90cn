@@ -154,3 +154,23 @@ func TestReloadRobotConfigDisablingAutoStopsExistingActors(t *testing.T) {
 		t.Fatal("file disable cleared runtime supervisor switch; re-enable could not resume naturally")
 	}
 }
+
+func TestRuntimeFileEntriesFollowBackendCapabilities(t *testing.T) {
+	manager := NewRobotManager(nil, &config.SysConfig{ConfigDir: t.TempDir()}, nil)
+	manager.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	entries := manager.RuntimeFileEntries()
+	names := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		names[entry.Name] = true
+	}
+	for _, required := range []string{"robot_config", "name_templates", "shout_templates"} {
+		if !names[required] {
+			t.Fatalf("shared runtime file %q is missing", required)
+		}
+	}
+	for _, unsupported := range []string{"store_titles", "party_skills"} {
+		if names[unsupported] {
+			t.Fatalf("unsupported runtime file %q is still watched", unsupported)
+		}
+	}
+}

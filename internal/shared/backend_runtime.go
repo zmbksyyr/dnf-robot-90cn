@@ -30,6 +30,10 @@ type PersistenceInspector interface {
 	Status(context.Context) PersistenceStatus
 }
 
+type GameCommandGate interface {
+	Check() error
+}
+
 type SystemAnnouncementRequest struct {
 	Kind       string
 	Message    string

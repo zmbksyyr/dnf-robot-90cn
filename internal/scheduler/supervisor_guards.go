@@ -3,7 +3,6 @@ package scheduler
 import (
 	"time"
 
-	"robot/internal/capability/keypair"
 	robotconfig "robot/internal/capability/robotconfig"
 )
 
@@ -19,21 +18,12 @@ func (s *RobotSupervisor) handleAutoGuards(now time.Time, rc robotconfig.Runtime
 		s.updateMetrics(rc, signals)
 		return true
 	}
-	if s.manager.NativeKeypairRequired() {
-		if st := s.manager.KeypairStatus(); !st.GameValid {
-			s.stopAutoActors()
-			s.logKeyBlocked(now, rc, st)
-			reason := st.Error
-			if reason == "" {
-				reason = st.KeyReason
-			}
-			if reason == "" {
-				reason = schedulerReasonKeyInvalid
-			}
-			s.updateGuardStatus(rc, signals, schedulerPolicyMaintenance, schedulerReasonKeyInvalidPrefix+reason)
-			s.updateMetrics(rc, signals)
-			return true
-		}
+	if err := s.manager.CheckGameCommand(); err != nil {
+		s.stopAutoActors()
+		s.logGameGateBlocked(now, rc, err)
+		s.updateGuardStatus(rc, signals, schedulerPolicyMaintenance, schedulerReasonKeyInvalidPrefix+err.Error())
+		s.updateMetrics(rc, signals)
+		return true
 	}
 	if op, started, active := s.manager.structuralOperation(); active {
 		s.manager.updateSchedulerStatus(rc, signals, schedulerPolicyDecision{Mode: schedulerPolicyMaintenance, Reason: schedulerReasonStructuralPrefix + op})
@@ -67,18 +57,14 @@ func (s *RobotSupervisor) updateGuardStatus(rc robotconfig.RuntimeConfig, signal
 	s.manager.updateSchedulerStatus(rc, signals, schedulerPolicyDecision{Mode: mode, Reason: reason})
 }
 
-func (s *RobotSupervisor) logKeyBlocked(now time.Time, rc robotconfig.RuntimeConfig, st keypair.KeypairStatus) {
-	if !s.nextKeyLog.IsZero() && now.Before(s.nextKeyLog) {
+func (s *RobotSupervisor) logGameGateBlocked(now time.Time, rc robotconfig.RuntimeConfig, err error) {
+	if !s.nextGameGateLog.IsZero() && now.Before(s.nextGameGateLog) {
 		return
 	}
 	interval := time.Duration(rc.SchedulerMetricsIntervalSec) * time.Second
 	if interval <= 0 {
 		interval = 10 * time.Second
 	}
-	s.nextKeyLog = now.Add(interval)
-	reason := st.Error
-	if reason == "" {
-		reason = st.KeyReason
-	}
-	robotLogf("[RobotSupervisor] auto_blocked key_state=%s reason=%s\n", st.KeyState, reason)
+	s.nextGameGateLog = now.Add(interval)
+	robotLogf("[RobotSupervisor] auto_blocked runtime_gate=%v\n", err)
 }

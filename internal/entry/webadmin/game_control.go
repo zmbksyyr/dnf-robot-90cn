@@ -16,6 +16,7 @@ import (
 
 	"robot/internal/foundation/atomicfile"
 	foundationconfig "robot/internal/foundation/config"
+	"robot/internal/shared"
 )
 
 const (
@@ -24,6 +25,9 @@ const (
 )
 
 func (s *Server) handleServicePorts(w http.ResponseWriter, _ *http.Request) {
+	if s.rejectUnsupportedCapability(w, shared.CapabilityServiceControl) {
+		return
+	}
 	services, err := discoverServicePorts(s.cfg)
 	if err != nil {
 		writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
@@ -64,6 +68,9 @@ func (s *Server) handleGamePort(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleMaxUser(w http.ResponseWriter, r *http.Request) {
+	if s.rejectUnsupportedCapability(w, shared.CapabilityServiceControl) {
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		maxUser, files, err := s.readMaxUserNum()
@@ -103,6 +110,9 @@ func (s *Server) handleMaxUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleServerScript(w http.ResponseWriter, r *http.Request) {
+	if s.rejectUnsupportedCapability(w, shared.CapabilityServiceControl) {
+		return
+	}
 	if r.Method == http.MethodGet {
 		writeJSON(w, s.serverScriptSnapshot())
 		return
@@ -232,10 +242,16 @@ func (s *Server) stopServerScript() {
 }
 
 func (s *Server) handleMonitorService(w http.ResponseWriter, _ *http.Request) {
+	if s.rejectUnsupportedCapability(w, shared.CapabilitySystemAnnouncement) {
+		return
+	}
 	s.handleLocalTCPService(w, s.cfg.MonitorPort)
 }
 
 func (s *Server) handleRelayService(w http.ResponseWriter, _ *http.Request) {
+	if s.rejectUnsupportedCapability(w, shared.CapabilityServiceControl) {
+		return
+	}
 	s.handleLocalTCPService(w, s.cfg.RelayPort)
 }
 

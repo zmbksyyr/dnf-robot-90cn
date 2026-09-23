@@ -4,17 +4,30 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"robot/internal/scheduler"
+	"robot/internal/shared"
 )
 
 func TestDangerousDeleteCommandsRejectNonLoopbackClients(t *testing.T) {
+	manager := scheduler.NewRobotManager(nil, nil, nil)
 	for _, cmd := range []string{"dangerousDeleteUnlock", "dangerousDeleteAsync"} {
-		response, handled := handleDangerousDeleteCommand("192.168.200.10:12345", cmd, "", nil)
+		response, handled := handleDangerousDeleteCommand("192.168.200.10:12345", cmd, "", manager)
 		if !handled {
 			t.Fatalf("%s was not handled", cmd)
 		}
 		if !strings.Contains(response, "only available through the local web admin") {
 			t.Fatalf("%s response=%q", cmd, response)
 		}
+	}
+}
+
+func TestDangerousDeleteCommandsRejectUnsupportedBackendBeforeUnlock(t *testing.T) {
+	manager := scheduler.NewRobotManager(nil, nil, nil)
+	manager.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	response, handled := handleDangerousDeleteCommand("127.0.0.1:12345", "dangerousDeleteUnlock", `<tw><json>{"code":"123"}</json></tw>`, manager)
+	if !handled || !strings.Contains(response, shared.CodeBackendCapabilityUnsupported) {
+		t.Fatalf("response=%q handled=%t", response, handled)
 	}
 }
 

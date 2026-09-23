@@ -1,20 +1,26 @@
 package scheduler
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"robot/internal/foundation/config"
 )
 
-func TestNativeKeypairRequirementDefaultsOnAndCanBeDisabled(t *testing.T) {
+type rejectingGameCommandGate struct{ err error }
+
+func (g rejectingGameCommandGate) Check() error { return g.err }
+
+func TestGameCommandGateDefaultsOpenAndCanBeInjected(t *testing.T) {
 	m := NewRobotManager(nil, nil, nil)
-	if !m.NativeKeypairRequired() {
-		t.Fatal("native keypair gate is not enabled by default")
+	if err := m.CheckGameCommand(); err != nil {
+		t.Fatalf("default game command gate rejected command: %v", err)
 	}
-	m.SetNativeKeypairRequired(false)
-	if m.NativeKeypairRequired() {
-		t.Fatal("native keypair gate was not disabled")
+	want := errors.New("runtime unavailable")
+	m.SetGameCommandGate(rejectingGameCommandGate{err: want})
+	if err := m.CheckGameCommand(); !errors.Is(err, want) {
+		t.Fatalf("game command gate error = %v, want %v", err, want)
 	}
 }
 

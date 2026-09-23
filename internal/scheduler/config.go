@@ -26,16 +26,21 @@ func (m *RobotManager) RuntimeFileEntries() []filewatch.Entry {
 	}
 	paths := layout.New(m.cfg.ConfigDir)
 	m.runtimeFilesWatched.Store(true)
-	return []filewatch.Entry{
+	entries := []filewatch.Entry{
 		{Name: "robot_config", Path: paths.RobotConfig(), Apply: m.reloadRobotConfigFile},
 		{Name: "name_templates", Path: paths.NameTemplates(), Apply: m.reloadNameTemplates},
 		{Name: "shout_templates", Path: paths.ShoutTemplates(), Apply: m.reloadShoutTemplates},
-		{Name: "store_titles", Path: paths.StoreTitles(), Apply: m.reloadStoreTitles},
-		{Name: "party_skills", Path: paths.PartySkills(), Apply: func(string) error {
+	}
+	if m.supportsBackendCapability(shared.CapabilityStore) {
+		entries = append(entries, filewatch.Entry{Name: "store_titles", Path: paths.StoreTitles(), Apply: m.reloadStoreTitles})
+	}
+	if m.supportsBackendCapability(shared.CapabilitySkill) {
+		entries = append(entries, filewatch.Entry{Name: "party_skills", Path: paths.PartySkills(), Apply: func(string) error {
 			_, err := m.ReloadPartySkills()
 			return err
-		}},
+		}})
 	}
+	return entries
 }
 
 func (m *RobotManager) ReleaseDefaultKeypair() (keypair.KeypairStatus, error) {

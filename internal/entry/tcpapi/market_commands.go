@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"robot/internal/capability/marketapp"
+	"robot/internal/scheduler"
+	"robot/internal/shared"
 	"strings"
 )
 
@@ -13,7 +15,13 @@ func SetMarketApp(app *marketapp.App) {
 	marketApp = app
 }
 
-func handleMarketCommand(cmd, pkt string) (string, bool) {
+func handleMarketCommand(cmd, pkt string, manager *scheduler.RobotManager) (string, bool) {
+	if !isMarketCommand(cmd) {
+		return "", false
+	}
+	if err := manager.RequireCapability(shared.CapabilityMarket); err != nil {
+		return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()}), true
+	}
 	switch cmd {
 	case "marketStatus":
 		app, err := requireMarketApp()
@@ -165,8 +173,19 @@ func handleMarketCommand(cmd, pkt string) (string, bool) {
 		}
 		res, err := app.PatchAuctionMemory(req)
 		return wrapResult(map[string]interface{}{"ok": err == nil, "error": errString(err), "result": res}), true
+	}
+	return "", false
+}
+
+func isMarketCommand(cmd string) bool {
+	switch cmd {
+	case "marketStatus", "marketKindsProgress", "marketStart", "marketEnsureServices", "marketStop",
+		"marketConfigUpdate", "marketApplyListingConfig", "marketRestockOnce", "marketCollectOnce",
+		"marketSyncItemInfo", "marketPVFUpgradeSeparateStatus", "marketPVFPatchUpgradeSeparate",
+		"marketClearSystemStock", "marketInstallAuctionGuard", "marketPatchAuctionMemory":
+		return true
 	default:
-		return "", false
+		return false
 	}
 }
 

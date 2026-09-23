@@ -5,10 +5,29 @@ import (
 	"fmt"
 	"time"
 
+	"robot/internal/capability/keypair"
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/dbstatus"
 	"robot/internal/shared"
 )
+
+type GameCommandGate struct {
+	Config *config.SysConfig
+}
+
+func (g GameCommandGate) Check() error {
+	status := keypair.CurrentStatus(g.Config)
+	if status.GameValid {
+		return nil
+	}
+	if status.Error != "" {
+		return fmt.Errorf("RSA key unavailable: %s", status.Error)
+	}
+	if status.KeyReason != "" {
+		return fmt.Errorf("RSA key unavailable: %s", status.KeyReason)
+	}
+	return fmt.Errorf("RSA key unavailable")
+}
 
 type PersistenceInspector struct {
 	Database dbstatus.Database

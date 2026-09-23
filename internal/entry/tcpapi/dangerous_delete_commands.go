@@ -8,6 +8,7 @@ import (
 	robotcap "robot/internal/capability/robot"
 	"robot/internal/foundation/lockhub"
 	"robot/internal/scheduler"
+	"robot/internal/shared"
 	"strings"
 	"time"
 )
@@ -40,6 +41,12 @@ type dangerousDeleteToken struct {
 }
 
 func handleDangerousDeleteCommand(clientID, cmd, pkt string, manager *scheduler.RobotManager) (string, bool) {
+	if !isDangerousDeleteCommand(cmd) {
+		return "", false
+	}
+	if err := manager.RequireCapability(shared.CapabilityDangerousDelete); err != nil {
+		return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()}), true
+	}
 	switch cmd {
 	case "dangerousDeleteUnlock":
 		clientIP, ok := loopbackClientIP(clientID)
@@ -83,9 +90,12 @@ func handleDangerousDeleteCommand(clientID, cmd, pkt string, manager *scheduler.
 			logRobotActionf("[WebAction] dangerousDeleteAsync done mode=%s accounts=%d characters=%d registry=%d\n",
 				res.Mode, res.AccountCount, res.CharacterCount, res.RegistryCount)
 		}), true
-	default:
-		return "", false
 	}
+	return "", false
+}
+
+func isDangerousDeleteCommand(cmd string) bool {
+	return cmd == "dangerousDeleteUnlock" || cmd == "dangerousDeleteAsync"
 }
 
 func issueDangerousDeleteToken(clientIP string) (string, error) {

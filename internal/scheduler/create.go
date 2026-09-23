@@ -21,6 +21,9 @@ func (m *RobotManager) robotName(uid, job, grow int, used map[string]struct{}, r
 }
 
 func (m *RobotManager) CreateRobots(req robotcap.CreateRequest) ([]robotcap.Info, error) {
+	if err := m.requireBackendCapability(shared.CapabilityProvision); err != nil {
+		return nil, err
+	}
 	_, finishOperation, err := m.beginTrackedStructuralOperation("create", fmt.Sprintf("count=%d", req.Count))
 	if err != nil {
 		return nil, err

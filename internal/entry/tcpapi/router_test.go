@@ -8,12 +8,12 @@ import (
 	"testing"
 )
 
-func TestRequiresValidKeypair(t *testing.T) {
-	if !RequiresValidKeypair("robotsOnline") {
-		t.Fatal("robotsOnline should require a valid keypair")
+func TestRequiresGameRuntime(t *testing.T) {
+	if !RequiresGameRuntime("robotsOnline") {
+		t.Fatal("robotsOnline should require the backend game runtime")
 	}
-	if RequiresValidKeypair("sys") {
-		t.Fatal("sys should not require a valid keypair")
+	if RequiresGameRuntime("sys") {
+		t.Fatal("sys should not require the backend game runtime")
 	}
 }
 

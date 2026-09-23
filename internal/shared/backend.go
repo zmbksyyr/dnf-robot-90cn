@@ -33,6 +33,7 @@ const (
 	CapabilityDatabase           BackendCapability = "database"
 	CapabilityDiagnostics        BackendCapability = "diagnostics"
 	CapabilitySystemAnnouncement BackendCapability = "system_announcement"
+	CapabilityServiceControl     BackendCapability = "service_control"
 )
 
 type CapabilityStatus struct {
@@ -127,7 +128,7 @@ func KnownBackends() []BackendInfo {
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement,
+		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement, CapabilityServiceControl,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
@@ -162,6 +163,7 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityDatabase] = CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
 	capabilities[CapabilityDiagnostics] = CapabilityStatus{Reason: "native runtime diagnostics are not available for S4A21"}
 	capabilities[CapabilitySystemAnnouncement] = CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}
+	capabilities[CapabilityServiceControl] = CapabilityStatus{Reason: "native service scripts and process discovery are not applicable to S4A21"}
 	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
 	return capabilities
 }
@@ -171,7 +173,7 @@ func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStat
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement,
+		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement, CapabilityServiceControl,
 	} {
 		capabilities[operation] = CapabilityStatus{Reason: reason}
 	}

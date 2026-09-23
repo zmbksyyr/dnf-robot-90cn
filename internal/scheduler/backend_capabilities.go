@@ -15,3 +15,7 @@ func (m *RobotManager) requireBackendCapability(capability shared.BackendCapabil
 func (m *RobotManager) supportsBackendCapability(capability shared.BackendCapability) bool {
 	return m == nil || m.backendInfo.ID == "" || m.backendInfo.Supports(capability)
 }
+
+func (m *RobotManager) RequireCapability(capability shared.BackendCapability) error {
+	return m.requireBackendCapability(capability)
+}

@@ -31,7 +31,7 @@ type RobotSupervisor struct {
 	pressureDone    chan struct{}
 
 	nextMetrics      time.Time
-	nextKeyLog       time.Time
+	nextGameGateLog  time.Time
 	nextLeaseHealth  time.Time
 	nextAnnouncement time.Time
 	createFailures   int
