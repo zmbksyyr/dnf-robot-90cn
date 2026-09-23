@@ -19,19 +19,21 @@ func (s *RobotSupervisor) handleAutoGuards(now time.Time, rc robotconfig.Runtime
 		s.updateMetrics(rc, signals)
 		return true
 	}
-	if st := s.manager.KeypairStatus(); !st.GameValid {
-		s.stopAutoActors()
-		s.logKeyBlocked(now, rc, st)
-		reason := st.Error
-		if reason == "" {
-			reason = st.KeyReason
+	if s.manager.NativeKeypairRequired() {
+		if st := s.manager.KeypairStatus(); !st.GameValid {
+			s.stopAutoActors()
+			s.logKeyBlocked(now, rc, st)
+			reason := st.Error
+			if reason == "" {
+				reason = st.KeyReason
+			}
+			if reason == "" {
+				reason = schedulerReasonKeyInvalid
+			}
+			s.updateGuardStatus(rc, signals, schedulerPolicyMaintenance, schedulerReasonKeyInvalidPrefix+reason)
+			s.updateMetrics(rc, signals)
+			return true
 		}
-		if reason == "" {
-			reason = schedulerReasonKeyInvalid
-		}
-		s.updateGuardStatus(rc, signals, schedulerPolicyMaintenance, schedulerReasonKeyInvalidPrefix+reason)
-		s.updateMetrics(rc, signals)
-		return true
 	}
 	if op, started, active := s.manager.structuralOperation(); active {
 		s.manager.updateSchedulerStatus(rc, signals, schedulerPolicyDecision{Mode: schedulerPolicyMaintenance, Reason: schedulerReasonStructuralPrefix + op})
