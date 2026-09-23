@@ -6,7 +6,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	equipmentcap "robot/internal/capability/equipment"
 	robotcap "robot/internal/capability/robot"
@@ -43,6 +46,56 @@ type SQLiteLoadoutApplier struct {
 	Config       robotconfig.RuntimeConfig
 	Equipment    []shared.EquipmentCatalogItem
 	RandIntn     func(int) int
+}
+
+type PersistenceInspector struct {
+	DatabasePath string
+}
+
+func (i PersistenceInspector) Status(ctx context.Context) shared.PersistenceStatus {
+	started := time.Now()
+	status := shared.PersistenceStatus{
+		Engine: "sqlite", Target: filepath.Clean(strings.TrimSpace(i.DatabasePath)), CheckedAt: started,
+	}
+	fail := func(err error) shared.PersistenceStatus {
+		status.Error = err.Error()
+		status.LatencyMS = time.Since(started).Milliseconds()
+		return status
+	}
+	if strings.TrimSpace(i.DatabasePath) == "" {
+		return fail(fmt.Errorf("S4A21 database path is empty"))
+	}
+	file, err := os.OpenFile(i.DatabasePath, os.O_RDWR, 0)
+	if err != nil {
+		return fail(fmt.Errorf("open S4A21 database read-write: %w", err))
+	}
+	if err := file.Close(); err != nil {
+		return fail(fmt.Errorf("close S4A21 database probe: %w", err))
+	}
+	status.Writable = true
+	db, err := sql.Open("sqlite", i.DatabasePath)
+	if err != nil {
+		return fail(fmt.Errorf("open S4A21 database: %w", err))
+	}
+	defer db.Close()
+	if err := db.PingContext(ctx); err != nil {
+		return fail(fmt.Errorf("ping S4A21 database: %w", err))
+	}
+	var one int
+	if err := db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil || one != 1 {
+		return fail(fmt.Errorf("query S4A21 database: value=%d err=%v", one, err))
+	}
+	status.SelectVerified = true
+	if err := validateLoadoutSchema(ctx, db); err != nil {
+		return fail(err)
+	}
+	var integrity string
+	if err := db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&integrity); err != nil || integrity != "ok" {
+		return fail(fmt.Errorf("verify S4A21 database integrity: result=%s err=%v", integrity, err))
+	}
+	status.OK = true
+	status.LatencyMS = time.Since(started).Milliseconds()
+	return status
 }
 
 func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account string, info robotcap.Info) error {

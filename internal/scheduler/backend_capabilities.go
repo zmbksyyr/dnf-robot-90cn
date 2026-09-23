@@ -1,22 +1,17 @@
 package scheduler
 
-import (
-	"fmt"
-
-	"robot/internal/shared"
-)
+import "robot/internal/shared"
 
 // requireBackendCapability keeps unsupported operations from entering the
-// shared actor workflow. Native managers leave backendRobotBackend empty and
-// retain their existing behavior.
+// shared actor workflow. Legacy tests may leave backendInfo empty and retain
+// the original all-capabilities behavior.
 func (m *RobotManager) requireBackendCapability(capability shared.BackendCapability) error {
-	if m == nil || m.backendRobotBackend == "" || m.backendRobotBackend == shared.BackendNative {
+	if m == nil || m.backendInfo.ID == "" {
 		return nil
 	}
-	for _, info := range shared.KnownBackends() {
-		if info.ID == m.backendRobotBackend {
-			return info.Require(capability)
-		}
-	}
-	return fmt.Errorf("unknown backend %q", m.backendRobotBackend)
+	return m.backendInfo.Require(capability)
+}
+
+func (m *RobotManager) supportsBackendCapability(capability shared.BackendCapability) bool {
+	return m == nil || m.backendInfo.ID == "" || m.backendInfo.Supports(capability)
 }

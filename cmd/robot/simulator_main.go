@@ -74,6 +74,7 @@ func runSimulatorBackend(cfg *config.SysConfig, paths layout.Paths, info shared.
 		return 1
 	}
 	manager := scheduler.NewRobotManager(nil, cfg, nil)
+	manager.ConfigureBackendRuntime(info, s4a21backend.PersistenceInspector{DatabasePath: loadoutDB}, nil)
 	manager.SetNativeKeypairRequired(false)
 	manager.SetBackendRobotCreator(info.ID, nil)
 	manager.SetRobotStateDirectory(state)

@@ -41,6 +41,7 @@ type Server struct {
 	gameMaxUser             gameMaxUserCache
 	backendSelectionMu      lockhub.Locker
 	backend                 shared.BackendID
+	backendInfo             shared.BackendInfo
 	recoveryMode            bool
 }
 
@@ -69,6 +70,13 @@ func New(cfg *config.SysConfig, robotAddr, webAddr string, backend ...shared.Bac
 	if len(backend) > 0 && backend[0] != "" {
 		selectedBackend = backend[0]
 	}
+	selectedInfo := shared.BackendInfo{ID: selectedBackend}
+	for _, info := range shared.KnownBackends() {
+		if info.ID == selectedBackend {
+			selectedInfo = info
+			break
+		}
+	}
 	return &Server{
 		cfg:              cfg,
 		robotAddr:        robotAddr,
@@ -78,22 +86,30 @@ func New(cfg *config.SysConfig, robotAddr, webAddr string, backend ...shared.Bac
 		partyCompatWake:  make(chan struct{}, 1),
 		mailboxGuardWake: make(chan struct{}, 1),
 		backend:          selectedBackend,
+		backendInfo:      selectedInfo,
 	}
 }
 
-func (s *Server) nativeBackendOnly(w http.ResponseWriter, operation shared.BackendCapability) bool {
-	if s == nil || s.isNativeBackend() {
+func (s *Server) rejectUnsupportedCapability(w http.ResponseWriter, operation shared.BackendCapability) bool {
+	if s != nil && s.supportsBackendCapability(operation) {
 		return false
+	}
+	backend := shared.BackendID("")
+	if s != nil {
+		backend = s.backend
 	}
 	writeJSON(w, map[string]interface{}{
 		"ok":    false,
-		"error": shared.UnsupportedCapabilityError{Backend: s.backend, Operation: operation, Reason: "native-only Web operation is unavailable for this backend"}.Error(),
+		"error": shared.UnsupportedCapabilityError{Backend: backend, Operation: operation, Reason: "Web operation is unavailable for the selected backend"}.Error(),
 	})
 	return true
 }
 
-func (s *Server) isNativeBackend() bool {
-	return s == nil || (!s.recoveryMode && (s.backend == "" || s.backend == shared.BackendNative))
+func (s *Server) supportsBackendCapability(operation shared.BackendCapability) bool {
+	if s == nil || s.recoveryMode {
+		return false
+	}
+	return s.backendInfo.Supports(operation)
 }
 
 func (s *Server) Serve(ctx context.Context) error {
@@ -105,9 +121,11 @@ func (s *Server) Serve(ctx context.Context) error {
 	defer stopRuntimeFiles()
 	stopPartyCompat := func() {}
 	stopMailboxGuard := func() {}
-	if s.isNativeBackend() {
+	if s.supportsBackendCapability(shared.CapabilityParty) {
 		stopPartyCompat = s.startPartyCompatSupervisor()
 		defer stopPartyCompat()
+	}
+	if s.supportsBackendCapability(shared.CapabilityCompatibility) {
 		stopMailboxGuard = s.startMailboxGuardSupervisor()
 		defer stopMailboxGuard()
 	}

@@ -16,6 +16,7 @@ import (
 	"robot/internal/capability/marketapp"
 	"robot/internal/capability/robotconfig"
 	"robot/internal/composition/auctionapp"
+	nativebackend "robot/internal/composition/backend/native"
 	"robot/internal/entry/tcpapi"
 	"robot/internal/entry/webadmin"
 	"robot/internal/foundation/config"
@@ -219,6 +220,10 @@ func runMain() int {
 	}
 	manager.SetCharacterCacheInvalidator(cacheInvalidator)
 	monitorClient := &monitor.Client{Address: fmt.Sprintf("127.0.0.1:%d", cfg.MonitorPort)}
+	manager.ConfigureBackendRuntime(backendInfo,
+		nativebackend.PersistenceInspector{Database: db, Config: cfg},
+		nativebackend.SystemAnnouncer{Database: db, Sender: monitorClient},
+	)
 	manager.SetWorldShout(monitorClient)
 	mailNotifier := mailnotify.New(db, monitorClient, paths.State)
 	manager.SetMailNotifier(mailNotifier)

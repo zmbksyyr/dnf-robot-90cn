@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Server) handleKeypairDownload(w http.ResponseWriter, _ *http.Request) {
-	if s.nativeBackendOnly(w, shared.CapabilityKeypair) {
+	if s.rejectUnsupportedCapability(w, shared.CapabilityKeypair) {
 		return
 	}
 	raw, err := callRobot(s.robotAddr, "keypairStatus", nil, robotCallTimeout("keypairStatus"), s.cfg.MaxResponseBytes)

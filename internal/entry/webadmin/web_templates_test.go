@@ -112,14 +112,15 @@ func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
 	}
 }
 
-func TestSimulatorDatabaseCapabilityDoesNotBlockProtocolActions(t *testing.T) {
+func TestDatabaseCardUsesBackendDashboardStatus(t *testing.T) {
 	for _, want := range []string{
+		`api('dashboardStatus')`,
 		`backendCapabilities.database`,
-		`dbBlocked=false`,
-		`textContent='N/A'`,
+		`String(r.engine).toUpperCase()`,
+		`r.writable?' · writable':''`,
 	} {
 		if !strings.Contains(appJS, want) {
-			t.Fatalf("simulator database boundary is missing %q", want)
+			t.Fatalf("backend database dashboard is missing %q", want)
 		}
 	}
 }

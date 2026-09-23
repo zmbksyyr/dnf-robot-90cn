@@ -45,7 +45,7 @@ type partyCompatRequest struct {
 }
 
 func (s *Server) handlePartyCompat(w http.ResponseWriter, r *http.Request) {
-	if s.nativeBackendOnly(w, shared.CapabilityParty) {
+	if s.rejectUnsupportedCapability(w, shared.CapabilityParty) {
 		return
 	}
 	s.partyCompatMu.Lock()

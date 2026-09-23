@@ -31,7 +31,7 @@ type mailboxGuardStatus struct {
 }
 
 func (s *Server) handleCompat(w http.ResponseWriter, r *http.Request) {
-	if s.nativeBackendOnly(w, shared.CapabilityCompatibility) {
+	if s.rejectUnsupportedCapability(w, shared.CapabilityCompatibility) {
 		return
 	}
 	// Serialize all df_game_r compatibility inspection and patch operations.

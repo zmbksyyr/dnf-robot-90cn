@@ -33,7 +33,10 @@ type RobotManager struct {
 	backendSessions                 BackendSessionTransport
 	backendRobotCreator             BackendRobotCreator
 	backendRobotCleaner             BackendRobotCleaner
-	backendRobotBackend             shared.BackendID
+	backendInfo                     shared.BackendInfo
+	backendLifecycleOwned           bool
+	persistenceInspector            shared.PersistenceInspector
+	systemAnnouncer                 shared.SystemAnnouncer
 	worldShout                      WorldShout
 	locks                           *lockhub.Hub
 	startedAt                       time.Time
@@ -144,9 +147,26 @@ type BackendRobotCleaner interface {
 
 func (m *RobotManager) SetBackendRobotCreator(backend shared.BackendID, creator BackendRobotCreator) {
 	if m != nil {
-		m.backendRobotBackend = backend
+		for _, info := range shared.KnownBackends() {
+			if info.ID == backend {
+				m.backendInfo = info
+				break
+			}
+		}
+		m.backendLifecycleOwned = backend != ""
 		m.backendRobotCreator = creator
 	}
+}
+
+// ConfigureBackendRuntime installs the selected backend's shared runtime
+// ports. Concrete database and announcement behavior remains in composition.
+func (m *RobotManager) ConfigureBackendRuntime(info shared.BackendInfo, persistence shared.PersistenceInspector, announcer shared.SystemAnnouncer) {
+	if m == nil {
+		return
+	}
+	m.backendInfo = info
+	m.persistenceInspector = persistence
+	m.systemAnnouncer = announcer
 }
 
 func (m *RobotManager) SetBackendRobotCleaner(cleaner BackendRobotCleaner) {

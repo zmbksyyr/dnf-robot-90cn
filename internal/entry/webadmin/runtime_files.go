@@ -6,6 +6,7 @@ import (
 	"robot/internal/foundation/filewatch"
 	"robot/internal/foundation/layout"
 	foundationlog "robot/internal/foundation/log"
+	"robot/internal/shared"
 )
 
 func (s *Server) startRuntimeFileWatcher() func() {
@@ -24,7 +25,7 @@ func (s *Server) startRuntimeFileWatcher() func() {
 }
 
 func (s *Server) runtimeFileEntries() []filewatch.Entry {
-	if s == nil || s.cfg == nil || !s.isNativeBackend() {
+	if s == nil || s.cfg == nil || !s.supportsBackendCapability(shared.CapabilityCompatibility) {
 		return nil
 	}
 	paths := layout.New(s.cfg.ConfigDir)

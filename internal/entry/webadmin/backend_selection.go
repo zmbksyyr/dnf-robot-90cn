@@ -96,26 +96,50 @@ func (s *Server) backendSettingsWithDefaults(state backendSelectionState) map[st
 	for key, value := range state.Settings {
 		settings[key] = value
 	}
-	if state.BackendID != shared.BackendS4A21 || s.cfg == nil {
+	if s.cfg == nil {
 		return settings
 	}
-	serverDir := strings.TrimSpace(s.cfg.DFGameR)
-	if filepath.Ext(serverDir) != "" {
-		serverDir = filepath.Dir(serverDir)
+	var selected shared.BackendInfo
+	for _, info := range shared.KnownBackends() {
+		if info.ID == state.BackendID {
+			selected = info
+			break
+		}
 	}
-	if settings["server_directory"] == "" {
-		settings["server_directory"] = serverDir
-	}
-	if settings["server_host"] == "" {
-		settings["server_host"] = s.cfg.RobotConnectIP
-	}
-	if settings["game_port"] == "" && s.cfg.RobotGamePort > 0 {
-		settings["game_port"] = strconv.Itoa(s.cfg.RobotGamePort)
-	}
-	if settings["database_path"] == "" && serverDir != "" {
-		settings["database_path"] = filepath.Join(serverDir, "Data", "inventory.db")
+	for _, field := range selected.Settings {
+		if settings[field.Key] != "" {
+			continue
+		}
+		value := s.runtimeSettingDefault(field.RuntimeSource)
+		if value == "" && field.DerivedFrom != "" && settings[field.DerivedFrom] != "" {
+			value = filepath.Join(append([]string{settings[field.DerivedFrom]}, field.PathSuffix...)...)
+		}
+		if value == "" {
+			value = field.Default
+		}
+		if value != "" {
+			settings[field.Key] = value
+		}
 	}
 	return settings
+}
+
+func (s *Server) runtimeSettingDefault(source string) string {
+	switch source {
+	case "server_directory":
+		value := strings.TrimSpace(s.cfg.DFGameR)
+		if filepath.Ext(value) != "" {
+			value = filepath.Dir(value)
+		}
+		return value
+	case "game_host":
+		return strings.TrimSpace(s.cfg.RobotConnectIP)
+	case "game_port":
+		if s.cfg.RobotGamePort > 0 {
+			return strconv.Itoa(s.cfg.RobotGamePort)
+		}
+	}
+	return ""
 }
 
 func validateBackendSettings(info shared.BackendInfo, input map[string]string) (map[string]string, error) {

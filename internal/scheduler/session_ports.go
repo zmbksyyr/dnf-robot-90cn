@@ -220,7 +220,7 @@ func (e sessionActionEnv) populateBackendSessionIdentities(users []shared.Runtim
 	if !ok {
 		return nil
 	}
-	identities, err := directory.Identities(context.Background(), e.manager.backendRobotBackend)
+	identities, err := directory.Identities(context.Background(), e.manager.backendInfo.ID)
 	if err != nil {
 		return err
 	}

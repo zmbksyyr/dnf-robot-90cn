@@ -6,7 +6,6 @@ import (
 	actormodel "robot/internal/actor"
 	robotcap "robot/internal/capability/robot"
 	robotstate "robot/internal/capability/robotstate"
-	"robot/internal/foundation/dbstatus"
 	"robot/internal/foundation/process"
 	"robot/internal/shared"
 	"strings"
@@ -38,11 +37,16 @@ func (m *RobotManager) SystemStatus() SystemStatus {
 	}
 }
 
-func (m *RobotManager) DatabaseStatus() dbstatus.Status {
+func (m *RobotManager) DatabaseStatus() shared.PersistenceStatus {
 	if err := m.requireBackendCapability(shared.CapabilityDatabase); err != nil {
-		return dbstatus.Status{Error: err.Error(), CheckedAt: time.Now()}
+		return shared.PersistenceStatus{Error: err.Error(), CheckedAt: time.Now()}
 	}
-	return dbstatus.Check(m.database, m.cfg)
+	if m.persistenceInspector == nil {
+		return shared.PersistenceStatus{Error: "backend persistence inspector is not configured", CheckedAt: time.Now()}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return m.persistenceInspector.Status(ctx)
 }
 
 type RobotStatusResult struct {
@@ -159,7 +163,7 @@ func (m *RobotManager) robotStateAccounts() map[string]string {
 	if !ok {
 		return accounts
 	}
-	identities, err := directory.Identities(context.Background(), m.backendRobotBackend)
+	identities, err := directory.Identities(context.Background(), m.backendInfo.ID)
 	if err != nil {
 		return accounts
 	}
@@ -234,8 +238,8 @@ func (m *RobotManager) CleanupRobots(req robotcap.CleanupRequest) (robotcap.Clea
 	if err := m.requireBackendCapability(shared.CapabilityCleanup); err != nil {
 		return robotcap.CleanupResult{}, err
 	}
-	if m.backendRobotBackend != "" && m.backendRobotBackend != shared.BackendNative && m.backendRobotCleaner == nil {
-		return robotcap.CleanupResult{}, fmt.Errorf("backend %s cleanup adapter is not configured", m.backendRobotBackend)
+	if m.backendLifecycleOwned && m.backendRobotCleaner == nil {
+		return robotcap.CleanupResult{}, fmt.Errorf("backend %s cleanup adapter is not configured", m.backendInfo.ID)
 	}
 	return m.cleanupRobots(req)
 }

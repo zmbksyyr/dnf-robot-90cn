@@ -196,11 +196,24 @@ func TestSimulatorKeypairOperationsAreRejectedWithStableCapabilityError(t *testi
 	}
 }
 
-func TestSimulatorDatabaseStatusDoesNotProbeNativeDatabase(t *testing.T) {
+type persistenceInspectorStub struct {
+	status shared.PersistenceStatus
+}
+
+func (s persistenceInspectorStub) Status(context.Context) shared.PersistenceStatus { return s.status }
+
+func TestSimulatorDatabaseStatusUsesBackendInspector(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	m.SetBackendRobotCreator(shared.BackendS4A21, nil)
+	var info shared.BackendInfo
+	for _, candidate := range shared.KnownBackends() {
+		if candidate.ID == shared.BackendS4A21 {
+			info = candidate
+		}
+	}
+	m.ConfigureBackendRuntime(info, persistenceInspectorStub{status: shared.PersistenceStatus{OK: true, Engine: "sqlite", Writable: true}}, nil)
 	status := m.DatabaseStatus()
-	if status.OK || !strings.Contains(status.Error, shared.CodeBackendCapabilityUnsupported) {
-		t.Fatalf("status = %+v, want stable unsupported database result", status)
+	if !status.OK || status.Engine != "sqlite" || !status.Writable {
+		t.Fatalf("status = %+v, want backend persistence result", status)
 	}
 }

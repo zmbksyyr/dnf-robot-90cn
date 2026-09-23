@@ -16,22 +16,23 @@ const BackendS4A21 BackendID = "sim_a21"
 type BackendCapability string
 
 const (
-	CapabilityProvision       BackendCapability = "provision"
-	CapabilityTownMove        BackendCapability = "town_move"
-	CapabilityDungeonMove     BackendCapability = "dungeon_move"
-	CapabilityDungeonFollow   BackendCapability = "dungeon_follow"
-	CapabilityShout           BackendCapability = "shout"
-	CapabilityWorldShout      BackendCapability = "world_shout"
-	CapabilityStore           BackendCapability = "store"
-	CapabilityParty           BackendCapability = "party"
-	CapabilitySkill           BackendCapability = "skill"
-	CapabilityMarket          BackendCapability = "market"
-	CapabilityCleanup         BackendCapability = "cleanup"
-	CapabilityDangerousDelete BackendCapability = "dangerous_delete"
-	CapabilityCompatibility   BackendCapability = "compatibility"
-	CapabilityKeypair         BackendCapability = "keypair"
-	CapabilityDatabase        BackendCapability = "database"
-	CapabilityDiagnostics     BackendCapability = "diagnostics"
+	CapabilityProvision          BackendCapability = "provision"
+	CapabilityTownMove           BackendCapability = "town_move"
+	CapabilityDungeonMove        BackendCapability = "dungeon_move"
+	CapabilityDungeonFollow      BackendCapability = "dungeon_follow"
+	CapabilityShout              BackendCapability = "shout"
+	CapabilityWorldShout         BackendCapability = "world_shout"
+	CapabilityStore              BackendCapability = "store"
+	CapabilityParty              BackendCapability = "party"
+	CapabilitySkill              BackendCapability = "skill"
+	CapabilityMarket             BackendCapability = "market"
+	CapabilityCleanup            BackendCapability = "cleanup"
+	CapabilityDangerousDelete    BackendCapability = "dangerous_delete"
+	CapabilityCompatibility      BackendCapability = "compatibility"
+	CapabilityKeypair            BackendCapability = "keypair"
+	CapabilityDatabase           BackendCapability = "database"
+	CapabilityDiagnostics        BackendCapability = "diagnostics"
+	CapabilitySystemAnnouncement BackendCapability = "system_announcement"
 )
 
 type CapabilityStatus struct {
@@ -51,12 +52,15 @@ type BackendInfo struct {
 }
 
 type BackendSetting struct {
-	Key         string `json:"key"`
-	Label       string `json:"label"`
-	InputType   string `json:"input_type"`
-	Required    bool   `json:"required"`
-	Placeholder string `json:"placeholder,omitempty"`
-	Default     string `json:"default,omitempty"`
+	Key           string   `json:"key"`
+	Label         string   `json:"label"`
+	InputType     string   `json:"input_type"`
+	Required      bool     `json:"required"`
+	Placeholder   string   `json:"placeholder,omitempty"`
+	Default       string   `json:"default,omitempty"`
+	RuntimeSource string   `json:"runtime_source,omitempty"`
+	DerivedFrom   string   `json:"derived_from,omitempty"`
+	PathSuffix    []string `json:"path_suffix,omitempty"`
 }
 
 type BackendSelection struct {
@@ -123,7 +127,7 @@ func KnownBackends() []BackendInfo {
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
+		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement,
 	} {
 		capabilities[operation] = CapabilityStatus{Enabled: true}
 	}
@@ -136,10 +140,10 @@ func KnownBackends() []BackendInfo {
 		Selectable:   true,
 		Capabilities: s4a21Capabilities(),
 		Settings: []BackendSetting{
-			{Key: "server_directory", Label: "Server directory", InputType: "path", Required: true},
-			{Key: "server_host", Label: "Host", InputType: "text", Required: true, Default: "127.0.0.1"},
-			{Key: "game_port", Label: "Port", InputType: "number", Required: true, Default: "10011"},
-			{Key: "database_path", Label: "Database", InputType: "path", Placeholder: `Data\inventory.db (auto)`},
+			{Key: "server_directory", Label: "Server directory", InputType: "path", Required: true, RuntimeSource: "server_directory"},
+			{Key: "server_host", Label: "Host", InputType: "text", Required: true, Default: "127.0.0.1", RuntimeSource: "game_host"},
+			{Key: "game_port", Label: "Port", InputType: "number", Required: true, Default: "10011", RuntimeSource: "game_port"},
+			{Key: "database_path", Label: "Database", InputType: "path", Placeholder: `Data\inventory.db (auto)`, DerivedFrom: "server_directory", PathSuffix: []string{"Data", "inventory.db"}},
 		},
 	}}
 }
@@ -155,8 +159,9 @@ func s4a21Capabilities() map[BackendCapability]CapabilityStatus {
 	capabilities[CapabilityDangerousDelete] = CapabilityStatus{Reason: "S4A21 supports protected protocol cleanup only"}
 	capabilities[CapabilityCompatibility] = CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
 	capabilities[CapabilityKeypair] = CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
-	capabilities[CapabilityDatabase] = CapabilityStatus{Reason: "simulator game databases are outside the robot boundary"}
+	capabilities[CapabilityDatabase] = CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
 	capabilities[CapabilityDiagnostics] = CapabilityStatus{Reason: "native runtime diagnostics are not available for S4A21"}
+	capabilities[CapabilitySystemAnnouncement] = CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}
 	capabilities[CapabilityDungeonMove] = CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
 	return capabilities
 }
@@ -166,7 +171,7 @@ func unavailableCapabilities(reason string) map[BackendCapability]CapabilityStat
 	for _, operation := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
+		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement,
 	} {
 		capabilities[operation] = CapabilityStatus{Reason: reason}
 	}

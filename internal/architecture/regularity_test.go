@@ -35,6 +35,7 @@ var sqlImportAllowedDirs = []string{
 	"internal/capability/mailnotify",
 	"internal/capability/marketapp",
 	"internal/composition/backend/s4a21",
+	"internal/composition/backend/native",
 	"internal/protocol/dnf",
 }
 
@@ -381,6 +382,33 @@ func TestSchedulerDoesNotReferenceConcreteBackends(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk scheduler: %v", err)
+	}
+}
+
+func TestWebRuntimeDoesNotUseBackendTypeGuards(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "internal", "entry", "webadmin")
+	forbidden := []string{"isNativeBackend", "nativeBackendOnly"}
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, token := range forbidden {
+			if strings.Contains(string(data), token) {
+				t.Errorf("%s uses backend type guard %q; use declared capabilities", path, token)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk Web runtime: %v", err)
 	}
 }
 

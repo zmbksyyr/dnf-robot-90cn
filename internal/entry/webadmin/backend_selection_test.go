@@ -119,7 +119,7 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 	if simulator == nil {
 		t.Fatal("backend payload does not include S4A21")
 	}
-	for _, capability := range []shared.BackendCapability{shared.CapabilityTownMove, shared.CapabilityDungeonFollow, shared.CapabilityShout, shared.CapabilityCleanup} {
+	for _, capability := range []shared.BackendCapability{shared.CapabilityTownMove, shared.CapabilityDungeonFollow, shared.CapabilityShout, shared.CapabilityCleanup, shared.CapabilityDatabase} {
 		if !simulator.Supports(capability) {
 			t.Fatalf("S4A21 capability %s unexpectedly disabled: %+v", capability, simulator.Capabilities[capability])
 		}
@@ -127,7 +127,10 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 	if simulator.Capabilities[shared.CapabilityDungeonFollow].Mode != "toggle" {
 		t.Fatalf("S4A21 dungeon follower mode is not adapter-declared: %+v", simulator.Capabilities[shared.CapabilityDungeonFollow])
 	}
-	for _, capability := range []shared.BackendCapability{shared.CapabilityDungeonMove, shared.CapabilityWorldShout, shared.CapabilityStore, shared.CapabilityParty, shared.CapabilitySkill, shared.CapabilityDangerousDelete, shared.CapabilityCompatibility, shared.CapabilityKeypair, shared.CapabilityDatabase, shared.CapabilityDiagnostics} {
+	if simulator.Capabilities[shared.CapabilityDatabase].Mode != "sqlite_health" {
+		t.Fatalf("S4A21 database mode is not adapter-declared: %+v", simulator.Capabilities[shared.CapabilityDatabase])
+	}
+	for _, capability := range []shared.BackendCapability{shared.CapabilityDungeonMove, shared.CapabilityWorldShout, shared.CapabilityStore, shared.CapabilityParty, shared.CapabilitySkill, shared.CapabilityDangerousDelete, shared.CapabilityCompatibility, shared.CapabilityKeypair, shared.CapabilityDiagnostics, shared.CapabilitySystemAnnouncement} {
 		status := simulator.Capabilities[capability]
 		if status.Enabled || status.Reason == "" {
 			t.Fatalf("S4A21 capability %s must be disabled with a reason: %+v", capability, status)

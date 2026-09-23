@@ -20,6 +20,7 @@ import (
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/dbstatus"
 	"robot/internal/foundation/layout"
+	"robot/internal/shared"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -95,7 +96,7 @@ func (s *Server) buildDiagnostics() diagnosticsReport {
 	}
 	b.addRuntimeSection()
 	b.addFileSection()
-	if b.server == nil || b.server.isNativeBackend() {
+	if b.server == nil || b.server.supportsBackendCapability(shared.CapabilityDiagnostics) {
 		b.addDatabaseSection()
 		b.addMarketSection()
 		b.addPartySection()
@@ -171,7 +172,7 @@ func (b *diagnosticsBuilder) addRuntimeSection() {
 	} else {
 		checks = append(checks, diagnosticsCheck{Name: "robot api systemStatus", Status: diagError, Message: err.Error(), Expected: b.server.robotAddr})
 	}
-	if b.server == nil || b.server.isNativeBackend() {
+	if b.server == nil || b.server.supportsBackendCapability(shared.CapabilityDiagnostics) {
 		st := keypair.BuildKeypairStatus(cfg)
 		keyStatus := diagOK
 		keyMsg := "game keypair is valid"
@@ -223,7 +224,7 @@ func (b *diagnosticsBuilder) addDatabaseSection() {
 func (b *diagnosticsBuilder) addFileSection() {
 	configDir := b.cfg.ConfigDir
 	runtimePaths := layout.New(configDir)
-	if b.server != nil && !b.server.isNativeBackend() {
+	if b.server != nil && !b.server.supportsBackendCapability(shared.CapabilityDiagnostics) {
 		checks := []diagnosticsCheck{
 			fileCheck("config.ini", runtimePaths.MainConfig(), true),
 			fileCheck("robot_config.ini", runtimePaths.RobotConfig(), true),
@@ -301,7 +302,7 @@ func (b *diagnosticsBuilder) addLogSection() {
 	checks := []diagnosticsCheck{}
 	runtimePaths := layout.New(b.cfg.ConfigDir)
 	paths := []string{runtimePaths.RobotLog(), runtimePaths.StdoutLog(), runtimePaths.StartErrorLog()}
-	if b.server == nil || b.server.isNativeBackend() {
+	if b.server == nil || b.server.supportsBackendCapability(shared.CapabilityDiagnostics) {
 		paths = append(paths, runtimePaths.MarketLog())
 	}
 	for _, path := range paths {

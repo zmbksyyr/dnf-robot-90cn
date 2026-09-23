@@ -37,7 +37,7 @@ func TestS4A21MetadataReflectsVerifiedCapabilities(t *testing.T) {
 	if found.ID == "" || !found.Selectable {
 		t.Fatalf("S4A21 metadata = %+v", found)
 	}
-	for _, capability := range []BackendCapability{CapabilityProvision, CapabilityTownMove, CapabilityDungeonFollow, CapabilityShout} {
+	for _, capability := range []BackendCapability{CapabilityProvision, CapabilityTownMove, CapabilityDungeonFollow, CapabilityShout, CapabilityDatabase} {
 		if !found.Supports(capability) {
 			t.Fatalf("verified capability %s is disabled", capability)
 		}
@@ -57,7 +57,10 @@ func TestS4A21MetadataReflectsVerifiedCapabilities(t *testing.T) {
 	if found.Supports(CapabilityDungeonMove) || found.Capabilities[CapabilityDungeonMove].Reason == "" {
 		t.Fatalf("dungeon movement must remain disabled with reason: %+v", found.Capabilities[CapabilityDungeonMove])
 	}
-	for _, capability := range []BackendCapability{CapabilityParty, CapabilitySkill, CapabilityStore, CapabilityMarket, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics} {
+	if found.Capabilities[CapabilityDatabase].Mode != "sqlite_health" {
+		t.Fatalf("S4A21 database mode = %+v", found.Capabilities[CapabilityDatabase])
+	}
+	for _, capability := range []BackendCapability{CapabilityParty, CapabilitySkill, CapabilityStore, CapabilityMarket, CapabilityCompatibility, CapabilityKeypair, CapabilityDiagnostics, CapabilitySystemAnnouncement} {
 		if found.Supports(capability) || found.Capabilities[capability].Reason == "" {
 			t.Fatalf("S4A21 %s must remain disabled with reason: %+v", capability, found.Capabilities[capability])
 		}

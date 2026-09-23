@@ -33,6 +33,11 @@ func (w *cappedProfileBuffer) Write(p []byte) (int, error) {
 
 func handleSystemCommand(cmd, pkt string, manager *scheduler.RobotManager) (string, bool) {
 	switch cmd {
+	case "dashboardStatus":
+		return wrapResult(map[string]interface{}{"ok": true, "result": map[string]interface{}{
+			"auto": manager.AutoStatus(), "system": manager.SystemStatus(), "scheduler": manager.SchedulerStatus(),
+			"database": manager.DatabaseStatus(), "keypair": manager.KeypairStatus(),
+		}}), true
 	case "autoStatus":
 		return wrapResult(map[string]interface{}{"ok": true, "result": manager.AutoStatus()}), true
 	case "schedulerStatus":

@@ -30,9 +30,9 @@ func (m *RobotManager) CreateRobots(req robotcap.CreateRequest) ([]robotcap.Info
 	defer func() {
 		finishOperation(fmt.Sprintf("created=%d", len(robots)), opErr)
 	}()
-	if m.backendRobotBackend != "" && m.backendRobotBackend != shared.BackendNative {
+	if m.backendLifecycleOwned {
 		if m.backendRobotCreator == nil {
-			opErr = shared.UnsupportedCapabilityError{Backend: m.backendRobotBackend, Operation: shared.CapabilityProvision, Reason: "backend robot creator is not configured"}
+			opErr = shared.UnsupportedCapabilityError{Backend: m.backendInfo.ID, Operation: shared.CapabilityProvision, Reason: "backend robot creator is not configured"}
 			return nil, opErr
 		}
 		robots, err = m.backendRobotCreator.CreateRobots(context.Background(), req)
