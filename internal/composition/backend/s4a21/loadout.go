@@ -229,12 +229,15 @@ WHERE character_id=? AND delete_flag=0`, level, characterID)
 }
 
 func resolveCharacterProfile(ctx context.Context, db *sql.DB, account string, info robotcap.Info) (int, int, robotcap.Info, error) {
-	encodedName, err := charset.EncodeGBKString(info.Name)
-	if err != nil {
-		return 0, 0, info, fmt.Errorf("encode S4A21 character name %q: %w", info.Name, err)
+	// Older A21 SQLite files store the name column as raw GBK bytes. A scan
+	// may therefore produce a Go string that is not valid UTF-8. Preserve the
+	// raw bytes for that case instead of making profile reconciliation fail.
+	var encodedName interface{} = info.Name
+	if encoded, encodeErr := charset.EncodeGBKString(info.Name); encodeErr == nil {
+		encodedName = encoded
 	}
 	var accountID, characterID int
-	err = db.QueryRowContext(ctx, `SELECT a.account_id, c.character_id, c.job, c.grow_type, c.level
+	err := db.QueryRowContext(ctx, `SELECT a.account_id, c.character_id, c.job, c.grow_type, c.level
 FROM accounts a JOIN characters c ON c.account_id = a.account_id
 WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag = 0 LIMIT 1`, account, encodedName, info.Name).
 		Scan(&accountID, &characterID, &info.Job, &info.Grow, &info.Level)
