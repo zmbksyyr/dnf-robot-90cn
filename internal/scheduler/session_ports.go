@@ -96,12 +96,7 @@ func (e sessionActionEnv) CountRuntimeRunning() int {
 }
 
 func (e sessionActionEnv) EnsureWorldHornByCID(cid int) error {
-	if e.manager.robotState != nil && e.manager.backendSessions != nil {
-		// Simulated backends do not use the native world-horn inventory table.
-		// Their login protocol owns all required session state.
-		return nil
-	}
-	return e.manager.storePreparer().EnsureWorldHornByCID(cid)
+	return e.manager.sessions.EnsureWorldHorn(cid)
 }
 
 func (e sessionActionEnv) InvalidateCharacterCache(uid int) error {
@@ -139,9 +134,7 @@ func (e sessionActionEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.
 }
 
 func (e sessionActionEnv) PrepareOnlineRobot(info robotcap.Info, rc robotconfig.RuntimeConfig) (robotcap.Info, error) {
-	if e.manager.backendSessions != nil && rc.SpawnFixed {
-		e.manager.applyConfiguredLocation(&info, rc, e.manager.loadMapCatalog())
-	}
+	info = e.manager.sessions.PrepareOnline(info, rc)
 	if shared.GenericAreaAllowed(info.GuildID, info.Village) {
 		return info, nil
 	}
@@ -154,73 +147,22 @@ func (e sessionActionEnv) PrepareOnlineRobot(info robotcap.Info, rc robotconfig.
 }
 
 func (e sessionActionEnv) SendLogout(uid int) error {
-	if e.manager.backendSessions != nil {
-		err := e.manager.backendSessions.Close(uid)
-		if err == nil {
-			e.manager.markSessionLogout(uid, time.Now())
-		}
-		return err
-	}
-	err := e.manager.doll.Logout(uid)
-	if err == nil {
-		e.manager.markSessionLogout(uid, time.Now())
-	}
-	return err
+	return e.manager.sessions.SendLogout(uid)
 }
 
 func (e sessionActionEnv) SendOnline(userinfos []shared.RuntimeOnlineUser) error {
-	if e.manager.backendSessions != nil {
-		rc := e.manager.loadRobotConfig()
-		if err := e.populateBackendSessionIdentities(userinfos); err != nil {
-			return err
-		}
-		opened := make([]int, 0, len(userinfos))
-		for _, user := range userinfos {
-			if user.AccountName == "" {
-				for _, uid := range opened {
-					_ = e.manager.backendSessions.Close(uid)
-				}
-				return fmt.Errorf("backend session account is required for uid %d", user.UID)
-			}
-			if err := e.manager.backendSessions.Open(context.Background(), user.UID, shared.OpenSessionRequest{
-				AccountName: user.AccountName, PasswordHash: user.PasswordHash, CharacterSlot: uint16(user.CharacterSlot),
-				EnablePartyDungeonFollower: strings.TrimSpace(rc.FollowAccount) != "",
-				InitialTownKnown:           true,
-				InitialVillage:             user.BirthVillage,
-				InitialArea:                user.BirthArea,
-				InitialX:                   user.BirthX,
-				InitialY:                   user.BirthY,
-			}); err != nil {
-				for _, uid := range opened {
-					_ = e.manager.backendSessions.Close(uid)
-				}
-				return err
-			}
-			opened = append(opened, user.UID)
-		}
-		return nil
-	}
-	maps := e.manager.loadMapCatalog()
-	for index := range userinfos {
-		if gateArea, ok := gateAreaForVillage(maps, userinfos[index].BirthVillage); ok {
-			userinfos[index].BirthGateArea = gateArea
-		} else {
-			userinfos[index].BirthGateArea = userinfos[index].BirthArea
-		}
-	}
-	e.manager.waitSessionRelogin(userinfos)
-	return e.manager.doll.Online(userinfos)
+	return e.manager.sessions.SendOnline(userinfos)
 }
 
-func (e sessionActionEnv) populateBackendSessionIdentities(users []shared.RuntimeOnlineUser) error {
+func (m *RobotManager) populateBackendSessionIdentities(users []shared.RuntimeOnlineUser) error {
 	if len(users) == 0 {
 		return nil
 	}
-	directory, ok := e.manager.robotState.(robotstate.IdentityDirectory)
+	directory, ok := m.robotState.(robotstate.IdentityDirectory)
 	if !ok {
 		return nil
 	}
-	identities, err := directory.Identities(context.Background(), e.manager.backendInfo.ID)
+	identities, err := directory.Identities(context.Background(), m.backendInfo.ID)
 	if err != nil {
 		return err
 	}
@@ -237,7 +179,7 @@ func (e sessionActionEnv) populateBackendSessionIdentities(users []shared.Runtim
 	if len(uids) == 0 {
 		return nil
 	}
-	robots, err := e.manager.robotState.SelectRobots(context.Background(), robotcap.CommandRequest{UIDs: uids})
+	robots, err := m.robotState.SelectRobots(context.Background(), robotcap.CommandRequest{UIDs: uids})
 	if err != nil {
 		return err
 	}

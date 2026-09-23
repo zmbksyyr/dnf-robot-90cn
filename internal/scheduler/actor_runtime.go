@@ -36,10 +36,10 @@ func (r *RobotRuntime) Status(uid int) (robotcap.RuntimeStatus, bool) {
 }
 
 func (r *RobotRuntime) PartyActive(uid int) bool {
-	if provider, ok := r.manager.backendActions.(interface{ PartyActive(int) bool }); ok {
+	if provider, ok := r.manager.actions.(interface{ PartyActive(int) bool }); ok {
 		return provider.PartyActive(uid)
 	}
-	return r.manager.doll.PartyActive(uid)
+	return false
 }
 
 func (r *RobotRuntime) IsActive(uid int) bool {
@@ -89,14 +89,10 @@ func (r *RobotRuntime) Logout(uid int) robotcap.ActionResult {
 }
 
 func (r *RobotRuntime) ForceClose(uid int) bool {
-	if r != nil && r.manager != nil && r.manager.backendSessions != nil {
-		// Backend session transports own simulator connections. Close is
-		// intentionally idempotent, so a retry also confirms that a session
-		// detached even when its first socket close returned an error.
-		return r.manager.backendSessions.Close(uid) == nil
+	if r == nil || r.manager == nil || r.manager.sessions == nil {
+		return false
 	}
-	closer, ok := r.manager.doll.(interface{ ForceClose(int) bool })
-	return ok && closer.ForceClose(uid)
+	return r.manager.sessions.ForceClose(uid)
 }
 
 func (r *RobotRuntime) Move(uid int) robotcap.ActionResult {

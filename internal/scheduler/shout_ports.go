@@ -68,10 +68,7 @@ func (e shoutActionEnv) SendLocalShout(_ string, uid int, msg string, msgType in
 		Message: msg,
 		Type:    msgType,
 	}
-	if e.manager.backendActions != nil {
-		return e.manager.backendActions.ShoutLocal(context.Background(), command)
-	}
-	return e.manager.doll.Shout(command)
+	return e.manager.actions.ShoutLocal(context.Background(), command)
 }
 
 func (e shoutActionEnv) SendWorldShout(msg, name string, senderID uint16) error {

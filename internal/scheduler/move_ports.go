@@ -28,12 +28,7 @@ func (e moveActionEnv) DispatchMoveStep(info robotcap.Info, targetVillage, targe
 		MoveType: rc.MoveType,
 		Speed:    speed,
 	}
-	var err error
-	if e.manager.backendActions != nil {
-		err = e.manager.backendActions.MoveTown(context.Background(), command)
-	} else {
-		err = e.manager.doll.Move(command)
-	}
+	err := e.manager.actions.MoveTown(context.Background(), command)
 	if err != nil {
 		return err
 	}

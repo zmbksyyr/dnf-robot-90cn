@@ -29,8 +29,8 @@ type RobotManager struct {
 	cfg                             *config.SysConfig
 	doll                            Runtime
 	gameCommandGate                 shared.GameCommandGate
-	backendActions                  BackendActionTransport
-	backendSessions                 BackendSessionTransport
+	actions                         BackendActionTransport
+	sessions                        sessionDriver
 	backendRobotCreator             BackendRobotCreator
 	backendRobotCleaner             BackendRobotCleaner
 	backendInfo                     shared.BackendInfo
@@ -124,9 +124,8 @@ type RobotManager struct {
 	shutdownErr                     error
 }
 
-// BackendActionTransport is an optional protocol adapter for actions that do
-// not require the native runtime. It is deliberately limited to verified
-// town movement and local shout; dungeon actions remain separate.
+// BackendActionTransport is the backend-neutral action port used by the
+// scheduler. Concrete packet construction remains in backend adapters.
 type BackendActionTransport interface {
 	MoveTown(context.Context, shared.RuntimeMoveCommand) error
 	ShoutLocal(context.Context, shared.RuntimeShoutCommand) error
@@ -176,8 +175,8 @@ func (m *RobotManager) SetBackendRobotCleaner(cleaner BackendRobotCleaner) {
 }
 
 func (m *RobotManager) SetBackendSessionTransport(transport BackendSessionTransport) {
-	if m != nil {
-		m.backendSessions = transport
+	if m != nil && transport != nil {
+		m.sessions = protocolSessionDriver{manager: m, transport: transport}
 	}
 }
 
@@ -196,8 +195,8 @@ func (m *RobotManager) CheckGameCommand() error {
 }
 
 func (m *RobotManager) SetBackendActionTransport(transport BackendActionTransport) {
-	if m != nil {
-		m.backendActions = transport
+	if m != nil && transport != nil {
+		m.actions = transport
 	}
 }
 
@@ -235,6 +234,8 @@ func NewRobotManager(database dbstatus.Database, cfg *config.SysConfig, doll Run
 		sessionReloginDelay: 15 * time.Second,
 		worldHornCache:      storecap.NewWorldHornCache(),
 	}
+	manager.actions = runtimeActionTransport{manager: manager}
+	manager.sessions = runtimeSessionDriver{manager: manager}
 	manager.positionWrites = newPositionBatcher(manager.positionRepo(), defaultPositionBatchOptions())
 	return manager
 }
