@@ -85,6 +85,17 @@ Backend work is staged and committed by phase. Each commit should represent a
 coherent architectural or functional step, with no unrelated formatting or
 metadata churn.
 
+Do not use PowerShell to read or write source files. Use repository-aware
+search tools, ordinary cross-platform commands, and `apply_patch` for manual
+edits.
+
+Robot is a single-process application. Web administration, bounded log
+rotation, schedulers, and backend runtimes share one coordinated lifecycle;
+do not launch the Robot executable again as a Web or logging child. Shutdown
+must stop new work, wait a bounded time for in-flight operations, persist
+Robot-owned state and database transactions, close transports, and close logs
+last.
+
 ## Native Linux Deployment Card
 
 The following rules apply only to the current native Linux deployment:

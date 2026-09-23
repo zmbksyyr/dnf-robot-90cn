@@ -14,6 +14,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityPartyCompatibility] = shared.CapabilityStatus{Reason: "native party compatibility patches are not applicable to S4A21"}
 	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "native party diagnostics are not applicable to S4A21"}
 	capabilities[shared.CapabilityMailboxGuard] = shared.CapabilityStatus{Reason: "native mailbox memory patches are not applicable to S4A21"}
+	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "native mailbox notification transport is not applicable to S4A21"}
 	capabilities[shared.CapabilityKeypair] = shared.CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
 	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "native runtime diagnostics are not available for S4A21"}
@@ -22,7 +23,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
 	return shared.BackendInfo{
 		ID: shared.BackendS4A21, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true,
-		Capabilities: capabilities,
+		Capabilities: capabilities, MaxOnline: 10000,
 		Settings: []shared.BackendSetting{
 			{Key: "server_directory", Label: "Server dir", LabelZH: "服务目录", Hint: "Directory containing Script.pvf; also provides the default database path.", HintZH: "包含 Script.pvf 的目录，同时用于推导默认数据库路径。", InputType: "path", Required: true, RuntimeSource: "server_directory"},
 			{Key: "server_host", Label: "Host", LabelZH: "地址", Hint: "Game protocol address.", HintZH: "游戏协议地址。", InputType: "text", Required: true, Default: "127.0.0.1", RuntimeSource: "game_host"},

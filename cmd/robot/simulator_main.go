@@ -13,6 +13,7 @@ import (
 	robotcap "robot/internal/capability/robot"
 	"robot/internal/capability/robotconfig"
 	robotstate "robot/internal/capability/robotstate"
+	backendregistry "robot/internal/composition/backend"
 	s4a21backend "robot/internal/composition/backend/s4a21"
 	"robot/internal/entry/tcpapi"
 	"robot/internal/entry/webadmin"
@@ -28,7 +29,7 @@ import (
 // not open MySQL, initialize native RSA/party services, or construct market
 // and mail adapters that require native tables.
 func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendInfo, selection shared.BackendSelection) int {
-	if err := runtimeinit.InitConfigOnly(cfg); err != nil {
+	if err := runtimeinit.InitConfigForBackend(cfg, info); err != nil {
 		foundationlog.Robotf("SIMULATOR_RUNTIME_INIT_FAILED backend=%s err=%v\n", info.ID, err)
 		return 1
 	}
@@ -121,8 +122,21 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 		return 1
 	}
 	defer tcpServer.Close()
-	stopWebAdmin := webadmin.StartSupervisor(cfg, info.ID)
-	defer stopWebAdmin()
+	webCtx, webCancel := context.WithCancel(context.Background())
+	webServer := webadmin.NewWithCatalog(cfg, fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort), fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), info.ID, backendregistry.Available())
+	webDone := make(chan error, 1)
+	go func() { webDone <- webServer.Serve(webCtx) }()
+	defer func() {
+		webCancel()
+		select {
+		case err := <-webDone:
+			if err != nil {
+				foundationlog.Robotf("WEB_SERVER_STOP_FAILED err=%v\n", err)
+			}
+		case <-time.After(6 * time.Second):
+			foundationlog.Robotf("WEB_SERVER_STOP_TIMEOUT\n")
+		}
+	}()
 	manager.StartAutoActions()
 	foundationlog.Robotf("SIMULATOR_STARTED backend=%s tcp=%s\n", info.ID, addr)
 

@@ -30,6 +30,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 		shared.CapabilityPartyCompatibility, shared.CapabilityPartyDebug,
 		shared.CapabilitySkill, shared.CapabilityStore, shared.CapabilityMarket,
 		shared.CapabilityMailboxGuard, shared.CapabilityKeypair, shared.CapabilityDiagnostics,
+		shared.CapabilityMailNotification,
 		shared.CapabilitySystemAnnouncement, shared.CapabilityServiceControl,
 	} {
 		if info.Supports(capability) || info.Capabilities[capability].Reason == "" {

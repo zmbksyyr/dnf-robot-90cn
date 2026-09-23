@@ -20,6 +20,7 @@ import (
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
 	foundationlog "robot/internal/foundation/log"
+	"robot/internal/shared"
 )
 
 //go:embed defaults/*
@@ -61,6 +62,15 @@ func Init(cfg *config.SysConfig) error {
 // parsing or exporting a backend PVF. Simulated backends use their own PVF
 // adapter and must not inherit native runtime initialization.
 func InitConfigOnly(cfg *config.SysConfig) error {
+	return InitConfigForBackend(cfg, shared.BackendInfo{
+		Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{Enabled: true}),
+	})
+}
+
+// InitConfigForBackend releases only common files and files supported by the
+// selected backend. Backend switches use a fresh runtime directory, so an
+// unsupported backend-specific file is never presented as active config.
+func InitConfigForBackend(cfg *config.SysConfig, backend shared.BackendInfo) error {
 	if cfg == nil {
 		return fmt.Errorf("nil config")
 	}
@@ -71,7 +81,57 @@ func InitConfigOnly(cfg *config.SysConfig) error {
 	if err := paths.Ensure(); err != nil {
 		return err
 	}
-	return ensureConfigRuntimeFiles(paths)
+	if err := releaseBackendDefaults(paths, backend); err != nil {
+		return err
+	}
+	normalizeConfigFileModes(paths)
+	return nil
+}
+
+func releaseBackendDefaults(paths layout.Paths, backend shared.BackendInfo) error {
+	names := []string{"robot_name_templates.json", "robot_shout_templates.json"}
+	configName := "robot_config.ini"
+	if backend.ID == shared.BackendS4A21 {
+		configName = "robot_config_s4a21.ini"
+	}
+	names = append(names, configName)
+	if backend.Supports(shared.CapabilityKeypair) {
+		names = append(names, "privatekey.pem", "publickey.pem")
+	}
+	if backend.Supports(shared.CapabilitySkill) {
+		names = append(names, "party_skill_catalog.json")
+	}
+	if backend.Supports(shared.CapabilityMailboxGuard) {
+		names = append(names, "compat.json")
+	}
+	if backend.Supports(shared.CapabilityPartyCompatibility) {
+		names = append(names, "party_compat.json")
+	}
+	if backend.Supports(shared.CapabilityStore) {
+		names = append(names, "robot_store_titles.json")
+	}
+	for _, name := range names {
+		data, err := defaultFiles.ReadFile("defaults/" + name)
+		if err != nil {
+			return err
+		}
+		releaseName := name
+		if name == "robot_config_s4a21.ini" {
+			releaseName = "robot_config.ini"
+		}
+		dst, err := defaultReleasePath(paths, releaseName)
+		if err != nil {
+			return err
+		}
+		mode := fs.FileMode(0644)
+		if releaseName == "privatekey.pem" {
+			mode = 0600
+		}
+		if _, err := atomicfile.WriteFileIfMissing(dst, data, mode); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type runtimeManifest struct {
@@ -106,6 +166,9 @@ func releaseDefaults(paths layout.Paths) error {
 			return err
 		}
 		if d.IsDir() {
+			return nil
+		}
+		if path == "defaults/robot_config_s4a21.ini" {
 			return nil
 		}
 		data, err := defaultFiles.ReadFile(path)

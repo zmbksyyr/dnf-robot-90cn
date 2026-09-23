@@ -7,6 +7,6 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Enabled: true, Mode: "account"}
 	return shared.BackendInfo{
 		ID: shared.BackendNative, DisplayName: "Native", SupportedOS: []string{"linux"}, Selectable: true,
-		Capabilities: capabilities,
+		Capabilities: capabilities, MaxOnline: 600,
 	}
 }

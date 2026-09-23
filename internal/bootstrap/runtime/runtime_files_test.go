@@ -16,6 +16,7 @@ import (
 	storecap "robot/internal/capability/store"
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
+	"robot/internal/shared"
 )
 
 func TestInitRejectsEmptyRuntimeDirectory(t *testing.T) {
@@ -31,6 +32,36 @@ func TestInitConfigOnlyDoesNotRequirePVF(t *testing.T) {
 	}
 	if _, err := os.Stat(layout.New(dir).RobotConfig()); err != nil {
 		t.Fatalf("robot config was not initialized: %v", err)
+	}
+}
+
+func TestInitConfigForS4A21ReleasesOnlySupportedFiles(t *testing.T) {
+	dir := t.TempDir()
+	backend := shared.BackendInfo{
+		ID:           shared.BackendS4A21,
+		Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported"}),
+	}
+	backend.Capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true}
+	if err := InitConfigForBackend(&config.SysConfig{ConfigDir: dir}, backend); err != nil {
+		t.Fatal(err)
+	}
+	paths := layout.New(dir)
+	for _, path := range []string{paths.RobotConfig(), paths.NameTemplates(), paths.ShoutTemplates()} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("supported runtime file was not released: %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{paths.PrivateKey(), paths.PublicKey(), paths.PartySkills(), paths.MailboxGuard(), paths.PartyCompatibility(), paths.StoreTitles()} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("unsupported runtime file was released: %s", path)
+		}
+	}
+	rc, err := robotconfig.LoadFile(paths.RobotConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc.AutoMailNotify || rc.RobotUIDEnd != 17009999 || rc.MaxPetArtifactSlots != 3 {
+		t.Fatalf("S4A21 runtime config was not selected: %+v", rc)
 	}
 }
 
@@ -58,10 +89,13 @@ func TestReleaseDefaultsCoversCanonicalRuntimeAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != len(expected) {
-		t.Fatalf("embedded runtime assets=%d, categorized destinations=%d", len(entries), len(expected))
+	if len(entries) != len(expected)+1 {
+		t.Fatalf("embedded runtime assets=%d, native assets=%d", len(entries), len(expected))
 	}
 	for _, entry := range entries {
+		if entry.Name() == "robot_config_s4a21.ini" {
+			continue
+		}
 		if entry.IsDir() {
 			t.Fatalf("unexpected embedded runtime asset directory: %s", entry.Name())
 		}

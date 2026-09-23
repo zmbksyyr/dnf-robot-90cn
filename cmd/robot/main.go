@@ -283,8 +283,21 @@ func runMain() int {
 		}
 	}()
 	logRobotActionf("TCP server listening on %s\n", addr)
-	stopWebAdmin := webadmin.StartSupervisor(cfg, shared.BackendNative)
-	defer stopWebAdmin()
+	webCtx, webCancel := context.WithCancel(context.Background())
+	webServer := webadmin.NewWithCatalog(cfg, fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort), fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), backendInfo.ID, backendregistry.Available())
+	webDone := make(chan error, 1)
+	go func() { webDone <- webServer.Serve(webCtx) }()
+	defer func() {
+		webCancel()
+		select {
+		case err := <-webDone:
+			if err != nil {
+				dnf.LogString(fmt.Sprintf("WEB_SERVER_STOP_FAILED err=%v\n", err))
+			}
+		case <-time.After(6 * time.Second):
+			dnf.LogString("WEB_SERVER_STOP_TIMEOUT\n")
+		}
+	}()
 	manager.StartAutoActions()
 	if marketApp.Config().Auto.Enabled {
 		marketApp.StartAuto()

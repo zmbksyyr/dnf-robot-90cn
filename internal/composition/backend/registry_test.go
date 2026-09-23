@@ -39,10 +39,14 @@ func TestAvailableBackendsExposeCompleteCapabilityMatrix(t *testing.T) {
 		shared.CapabilityMarket,
 		shared.CapabilityCleanup,
 		shared.CapabilityMailboxGuard,
+		shared.CapabilityMailNotification,
 		shared.CapabilityKeypair,
 		shared.CapabilityDatabase,
 	}
 	for _, backend := range Available() {
+		if backend.MaxOnline <= 0 {
+			t.Fatalf("backend %s omitted max online limit", backend.ID)
+		}
 		for _, capability := range want {
 			if _, ok := backend.Capabilities[capability]; !ok {
 				t.Fatalf("backend %s omitted capability %s", backend.ID, capability)

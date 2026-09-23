@@ -30,6 +30,7 @@ const (
 	CapabilityCleanup            BackendCapability = "cleanup"
 	CapabilityDangerousDelete    BackendCapability = "dangerous_delete"
 	CapabilityMailboxGuard       BackendCapability = "mailbox_guard"
+	CapabilityMailNotification   BackendCapability = "mail_notification"
 	CapabilityKeypair            BackendCapability = "keypair"
 	CapabilityDatabase           BackendCapability = "database"
 	CapabilityDiagnostics        BackendCapability = "diagnostics"
@@ -51,6 +52,7 @@ type BackendInfo struct {
 	Reason       string                                 `json:"reason,omitempty"`
 	Capabilities map[BackendCapability]CapabilityStatus `json:"capabilities"`
 	Settings     []BackendSetting                       `json:"settings,omitempty"`
+	MaxOnline    int                                    `json:"max_online,omitempty"`
 }
 
 type BackendSetting struct {
@@ -132,6 +134,7 @@ func CapabilityMatrix(status CapabilityStatus) map[BackendCapability]CapabilityS
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty,
 		CapabilityPartyCompatibility, CapabilityPartyDebug, CapabilitySkill,
 		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityMailboxGuard,
+		CapabilityMailNotification,
 		CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
 		CapabilitySystemAnnouncement, CapabilityServiceControl,
 	} {

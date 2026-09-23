@@ -139,6 +139,9 @@ func (m *RobotManager) writeRobotConfigTextLocked(path, text string) error {
 	if err != nil {
 		return err
 	}
+	if err := m.validateBackendConfig(rc); err != nil {
+		return err
+	}
 	base, previous, err := m.prepareRobotConfigLocked(rc)
 	if err != nil {
 		return err
@@ -222,6 +225,7 @@ func (m *RobotManager) refreshRobotConfig(now time.Time) robotconfig.RuntimeConf
 			rc = robotconfig.Default()
 		}
 		robotconfig.Normalize(&rc)
+		m.applyBackendConfigPolicy(&rc)
 		base := robotconfig.Clone(rc)
 		effective := base
 		applyAdaptiveSchedulerConfig(&effective, m.adaptiveSchedulerSignals())
@@ -250,6 +254,10 @@ func (m *RobotManager) reloadRobotConfigFile(path string) error {
 
 func (m *RobotManager) prepareRobotConfigLocked(rc robotconfig.RuntimeConfig) (robotconfig.RuntimeConfig, *robotConfigSnapshot, error) {
 	robotconfig.Normalize(&rc)
+	if err := m.validateBackendConfig(rc); err != nil {
+		return robotconfig.RuntimeConfig{}, m.configSnapshot.Load(), err
+	}
+	m.applyBackendConfigPolicy(&rc)
 	base := robotconfig.Clone(rc)
 	previous := m.configSnapshot.Load()
 	if previous != nil && reflect.DeepEqual(previous.base, base) {
@@ -265,6 +273,39 @@ func (m *RobotManager) prepareRobotConfigLocked(rc robotconfig.RuntimeConfig) (r
 		}
 	}
 	return base, previous, nil
+}
+
+func (m *RobotManager) validateBackendConfig(rc robotconfig.RuntimeConfig) error {
+	if m == nil || m.backendInfo.ID == "" {
+		return nil
+	}
+	if limit := m.backendInfo.MaxOnline; limit > 0 && rc.AutoTargetOnlineCount > limit {
+		return fmt.Errorf("auto_target_online_count=%d exceeds backend %s limit %d", rc.AutoTargetOnlineCount, m.backendInfo.ID, limit)
+	}
+	if rc.AutoMailNotify && !m.backendInfo.Supports(shared.CapabilityMailNotification) {
+		return m.backendInfo.Require(shared.CapabilityMailNotification)
+	}
+	return nil
+}
+
+func (m *RobotManager) applyBackendConfigPolicy(rc *robotconfig.RuntimeConfig) {
+	if m == nil || rc == nil || m.backendInfo.ID == "" {
+		return
+	}
+	if limit := m.backendInfo.MaxOnline; limit > 0 {
+		if rc.MaxOnlineRobots > limit {
+			rc.MaxOnlineRobots = limit
+		}
+		if rc.MaxOnlinePerCommand > limit {
+			rc.MaxOnlinePerCommand = limit
+		}
+		if rc.AutoTargetOnlineCount > limit {
+			rc.AutoTargetOnlineCount = limit
+		}
+	}
+	if !m.backendInfo.Supports(shared.CapabilityMailNotification) {
+		rc.AutoMailNotify = false
+	}
 }
 
 func (m *RobotManager) publishRobotConfigLocked(path string, base robotconfig.RuntimeConfig, previous *robotConfigSnapshot) {

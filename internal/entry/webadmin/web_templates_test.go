@@ -71,8 +71,18 @@ func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
 }
 
 func TestAutoDialogAllowsPlatformOnlineCapacity(t *testing.T) {
-	if !strings.Contains(appJS, `id="autoTarget" type="number" min="1" max="10000"`) {
-		t.Fatal("auto target input does not expose the platform online capacity")
+	for _, want := range []string{`backendMaxOnline=Number(selected?.max_online||10000)`, `max="'+maxOnline+'"`, `Math.min(backendMaxOnline||10000`} {
+		if !strings.Contains(appJS, want) {
+			t.Fatalf("auto target input does not use backend capacity: missing %q", want)
+		}
+	}
+}
+
+func TestAutoDialogDisablesUnsupportedMailWithoutSubmittingIt(t *testing.T) {
+	for _, want := range []string{`mailCapability=backendCapabilities.mail_notification||{}`, `mailCapability.enabled?'':' disabled`, `if(backendCapabilities.mail_notification?.enabled)updates['auto.auto_mail_notify']`} {
+		if !strings.Contains(appJS, want) {
+			t.Fatalf("mail capability boundary is missing %q", want)
+		}
 	}
 }
 
