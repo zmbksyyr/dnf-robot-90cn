@@ -52,17 +52,21 @@ deployment requirements. Simulated backends may support Windows and/or Linux
 according to their own adapter declaration. Do not make native-only rules
 global.
 
-## Simulated Server Boundary
+## Simulated Server Persistence Boundary
 
-Robot code must not read or write a simulated server's game database. This is a
-hard rule regardless of whether the simulated server uses SQLite, MySQL, or
-another store. Account, character, inventory, equipment, currency, and other
-game-state changes must be performed through the server's network protocol.
+Prefer verified network protocol operations for simulated-server game-state
+changes. A simulated backend may use direct persistence only when the operator
+has explicitly enabled that backend-specific mode and no suitable protocol
+workflow is available. Do not make direct persistence a silent fallback.
 
-Simulated backend adapters must not import database drivers, accept database
-handles, inspect database files, or provide database fallbacks. If a simulated
-server lacks a required protocol operation, treat that as a protocol adaptation
-gap; do not bypass it with direct persistence writes.
+Database engines, schemas, transactions, and compatibility checks belong
+inside the concrete backend adapter. Shared contracts and schedulers must not
+import database drivers or assume SQLite, MySQL, table names, or storage paths.
+An adapter that supports direct persistence must declare the capability,
+validate the target schema, mutate characters only while their game sessions
+are offline, use transactions, and report unsupported schemas explicitly.
+Future simulated backends may omit or replace this adapter without changing
+shared scheduling behavior.
 
 Robot-owned configuration, runtime state, queues, logs, and audit data remain
 under the robot runtime layout and are separate from simulated server data.
