@@ -134,7 +134,9 @@ func TestHeaderActionsStayRightAlignedAndBackendSelectorIsCompact(t *testing.T) 
 		`anchor.parentElement.insertBefore(button,anchor)`,
 		`showModal(i18nFormat('backend.title'),body`,
 		`'backend',false`,
-		`dialog.backend{width:min(380px,96vw)`,
+		`dialog.backend{width:min(640px,96vw)`,
+		`class="backend-choices"`,
+		`server_directory:['Server dir','服务目录']`,
 		`button.textContent=selected?.display_name`,
 	} {
 		if !strings.Contains(indexHTML+appCSS+appJS, want) {

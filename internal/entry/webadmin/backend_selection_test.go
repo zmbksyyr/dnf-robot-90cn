@@ -151,7 +151,33 @@ func TestBackendSelectionRejectsIncompleteSimulatorSettings(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.OK || !strings.Contains(got.Error, "Game server directory") {
+	if got.OK || !strings.Contains(got.Error, "Server directory") {
+		t.Fatalf("payload=%+v", got)
+	}
+}
+
+func TestBackendSelectionAcceptsDerivedSimulatorDatabase(t *testing.T) {
+	dir := t.TempDir()
+	s := New(&config.SysConfig{ConfigDir: dir}, "", "")
+	body, err := json.Marshal(map[string]interface{}{
+		"backend_id": shared.BackendS4A21,
+		"settings": map[string]string{
+			"server_directory": filepath.Join(dir, "DfoServer"),
+			"server_host":      "127.0.0.1",
+			"game_port":        "10011",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(string(body)))
+	rec := httptest.NewRecorder()
+	s.handleBackend(rec, req)
+	var got backendSelectionPayload
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.OK || got.Settings["database_path"] != "" {
 		t.Fatalf("payload=%+v", got)
 	}
 }

@@ -16,8 +16,7 @@ func applyBackendSelectionSettings(cfg *config.SysConfig, selection shared.Backe
 	serverDir := strings.TrimSpace(selection.Settings["server_directory"])
 	host := strings.TrimSpace(selection.Settings["server_host"])
 	portText := strings.TrimSpace(selection.Settings["game_port"])
-	databasePath := strings.TrimSpace(selection.Settings["database_path"])
-	if serverDir == "" || host == "" || portText == "" || databasePath == "" {
+	if serverDir == "" || host == "" || portText == "" {
 		return fmt.Errorf("S4A21 backend settings are incomplete")
 	}
 	port, err := strconv.Atoi(portText)
