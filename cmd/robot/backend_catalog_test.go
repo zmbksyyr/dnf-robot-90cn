@@ -28,3 +28,15 @@ func TestS4A21PVFPathResolvesBesideExecutable(t *testing.T) {
 		t.Fatalf("path = %q, err = %v", got, err)
 	}
 }
+
+func TestS4A21PVFPathResolvesInsideServerDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Script.pvf")
+	if err := os.WriteFile(path, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s4a21PVFPath(dir)
+	if err != nil || got != path {
+		t.Fatalf("directory path = %q, err = %v", got, err)
+	}
+}

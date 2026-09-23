@@ -41,7 +41,14 @@ func s4a21PVFPath(dfGameR string) (string, error) {
 		}
 		return value, nil
 	}
-	candidate := filepath.Join(filepath.Dir(value), "Script.pvf")
+	// Some simulator bundles configure DfGameR as the server executable,
+	// while Linux-oriented bundles may configure it as the server directory.
+	// Resolve both forms without making backend selection implicit.
+	base := filepath.Dir(value)
+	if stat, err := os.Stat(value); err == nil && stat.IsDir() {
+		base = value
+	}
+	candidate := filepath.Join(base, "Script.pvf")
 	if _, err := os.Stat(candidate); err != nil {
 		return "", fmt.Errorf("S4A21 PVF %q: %w", candidate, err)
 	}
