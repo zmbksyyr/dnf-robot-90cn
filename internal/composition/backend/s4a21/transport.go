@@ -60,13 +60,18 @@ func (t *ActionTransport) Attach(uid int, session shared.RobotSession) error {
 		return fmt.Errorf("S4A21 action transport requires uid and session")
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	if _, exists := t.sessions[uid]; exists {
+		t.mu.Unlock()
 		return fmt.Errorf("S4A21 session already attached for uid %d", uid)
 	}
 	t.sessions[uid] = session
 	t.status[uid] = shared.RuntimeStatus{UID: uid, StateName: shared.RuntimeStateRunning, State: 3, RunStartTime: time.Now().Unix()}
 	delete(t.locationKnown, uid)
+	t.mu.Unlock()
+	if lifecycle, ok := session.(interface{ setTerminationCallback(func()) }); ok {
+		lifecycle.setTerminationCallback(func() { t.reapSession(uid, session) })
+		return nil
+	}
 	if lifecycle, ok := session.(interface{ Done() <-chan struct{} }); ok {
 		done := lifecycle.Done()
 		if done != nil {
@@ -78,6 +83,10 @@ func (t *ActionTransport) Attach(uid int, session shared.RobotSession) error {
 
 func (t *ActionTransport) watchSession(uid int, session shared.RobotSession, done <-chan struct{}) {
 	<-done
+	t.reapSession(uid, session)
+}
+
+func (t *ActionTransport) reapSession(uid int, session shared.RobotSession) {
 	t.mu.Lock()
 	if t.sessions[uid] == session {
 		delete(t.sessions, uid)

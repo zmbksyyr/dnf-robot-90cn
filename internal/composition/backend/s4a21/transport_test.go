@@ -18,6 +18,15 @@ type actionTestSession struct {
 	party   bool
 }
 
+type callbackActionTestSession struct {
+	actionTestSession
+	callback func()
+}
+
+func (s *callbackActionTestSession) setTerminationCallback(callback func()) {
+	s.callback = callback
+}
+
 type areaActionTestSession struct {
 	actionTestSession
 	area shared.TownAreaMoveIntent
@@ -228,6 +237,21 @@ func TestActionTransportReapsUnexpectedSessionEnd(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatalf("session was not reaped: %+v", transport.RuntimeStatusMap())
+}
+
+func TestActionTransportUsesAdapterTerminationCallback(t *testing.T) {
+	session := &callbackActionTestSession{}
+	transport := NewActionTransport()
+	if err := transport.Attach(7, session); err != nil {
+		t.Fatal(err)
+	}
+	if session.callback == nil {
+		t.Fatal("S4A21 termination callback was not registered")
+	}
+	session.callback()
+	if status := transport.RuntimeStatusMap()[7]; status.StateName != shared.RuntimeStateStop {
+		t.Fatalf("callback did not reap session: %+v", status)
+	}
 }
 
 func TestActionTransportReconnectStartsWithFreshTownSnapshot(t *testing.T) {

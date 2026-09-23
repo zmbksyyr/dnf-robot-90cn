@@ -17,7 +17,7 @@ type SystemStatus struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 	RobotCPUPercent float64   `json:"robot_cpu_percent"`
 	RobotMemoryMB   int       `json:"robot_memory_mb"`
-	RobotThreads    int       `json:"robot_threads"`
+	RobotGoroutines int       `json:"robot_threads"`
 	RobotUptimeSec  int       `json:"robot_uptime_seconds"`
 	Running         int       `json:"running"`
 	Store           int       `json:"store"`
@@ -25,12 +25,12 @@ type SystemStatus struct {
 
 func (m *RobotManager) SystemStatus() SystemStatus {
 	summary := m.runtimeStatusSummarySnapshot()
-	cpu, mem, threads := process.ResourceSnapshot()
+	cpu, mem, goroutines := process.ResourceSnapshot()
 	return SystemStatus{
 		UpdatedAt:       time.Now(),
 		RobotCPUPercent: cpu,
 		RobotMemoryMB:   mem,
-		RobotThreads:    threads,
+		RobotGoroutines: goroutines,
 		RobotUptimeSec:  int(time.Since(m.startedAt).Seconds()),
 		Running:         summary.Running,
 		Store:           summary.Stores,

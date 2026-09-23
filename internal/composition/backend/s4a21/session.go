@@ -29,6 +29,8 @@ type Session struct {
 	keepaliveDone      chan struct{}
 	packetObserverLock lockhub.RWLocker
 	packetObserver     *packetObserverRegistration
+	terminationGuard   lockhub.Locker
+	termination        func()
 	dungeonStateGuard  lockhub.Locker
 	dungeonState       *dungeonRunState
 	followerGuard      lockhub.Locker
@@ -242,6 +244,38 @@ func (s *Session) Done() <-chan struct{} {
 	return s.done
 }
 
+// setTerminationCallback keeps session lifecycle notification inside the
+// S4A21 adapter. It avoids one waiter goroutine per online robot without
+// widening the shared RobotSession contract.
+func (s *Session) setTerminationCallback(callback func()) {
+	if s == nil {
+		return
+	}
+	s.terminationGuard.Lock()
+	select {
+	case <-s.done:
+		s.terminationGuard.Unlock()
+		if callback != nil {
+			callback()
+		}
+		return
+	default:
+		s.termination = callback
+		s.terminationGuard.Unlock()
+	}
+}
+
+func (s *Session) signalTermination() {
+	close(s.done)
+	s.terminationGuard.Lock()
+	callback := s.termination
+	s.termination = nil
+	s.terminationGuard.Unlock()
+	if callback != nil {
+		callback()
+	}
+}
+
 // setPacketObserver is intentionally private to the S4A21 adapter. It gives a
 // future verified dungeon workflow a narrow way to consume packets already
 // owned by the session drain, without exposing raw packets to shared layers.
@@ -293,7 +327,7 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 }
 
 func (s *Session) drain(ctx context.Context) {
-	defer close(s.done)
+	defer s.signalTermination()
 	for {
 		packet, err := s.client.Read(ctx)
 		if err != nil {

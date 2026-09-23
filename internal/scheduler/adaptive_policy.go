@@ -85,7 +85,7 @@ func (m *RobotManager) adaptiveSchedulerSignals() adaptiveSchedulerSignals {
 	breaker := now.Before(m.autoBreakerUntil)
 	m.autoMu.Unlock()
 
-	cpu, mem, threads := process.ResourceSnapshot()
+	cpu, mem, goroutines := process.ResourceSnapshot()
 	return adaptiveSchedulerSignals{
 		Live:             live,
 		Running:          stats.Running,
@@ -104,7 +104,7 @@ func (m *RobotManager) adaptiveSchedulerSignals() adaptiveSchedulerSignals {
 		BreakerActive:    breaker,
 		CPUPercent:       cpu,
 		MemoryMB:         mem,
-		Goroutines:       threads,
+		Goroutines:       goroutines,
 	}
 }
 
