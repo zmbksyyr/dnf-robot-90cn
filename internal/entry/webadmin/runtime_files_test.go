@@ -24,6 +24,18 @@ func TestRuntimeFileWatcherOnlyTracksNativeBackendFiles(t *testing.T) {
 	}
 }
 
+func TestPartyCapabilityDoesNotEnableNativePatchFiles(t *testing.T) {
+	cfg := &config.SysConfig{ConfigDir: t.TempDir()}
+	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported"})
+	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Enabled: true}
+	server := NewWithCatalog(cfg, "", "", "party-only", []shared.BackendInfo{{
+		ID: "party-only", Capabilities: capabilities,
+	}})
+	if entries := server.runtimeFileEntries(); len(entries) != 0 {
+		t.Fatalf("ordinary party support enabled native patch files: %+v", entries)
+	}
+}
+
 func TestRuntimeFileWatcherRetainsLastValidWebConfig(t *testing.T) {
 	root := t.TempDir()
 	paths := layout.New(root)

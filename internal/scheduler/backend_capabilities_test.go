@@ -89,7 +89,7 @@ func TestSimulatorPartyAndSkillEntrypointsAreRejectedWithStableCapabilityError(t
 		run  func() error
 		want shared.BackendCapability
 	}{
-		{name: "party debug", run: func() error { _, err := m.PartyDebugStatus(); return err }, want: shared.CapabilityParty},
+		{name: "party debug", run: func() error { _, err := m.PartyDebugStatus(); return err }, want: shared.CapabilityPartyDebug},
 		{name: "party skills", run: func() error { _, err := m.ReloadPartySkills(); return err }, want: shared.CapabilitySkill},
 	}
 	for _, check := range checks {

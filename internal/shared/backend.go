@@ -23,11 +23,13 @@ const (
 	CapabilityWorldShout         BackendCapability = "world_shout"
 	CapabilityStore              BackendCapability = "store"
 	CapabilityParty              BackendCapability = "party"
+	CapabilityPartyCompatibility BackendCapability = "party_compatibility"
+	CapabilityPartyDebug         BackendCapability = "party_debug"
 	CapabilitySkill              BackendCapability = "skill"
 	CapabilityMarket             BackendCapability = "market"
 	CapabilityCleanup            BackendCapability = "cleanup"
 	CapabilityDangerousDelete    BackendCapability = "dangerous_delete"
-	CapabilityCompatibility      BackendCapability = "compatibility"
+	CapabilityMailboxGuard       BackendCapability = "mailbox_guard"
 	CapabilityKeypair            BackendCapability = "keypair"
 	CapabilityDatabase           BackendCapability = "database"
 	CapabilityDiagnostics        BackendCapability = "diagnostics"
@@ -127,8 +129,11 @@ func CapabilityMatrix(status CapabilityStatus) map[BackendCapability]CapabilityS
 	capabilities := make(map[BackendCapability]CapabilityStatus)
 	for _, capability := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
-		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityCompatibility, CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics, CapabilitySystemAnnouncement, CapabilityServiceControl,
+		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty,
+		CapabilityPartyCompatibility, CapabilityPartyDebug, CapabilitySkill,
+		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityMailboxGuard,
+		CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
+		CapabilitySystemAnnouncement, CapabilityServiceControl,
 	} {
 		capabilities[capability] = status
 	}

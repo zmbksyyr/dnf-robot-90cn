@@ -151,11 +151,11 @@ func (s *Server) Serve(ctx context.Context) error {
 	defer stopRuntimeFiles()
 	stopPartyCompat := func() {}
 	stopMailboxGuard := func() {}
-	if s.supportsBackendCapability(shared.CapabilityParty) {
+	if s.supportsBackendCapability(shared.CapabilityPartyCompatibility) {
 		stopPartyCompat = s.startPartyCompatSupervisor()
 		defer stopPartyCompat()
 	}
-	if s.supportsBackendCapability(shared.CapabilityCompatibility) {
+	if s.supportsBackendCapability(shared.CapabilityMailboxGuard) {
 		stopMailboxGuard = s.startMailboxGuardSupervisor()
 		defer stopMailboxGuard()
 	}

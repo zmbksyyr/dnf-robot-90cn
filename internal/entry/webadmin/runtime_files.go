@@ -30,10 +30,10 @@ func (s *Server) runtimeFileEntries() []filewatch.Entry {
 	}
 	paths := layout.New(s.cfg.ConfigDir)
 	var entries []filewatch.Entry
-	if s.supportsBackendCapability(shared.CapabilityCompatibility) {
+	if s.supportsBackendCapability(shared.CapabilityMailboxGuard) {
 		entries = append(entries, filewatch.Entry{Name: "mailbox_guard", Path: paths.MailboxGuard(), Apply: s.reloadMailboxGuardFile})
 	}
-	if s.supportsBackendCapability(shared.CapabilityParty) {
+	if s.supportsBackendCapability(shared.CapabilityPartyCompatibility) {
 		entries = append(entries, filewatch.Entry{Name: "party_compatibility", Path: paths.PartyCompatibility(), Apply: s.reloadPartyCompatFile})
 	}
 	if s.supportsBackendCapability(shared.CapabilitySkill) {

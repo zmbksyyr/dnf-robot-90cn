@@ -105,7 +105,7 @@ func TestCommandCapabilityCoversBackendSpecificActions(t *testing.T) {
 		"cleanupRobots":         shared.CapabilityCleanup,
 		"cleanupRobotsAsync":    shared.CapabilityCleanup,
 		"partySkillReload":      shared.CapabilitySkill,
-		"partyDebugStart":       shared.CapabilityParty,
+		"partyDebugStart":       shared.CapabilityPartyDebug,
 		"systemAnnouncement":    shared.CapabilitySystemAnnouncement,
 		"keypairReleaseDefault": shared.CapabilityKeypair,
 		"dangerousDeleteAsync":  shared.CapabilityDangerousDelete,

@@ -13,7 +13,7 @@ type partyDebugRuntime interface {
 }
 
 func (m *RobotManager) PartyDebugStart() (shared.PartyDebugStatus, error) {
-	if err := m.requireBackendCapability(shared.CapabilityParty); err != nil {
+	if err := m.requireBackendCapability(shared.CapabilityPartyDebug); err != nil {
 		return shared.PartyDebugStatus{}, err
 	}
 	runtime, ok := m.doll.(partyDebugRuntime)
@@ -24,7 +24,7 @@ func (m *RobotManager) PartyDebugStart() (shared.PartyDebugStatus, error) {
 }
 
 func (m *RobotManager) PartyDebugStop() (shared.PartyDebugStatus, error) {
-	if err := m.requireBackendCapability(shared.CapabilityParty); err != nil {
+	if err := m.requireBackendCapability(shared.CapabilityPartyDebug); err != nil {
 		return shared.PartyDebugStatus{}, err
 	}
 	runtime, ok := m.doll.(partyDebugRuntime)
@@ -35,7 +35,7 @@ func (m *RobotManager) PartyDebugStop() (shared.PartyDebugStatus, error) {
 }
 
 func (m *RobotManager) PartyDebugStatus() (shared.PartyDebugStatus, error) {
-	if err := m.requireBackendCapability(shared.CapabilityParty); err != nil {
+	if err := m.requireBackendCapability(shared.CapabilityPartyDebug); err != nil {
 		return shared.PartyDebugStatus{}, err
 	}
 	runtime, ok := m.doll.(partyDebugRuntime)

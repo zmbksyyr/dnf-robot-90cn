@@ -27,8 +27,9 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 	}
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityDungeonMove, shared.CapabilityWorldShout, shared.CapabilityParty,
+		shared.CapabilityPartyCompatibility, shared.CapabilityPartyDebug,
 		shared.CapabilitySkill, shared.CapabilityStore, shared.CapabilityMarket,
-		shared.CapabilityCompatibility, shared.CapabilityKeypair, shared.CapabilityDiagnostics,
+		shared.CapabilityMailboxGuard, shared.CapabilityKeypair, shared.CapabilityDiagnostics,
 		shared.CapabilitySystemAnnouncement, shared.CapabilityServiceControl,
 	} {
 		if info.Supports(capability) || info.Capabilities[capability].Reason == "" {

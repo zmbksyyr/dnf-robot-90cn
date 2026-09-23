@@ -11,7 +11,9 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
 	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
 	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Reason: "S4A21 supports protected protocol cleanup only"}
-	capabilities[shared.CapabilityCompatibility] = shared.CapabilityStatus{Reason: "native memory compatibility patches are not applicable to S4A21"}
+	capabilities[shared.CapabilityPartyCompatibility] = shared.CapabilityStatus{Reason: "native party compatibility patches are not applicable to S4A21"}
+	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "native party diagnostics are not applicable to S4A21"}
+	capabilities[shared.CapabilityMailboxGuard] = shared.CapabilityStatus{Reason: "native mailbox memory patches are not applicable to S4A21"}
 	capabilities[shared.CapabilityKeypair] = shared.CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
 	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "native runtime diagnostics are not available for S4A21"}

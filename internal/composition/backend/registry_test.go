@@ -33,10 +33,12 @@ func TestAvailableBackendsExposeCompleteCapabilityMatrix(t *testing.T) {
 		shared.CapabilityWorldShout,
 		shared.CapabilityStore,
 		shared.CapabilityParty,
+		shared.CapabilityPartyCompatibility,
+		shared.CapabilityPartyDebug,
 		shared.CapabilitySkill,
 		shared.CapabilityMarket,
 		shared.CapabilityCleanup,
-		shared.CapabilityCompatibility,
+		shared.CapabilityMailboxGuard,
 		shared.CapabilityKeypair,
 		shared.CapabilityDatabase,
 	}

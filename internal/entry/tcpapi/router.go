@@ -64,7 +64,7 @@ func commandCapability(cmd string) (shared.BackendCapability, bool) {
 	case "partySkillReload":
 		return shared.CapabilitySkill, true
 	case "partyDebugStart", "partyDebugStop", "partyDebugStatus":
-		return shared.CapabilityParty, true
+		return shared.CapabilityPartyDebug, true
 	case "systemAnnouncement":
 		return shared.CapabilitySystemAnnouncement, true
 	case "keypairReleaseDefault":
