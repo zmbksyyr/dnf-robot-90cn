@@ -90,9 +90,13 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 	loadouts := s4a21backend.SQLiteLoadoutApplier{
 		DatabasePath: loadoutDB, Config: rc, Equipment: catalog.ViewItemCatalogs(paths.PVF).Equipment, RandIntn: manager.RandIntn,
 	}
-	if err := reconcileSimulatorLoadouts(context.Background(), state, loadouts); err != nil {
-		foundationlog.Robotf("SIMULATOR_LOADOUT_RECONCILE_FAILED err=%v\n", err)
-		return 1
+	if os.Getenv("DNF_ROBOT_S4A21_REPAIR_LOADOUTS") == "1" {
+		foundationlog.Robotf("SIMULATOR_LOADOUT_REPAIR_STARTED\n")
+		if err := reconcileSimulatorLoadouts(context.Background(), state, loadouts); err != nil {
+			foundationlog.Robotf("SIMULATOR_LOADOUT_REPAIR_FAILED err=%v\n", err)
+			return 1
+		}
+		foundationlog.Robotf("SIMULATOR_LOADOUT_REPAIR_COMPLETED\n")
 	}
 	manager.SetBackendRobotCreator(info, s4a21backend.RobotCreator{
 		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
