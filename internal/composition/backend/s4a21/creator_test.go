@@ -82,6 +82,104 @@ func TestRobotCreatorRegistersBackendReportedProfile(t *testing.T) {
 	}
 }
 
+type reusedCreatorProvisioner struct{}
+
+func (reusedCreatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
+	request := requests[0]
+	return []shared.ProvisionCharacterResult{{
+		Backend: shared.BackendS4A21, CharacterName: "existing-character", Created: true, Reused: true, RobotUID: request.RobotUID,
+		ProfileKnown: true, Job: 3, Grow: 2, Level: 63,
+	}}, nil
+}
+
+type recordingCharacterInitializer struct {
+	profileCalls int
+	loadoutCalls int
+}
+
+func (a *recordingCharacterInitializer) ResolveCharacterProfile(_ context.Context, _ string, info robotcap.Info) (robotcap.Info, error) {
+	a.profileCalls++
+	return info, nil
+}
+
+func (a *recordingCharacterInitializer) ApplyPlannedCharacterLevel(_ context.Context, _ string, info robotcap.Info, _ int) (robotcap.Info, error) {
+	a.profileCalls++
+	return info, nil
+}
+
+func (a *recordingCharacterInitializer) ReconcileConfiguredCharacterLevel(_ context.Context, _ string, info robotcap.Info) (robotcap.Info, error) {
+	a.profileCalls++
+	return info, nil
+}
+
+func (a *recordingCharacterInitializer) ApplyCharacterLoadout(_ context.Context, _ string, _ robotcap.Info) error {
+	a.loadoutCalls++
+	return nil
+}
+
+func TestRobotCreatorPreservesReusedCharacterProfileAndLoadout(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	initializer := &recordingCharacterInitializer{}
+	creator := RobotCreator{
+		Provisioner: reusedCreatorProvisioner{}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			LevelMin: 70, LevelMax: 70, Jobs: []int{1}, GrowTypes: []int{0},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+		},
+		Names: robottemplate.NameTemplates{Common: []string{"new-template"}}, IDStart: 17000000, AccountPrefix: "robot",
+		Profiles: initializer, Loadouts: initializer,
+	}
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1})
+	if err != nil || len(robots) != 1 {
+		t.Fatalf("robots=%+v err=%v", robots, err)
+	}
+	if robots[0].Name != "existing-character" || robots[0].Job != 3 || robots[0].Grow != 2 || robots[0].Level != 63 {
+		t.Fatalf("reused profile was replaced: %+v", robots[0])
+	}
+	if initializer.profileCalls != 0 || initializer.loadoutCalls != 0 {
+		t.Fatalf("reused character was initialized: profile=%d loadout=%d", initializer.profileCalls, initializer.loadoutCalls)
+	}
+	identities, err := store.Identities(context.Background(), shared.BackendS4A21)
+	if err != nil || len(identities) != 1 || identities[0].Account != "robot17000000" || identities[0].CharacterName != "existing-character" {
+		t.Fatalf("recovered identities=%+v err=%v", identities, err)
+	}
+}
+
+type conflictThenCreateProvisioner struct {
+	calls int
+}
+
+func (p *conflictThenCreateProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
+	p.calls++
+	request := requests[0]
+	if p.calls == 1 {
+		return []shared.ProvisionCharacterResult{{Backend: shared.BackendS4A21, RobotUID: request.RobotUID}}, &AccountRosterConflictError{Account: request.AccountName, Count: 2}
+	}
+	return []shared.ProvisionCharacterResult{{
+		Backend: shared.BackendS4A21, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
+	}}, nil
+}
+
+func TestRobotCreatorSkipsAmbiguousAccountAndContinuesWithNextUID(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	provisioner := &conflictThenCreateProvisioner{}
+	creator := RobotCreator{
+		Provisioner: provisioner, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{0},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+		},
+		Names: robottemplate.NameTemplates{Common: []string{"Alpha", "Beta"}}, IDStart: 17000000, AccountPrefix: "robot",
+	}
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1})
+	if err != nil || len(robots) != 1 {
+		t.Fatalf("robots=%+v err=%v", robots, err)
+	}
+	if robots[0].UID != 17000001 || provisioner.calls != 2 {
+		t.Fatalf("conflicting account was not skipped: robots=%+v calls=%d", robots, provisioner.calls)
+	}
+}
+
 type failingCreatorProvisioner struct {
 	calls int
 }

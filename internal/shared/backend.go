@@ -93,7 +93,10 @@ type ProvisionCharacterResult struct {
 	Backend       BackendID
 	CharacterName string
 	Created       bool
-	RobotUID      int
+	// Reused reports that the backend account already contained this character.
+	// Callers must preserve its server-owned profile and loadout.
+	Reused   bool
+	RobotUID int
 	// BackendSlot is meaningful for backends whose roster is slot-based.
 	// UID/CID remain unset when the backend does not expose native IDs.
 	BackendSlot  *uint16

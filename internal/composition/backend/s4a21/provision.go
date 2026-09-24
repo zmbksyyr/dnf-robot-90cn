@@ -18,6 +18,15 @@ type Provisioner struct {
 	Timeout time.Duration
 }
 
+type AccountRosterConflictError struct {
+	Account string
+	Count   int
+}
+
+func (e *AccountRosterConflictError) Error() string {
+	return fmt.Sprintf("S4A21 robot account %q contains %d characters; refusing automatic adoption or deletion", e.Account, e.Count)
+}
+
 var provisionNameSequence atomic.Uint64
 
 // ProvisionCharacters executes the same verified network workflow for each
@@ -51,7 +60,6 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 		return result, fmt.Errorf("job must be between 0 and 255")
 	}
 	requestedName := strings.TrimSpace(request.CharacterName)
-	fallbackName := fallbackCharacterName(request)
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -82,30 +90,23 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	if err != nil && len(rosterPacket.Body) > 1 {
 		return result, fmt.Errorf("S4A21 character roster decode: %w", err)
 	}
-	for _, candidate := range []string{requestedName, fallbackName} {
-		for _, character := range roster {
-			if !rosterNameMatches(character, candidate) {
-				continue
-			}
-			slot := character.Slot
-			result.CharacterName = candidate
-			result.BackendSlot = &slot
-			result.ProfileKnown = true
-			result.Job = int(character.Job)
-			result.Grow = int(character.Grow)
-			result.Level = int(character.Level)
-			// Created means the requested protocol identity is ready for local
-			// registration. It also covers adoption after a prior partial batch.
-			result.Created = true
-			return result, nil
-		}
+	if len(roster) == 1 {
+		character := roster[0]
+		slot := character.Slot
+		result.CharacterName = character.Name
+		result.BackendSlot = &slot
+		result.ProfileKnown = true
+		result.Job = int(character.Job)
+		result.Grow = int(character.Grow)
+		result.Level = int(character.Level)
+		// Successful login to the deterministic robot account is the durable
+		// ownership proof. The character name may change across config resets.
+		result.Created = true
+		result.Reused = true
+		return result, nil
 	}
-	if len(roster) > 0 {
-		// A robot-owned account must contain at most its registered identity.
-		// Interrupted cleanups can leave stale siblings that consume slots.
-		if err := clearRobotAccountRoster(ctx, client, rosterPacket.Body); err != nil {
-			return result, fmt.Errorf("S4A21 clear stale character roster: %w", err)
-		}
+	if len(roster) > 1 {
+		return result, &AccountRosterConflictError{Account: request.AccountName, Count: len(roster)}
 	}
 	createdName := ""
 	candidates := provisionCharacterNameCandidates(request, requestedName)
@@ -191,15 +192,6 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	return result, nil
 }
 
-func rosterNameMatches(character protocol.CharacterRosterEntry, candidate string) bool {
-	candidate = strings.TrimSpace(candidate)
-	if strings.EqualFold(strings.TrimSpace(character.Name), candidate) {
-		return true
-	}
-	encoded, err := charset.EncodeGBKString(candidate)
-	return err == nil && len(character.NameRaw) > 0 && string(character.NameRaw) == string(encoded)
-}
-
 func provisionCharacterNameCandidates(request shared.ProvisionCharacterRequest, requestedName string) []string {
 	candidates := make([]string, 0, 13)
 	seen := make(map[string]struct{}, 13)
@@ -256,18 +248,6 @@ func freshCharacterName(base string, seed uint64) string {
 		prefix.WriteString("旅人")
 	}
 	return prefix.String() + suffix
-}
-
-func fallbackCharacterName(request shared.ProvisionCharacterRequest) string {
-	if request.RobotUID > 0 {
-		return fmt.Sprintf("rb%d", request.RobotUID)
-	}
-	value := uint32(2166136261)
-	for _, b := range []byte(request.AccountName + "\x00" + request.CharacterName) {
-		value ^= uint32(b)
-		value *= 16777619
-	}
-	return fmt.Sprintf("rb%08x", value)
 }
 
 func commandAccepted(body []byte) bool {

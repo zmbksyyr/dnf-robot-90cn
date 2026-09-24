@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 	"unicode"
@@ -239,7 +240,7 @@ func onlyHan(value string) bool {
 	return true
 }
 
-func TestProvisionCharacterAdoptsExistingRosterIdentity(t *testing.T) {
+func TestProvisionCharacterAdoptsExistingRobotAccountRegardlessOfCharacterName(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -267,19 +268,68 @@ func TestProvisionCharacterAdoptsExistingRosterIdentity(t *testing.T) {
 			done <- fmt.Errorf("roster request type=0x%04X err=%v", request.Type, readErr)
 			return
 		}
-		_, writeErr := conn.Write(protocol.EncodeResponse(0, protocol.NotiCharacterList, rosterBody(3, "robot01", 2)))
+		_, writeErr := conn.Write(protocol.EncodeResponse(0, protocol.NotiCharacterList, rosterBody(3, "legacy-name", 2)))
 		done <- writeErr
 	}()
 	result, err := (Provisioner{Address: listener.Addr().String(), Timeout: time.Second}).ProvisionCharacter(
-		context.Background(), shared.ProvisionCharacterRequest{AccountName: "robot1", CharacterName: "robot01", Job: 2})
+		context.Background(), shared.ProvisionCharacterRequest{AccountName: "robot1", CharacterName: "new-template-name", Job: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !result.Created || result.BackendSlot == nil || *result.BackendSlot != 3 {
+	if !result.Created || !result.Reused || result.CharacterName != "legacy-name" || result.Job != 2 || result.Level != 1 || result.BackendSlot == nil || *result.BackendSlot != 3 {
 		t.Fatalf("adopted result = %+v", result)
+	}
+}
+
+func TestProvisionCharacterRefusesAmbiguousRobotAccount(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	done := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			done <- acceptErr
+			return
+		}
+		defer conn.Close()
+		for _, step := range []struct {
+			wantType     uint16
+			responseType uint16
+			command      byte
+			body         []byte
+		}{
+			{protocol.CmdLogin, protocol.CmdLogin, 1, []byte{1}},
+			{protocol.CmdGetUserInfo, protocol.NotiCharacterList, 0, rosterBodyEntries(
+				rosterTestEntry{slot: 1, name: "first", job: 1},
+				rosterTestEntry{slot: 2, name: "second", job: 2},
+			)},
+		} {
+			request, readErr := protocol.ReadRequestFrame(conn, protocol.DefaultMaxPacketLength)
+			if readErr != nil || request.Type != step.wantType {
+				done <- fmt.Errorf("request type=0x%04X want=0x%04X err=%v", request.Type, step.wantType, readErr)
+				return
+			}
+			if _, writeErr := conn.Write(protocol.EncodeResponse(step.command, step.responseType, step.body)); writeErr != nil {
+				done <- writeErr
+				return
+			}
+		}
+		done <- nil
+	}()
+
+	result, err := (Provisioner{Address: listener.Addr().String(), Timeout: time.Second}).ProvisionCharacter(
+		context.Background(), shared.ProvisionCharacterRequest{AccountName: "robot1", CharacterName: "new-name", Job: 1})
+	if err == nil || !strings.Contains(err.Error(), "refusing automatic adoption or deletion") || result.Created {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -290,18 +340,30 @@ func emptyRosterBody() []byte {
 }
 
 func rosterBody(slot uint16, name string, job byte) []byte {
+	return rosterBodyEntries(rosterTestEntry{slot: slot, name: name, job: job})
+}
+
+type rosterTestEntry struct {
+	slot uint16
+	name string
+	job  byte
+}
+
+func rosterBodyEntries(entries ...rosterTestEntry) []byte {
 	var body bytes.Buffer
 	body.Write(make([]byte, 16))
 	body.Bytes()[0] = 2
-	_ = binary.Write(&body, binary.LittleEndian, uint16(1))
-	_ = binary.Write(&body, binary.LittleEndian, slot)
-	_ = binary.Write(&body, binary.LittleEndian, uint32(len(name)))
-	body.WriteString(name)
-	body.Write([]byte{0, 0, job, 0, 1, 0, 0})
-	_ = binary.Write(&body, binary.LittleEndian, uint32(0))
-	_ = binary.Write(&body, binary.LittleEndian, uint32(0))
-	body.WriteByte(0)
-	body.Write(make([]byte, 36))
+	_ = binary.Write(&body, binary.LittleEndian, uint16(len(entries)))
+	for _, entry := range entries {
+		_ = binary.Write(&body, binary.LittleEndian, entry.slot)
+		_ = binary.Write(&body, binary.LittleEndian, uint32(len(entry.name)))
+		body.WriteString(entry.name)
+		body.Write([]byte{0, 0, entry.job, 0, 1, 0, 0})
+		_ = binary.Write(&body, binary.LittleEndian, uint32(0))
+		_ = binary.Write(&body, binary.LittleEndian, uint32(0))
+		body.WriteByte(0)
+		body.Write(make([]byte, 36))
+	}
 	return body.Bytes()
 }
 
