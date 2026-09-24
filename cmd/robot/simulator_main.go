@@ -79,7 +79,9 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 	manager.SetBackendRobotCreator(info, nil)
 	manager.SetRobotStateDirectory(state)
 	defer func() {
-		if err := state.Flush(); err != nil { foundationlog.Robotf("SIMULATOR_STATE_FLUSH_FAILED err=%v\n", err) }
+		if err := state.Flush(); err != nil {
+			foundationlog.Robotf("SIMULATOR_STATE_FLUSH_FAILED err=%v\n", err)
+		}
 	}()
 	manager.SetBackendActionTransport(transports.actions)
 	manager.SetBackendSessionTransport(transports.sessions)
@@ -167,6 +169,26 @@ func reconcileSimulatorLoadouts(ctx context.Context, state *robotstate.FileStore
 	accounts := make(map[string]string, len(identities))
 	for _, identity := range identities {
 		accounts[identity.CharacterName] = identity.Account
+	}
+	if batch, ok := applier.(s4a21backend.CharacterLoadoutBatchReconciler); ok {
+		requests := make([]s4a21backend.CharacterLoadoutRequest, 0, len(robots))
+		for _, robot := range robots {
+			account := accounts[robot.Name]
+			if account == "" {
+				return fmt.Errorf("S4A21 robot %d/%s has no account identity", robot.UID, robot.Name)
+			}
+			requests = append(requests, s4a21backend.CharacterLoadoutRequest{Account: account, Robot: robot})
+		}
+		updates, err := batch.ReconcileCharacterLoadouts(ctx, requests)
+		if err != nil {
+			return fmt.Errorf("reconcile S4A21 loadouts: %w", err)
+		}
+		if len(updates) > 0 {
+			if err := state.UpdateRobotProfiles(ctx, updates); err != nil {
+				return fmt.Errorf("persist S4A21 profiles: %w", err)
+			}
+		}
+		return nil
 	}
 	profiles, canResolve := applier.(s4a21backend.CharacterProfileReader)
 	profileAdapter, canReconcileLevel := applier.(s4a21backend.CharacterProfileAdapter)

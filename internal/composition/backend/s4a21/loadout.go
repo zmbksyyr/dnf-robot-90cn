@@ -32,6 +32,10 @@ type CharacterLoadoutApplier interface {
 	ApplyCharacterLoadout(context.Context, string, robotcap.Info) error
 }
 
+type CharacterLoadoutBatchReconciler interface {
+	ReconcileCharacterLoadouts(context.Context, []CharacterLoadoutRequest) ([]robotcap.Info, error)
+}
+
 type CharacterProfileReader interface {
 	ResolveCharacterProfile(context.Context, string, robotcap.Info) (robotcap.Info, error)
 }
@@ -40,6 +44,11 @@ type CharacterProfileAdapter interface {
 	CharacterProfileReader
 	ApplyPlannedCharacterLevel(context.Context, string, robotcap.Info, int) (robotcap.Info, error)
 	ReconcileConfiguredCharacterLevel(context.Context, string, robotcap.Info) (robotcap.Info, error)
+}
+
+type CharacterLoadoutRequest struct {
+	Account string
+	Robot   robotcap.Info
 }
 
 type SQLiteLoadoutApplier struct {
@@ -118,11 +127,14 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 	if err != nil {
 		return err
 	}
-	info = actual
+	return a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, equipmentByID(a.Equipment), petSchemaAvailable(ctx, db))
+}
+
+func (a SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) error {
 	selectedEquipment := equipmentcap.SelectEquipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
 	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
 	selectedPet, selectedArtifacts, petSelected := equipmentcap.SelectPet(a.Equipment, a.Config, a.RandIntn)
-	if petSelected && !petSchemaAvailable(ctx, db) {
+	if petSelected && !petSchema {
 		petSelected = false
 		selectedArtifacts = nil
 	}
@@ -132,7 +144,7 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 	if a.Config.MinAvatarSlots > 0 && len(selectedAvatar) < a.Config.MinAvatarSlots {
 		return fmt.Errorf("S4A21 loadout has %d compatible avatar slots, need %d for job=%d", len(selectedAvatar), a.Config.MinAvatarSlots, info.Job)
 	}
-	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, a.Equipment, len(selectedEquipment), len(selectedAvatar), petSelected, selectedPet, selectedArtifacts)
+	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, items, len(selectedEquipment), len(selectedAvatar), petSelected, selectedPet, selectedArtifacts)
 	if err != nil {
 		return err
 	}
@@ -151,6 +163,44 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 		return fmt.Errorf("commit S4A21 loadout: %w", err)
 	}
 	return nil
+}
+
+// ReconcileCharacterLoadouts keeps startup validation on one SQLite handle.
+// Sessions are not started until it returns, so persistence remains offline.
+func (a SQLiteLoadoutApplier) ReconcileCharacterLoadouts(ctx context.Context, requests []CharacterLoadoutRequest) ([]robotcap.Info, error) {
+	if strings.TrimSpace(a.DatabasePath) == "" {
+		return nil, fmt.Errorf("S4A21 loadout database path is required")
+	}
+	db, err := sql.Open("sqlite", a.DatabasePath)
+	if err != nil {
+		return nil, fmt.Errorf("open S4A21 loadout database: %w", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
+		return nil, fmt.Errorf("configure S4A21 loadout database: %w", err)
+	}
+	if err := validateLoadoutSchema(ctx, db); err != nil {
+		return nil, err
+	}
+	items := equipmentByID(a.Equipment)
+	petSchema := petSchemaAvailable(ctx, db)
+	updates := make([]robotcap.Info, 0, len(requests))
+	for _, request := range requests {
+		accountID, characterID, actual, err := resolveCharacterProfile(ctx, db, request.Account, request.Robot)
+		if err != nil {
+			return nil, err
+		}
+		actual, err = a.reconcileResolvedCharacterLevel(ctx, db, characterID, actual)
+		if err != nil {
+			return nil, err
+		}
+		if err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema); err != nil {
+			return nil, err
+		}
+		updates = append(updates, actual)
+	}
+	return updates, nil
 }
 
 func (a SQLiteLoadoutApplier) ResolveCharacterProfile(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
@@ -177,10 +227,25 @@ func (a SQLiteLoadoutApplier) ApplyPlannedCharacterLevel(ctx context.Context, ac
 }
 
 func (a SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
-	actual, err := a.ResolveCharacterProfile(ctx, account, info)
+	if strings.TrimSpace(a.DatabasePath) == "" {
+		return info, fmt.Errorf("S4A21 profile database path is required")
+	}
+	db, err := sql.Open("sqlite", a.DatabasePath)
+	if err != nil {
+		return info, fmt.Errorf("open S4A21 profile database: %w", err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
+		return info, err
+	}
+	_, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
 	if err != nil {
 		return info, err
 	}
+	return a.reconcileResolvedCharacterLevel(ctx, db, characterID, actual)
+}
+
+func (a SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info) (robotcap.Info, error) {
 	minLevel, maxLevel := a.Config.LevelMin, a.Config.LevelMax
 	if minLevel < 1 {
 		minLevel = 1
@@ -194,7 +259,7 @@ func (a SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Cont
 	if actual.Level >= minLevel && actual.Level <= maxLevel {
 		return actual, nil
 	}
-	return a.writeCharacterLevel(ctx, account, actual, randomBetween(a.RandIntn, minLevel, maxLevel))
+	return writeResolvedCharacterLevel(ctx, db, characterID, actual, randomBetween(a.RandIntn, minLevel, maxLevel))
 }
 
 func (a SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
@@ -213,25 +278,37 @@ func (a SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account s
 	if err != nil {
 		return info, err
 	}
+	return writeResolvedCharacterLevel(ctx, db, characterID, actual, level)
+}
+
+func writeResolvedCharacterLevel(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info, level int) (robotcap.Info, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return info, err
+		return actual, err
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(ctx, `UPDATE characters
 SET level=?, exp=0, updated_at=CURRENT_TIMESTAMP
-WHERE character_id=? AND delete_flag=0`, level, characterID)
+	WHERE character_id=? AND delete_flag=0`, level, characterID)
 	if err != nil {
-		return info, fmt.Errorf("write S4A21 character level id=%d: %w", characterID, err)
+		return actual, fmt.Errorf("write S4A21 character level id=%d: %w", characterID, err)
 	}
 	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
-		return info, fmt.Errorf("write S4A21 character level id=%d affected=%d err=%v", characterID, affected, err)
+		return actual, fmt.Errorf("write S4A21 character level id=%d affected=%d err=%v", characterID, affected, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return info, fmt.Errorf("commit S4A21 character level id=%d: %w", characterID, err)
+		return actual, fmt.Errorf("commit S4A21 character level id=%d: %w", characterID, err)
 	}
 	actual.Level = level
 	return actual, nil
+}
+
+func equipmentByID(catalog []shared.EquipmentCatalogItem) map[int]shared.EquipmentCatalogItem {
+	items := make(map[int]shared.EquipmentCatalogItem, len(catalog))
+	for _, item := range catalog {
+		items[item.ID] = item
+	}
+	return items
 }
 
 func resolveCharacterProfile(ctx context.Context, db *sql.DB, account string, info robotcap.Info) (int, int, robotcap.Info, error) {
@@ -253,11 +330,7 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 	return accountID, characterID, info, nil
 }
 
-func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, catalog []shared.EquipmentCatalogItem, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
-	items := make(map[int]shared.EquipmentCatalogItem, len(catalog))
-	for _, item := range catalog {
-		items[item.ID] = item
-	}
+func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
 	rows, err := db.QueryContext(ctx, `SELECT slot_index,item_core FROM character_inventory_items
 WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 27`, characterID, a21ListTypeEquipment)
 	if err != nil {
