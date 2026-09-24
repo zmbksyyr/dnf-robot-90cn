@@ -153,11 +153,13 @@ func TestSimulatorKeypairCapabilityDoesNotBlockAutoControl(t *testing.T) {
 
 func TestDashboardCardsFollowBackendCapabilities(t *testing.T) {
 	for _, want := range []string{
+		`id="mMonitor" hidden`,
+		`id="mKey" hidden`,
 		`key.hidden=!backendCapabilities.keypair?.enabled`,
 		`services.hidden=!['system_announcement','market','service_control'].some`,
 		`function applyBackendCapabilities(){applyDashboardCapabilityVisibility();`,
 	} {
-		if !strings.Contains(appJS, want) {
+		if !strings.Contains(indexHTML+appJS, want) {
 			t.Fatalf("dashboard capability visibility is missing %q", want)
 		}
 	}
