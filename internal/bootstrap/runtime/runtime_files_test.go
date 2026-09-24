@@ -60,7 +60,7 @@ func TestInitConfigForS4A21ReleasesOnlySupportedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rc.AutoMailNotify || rc.RobotUIDEnd != 17009999 || rc.MaxPetArtifactSlots != 3 {
+	if rc.AutoMailNotify || rc.RobotUIDEnd != 17009999 || rc.MaxOnlineRobots != 10000 || rc.MaxOnlinePerCommand != 10000 || rc.MaxPetArtifactSlots != 3 {
 		t.Fatalf("S4A21 runtime config was not selected: %+v", rc)
 	}
 }

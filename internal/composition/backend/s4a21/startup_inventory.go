@@ -52,6 +52,11 @@ type startupInventoryIndex struct {
 	creatureKeys  map[int]map[int]struct{}
 }
 
+type startupSQLiteConn interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
 // ScanAndClean makes the game database the only durable source of S4A21 robot
 // identity. Accounts are owned only when their name is exactly prefix+UID and
 // the UID is inside the configured segment. Any owned account that is not a
@@ -71,21 +76,29 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return result, fmt.Errorf("connect S4A21 startup inventory: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
 		return result, fmt.Errorf("configure S4A21 startup inventory: %w", err)
 	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
+	// A deferred transaction can become SQLITE_BUSY_SNAPSHOT when the game
+	// server writes after our reads but before invalid-account deletion. Take
+	// the write reservation first so the scan and cleanup remain one atomic
+	// startup operation.
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
 		return result, fmt.Errorf("begin S4A21 startup inventory: %w", err)
 	}
-	defer tx.Rollback()
+	defer conn.ExecContext(context.Background(), `ROLLBACK`)
 
-	accounts, characterIDs, err := s.readOwnedAccounts(ctx, tx, prefix)
+	accounts, characterIDs, err := s.readOwnedAccounts(ctx, conn, prefix)
 	if err != nil {
 		return result, err
 	}
 	result.ScannedAccounts = len(accounts)
-	index, err := readStartupInventoryIndex(ctx, tx, prefix, characterIDs)
+	index, err := readStartupInventoryIndex(ctx, conn, prefix, characterIDs)
 	if err != nil {
 		return result, err
 	}
@@ -112,12 +125,12 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 		})
 	}
 	for _, accountID := range invalidAccountIDs {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM accounts WHERE account_id=?`, accountID); err != nil {
+		if _, err := conn.ExecContext(ctx, `DELETE FROM accounts WHERE account_id=?`, accountID); err != nil {
 			return result, fmt.Errorf("delete invalid S4A21 robot account id=%d: %w", accountID, err)
 		}
 	}
 	result.DeletedAccounts = len(invalidAccountIDs)
-	if err := tx.Commit(); err != nil {
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
 		return result, fmt.Errorf("commit S4A21 startup inventory: %w", err)
 	}
 	sort.Slice(result.Robots, func(i, j int) bool { return result.Robots[i].UID < result.Robots[j].UID })
@@ -125,8 +138,8 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 	return result, nil
 }
 
-func (s SQLiteStartupInventory) readOwnedAccounts(ctx context.Context, tx *sql.Tx, prefix string) ([]startupAccount, map[int]struct{}, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT a.account_id,a.m_id,
+func (s SQLiteStartupInventory) readOwnedAccounts(ctx context.Context, conn startupSQLiteConn, prefix string) ([]startupAccount, map[int]struct{}, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT a.account_id,a.m_id,
 c.character_id,c.name,c.job,c.grow_type,c.level,c.town_id,c.area_id,c.pos_x,c.pos_y,c.slot_index,c.delete_flag
 FROM accounts a LEFT JOIN characters c ON c.account_id=a.account_id
 WHERE a.m_id LIKE ? ORDER BY a.account_id,c.character_id`, prefix+"%")
@@ -177,11 +190,11 @@ WHERE a.m_id LIKE ? ORDER BY a.account_id,c.character_id`, prefix+"%")
 	return accounts, characterIDs, nil
 }
 
-func readStartupInventoryIndex(ctx context.Context, tx *sql.Tx, prefix string, characterIDs map[int]struct{}) (startupInventoryIndex, error) {
+func readStartupInventoryIndex(ctx context.Context, conn startupSQLiteConn, prefix string, characterIDs map[int]struct{}) (startupInventoryIndex, error) {
 	index := startupInventoryIndex{
 		cores: make(map[int]map[int][]byte), avatarDetails: make(map[int]map[int]struct{}), creatureKeys: make(map[int]map[int]struct{}),
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT i.character_id,i.slot_index,i.item_core
+	rows, err := conn.QueryContext(ctx, `SELECT i.character_id,i.slot_index,i.item_core
 FROM character_inventory_items i JOIN characters c ON c.character_id=i.character_id
 JOIN accounts a ON a.account_id=c.account_id
 WHERE a.m_id LIKE ? AND i.list_type=? AND i.slot_index BETWEEN 0 AND 28`, prefix+"%", a21ListTypeEquipment)
@@ -206,7 +219,7 @@ WHERE a.m_id LIKE ? AND i.list_type=? AND i.slot_index BETWEEN 0 AND 28`, prefix
 	if err := rows.Close(); err != nil {
 		return index, err
 	}
-	rows, err = tx.QueryContext(ctx, `SELECT d.character_id,d.item_uid FROM character_avatar_detail d
+	rows, err = conn.QueryContext(ctx, `SELECT d.character_id,d.item_uid FROM character_avatar_detail d
 JOIN characters c ON c.character_id=d.character_id JOIN accounts a ON a.account_id=c.account_id
 WHERE a.m_id LIKE ?`, prefix+"%")
 	if err != nil {
@@ -229,7 +242,7 @@ WHERE a.m_id LIKE ?`, prefix+"%")
 	if err := rows.Close(); err != nil {
 		return index, err
 	}
-	rows, err = tx.QueryContext(ctx, `SELECT p.character_id,p.creature_key FROM character_creatures p
+	rows, err = conn.QueryContext(ctx, `SELECT p.character_id,p.creature_key FROM character_creatures p
 JOIN characters c ON c.character_id=p.character_id JOIN accounts a ON a.account_id=c.account_id
 WHERE a.m_id LIKE ?`, prefix+"%")
 	if err != nil {
@@ -343,7 +356,7 @@ func startupCoreItem(core []byte, kind byte, items map[int]shared.EquipmentCatal
 		return shared.EquipmentCatalogItem{}, false
 	}
 	item, ok := items[int(binary.LittleEndian.Uint32(core[1:5]))]
-	return item, ok && item.ID > 0 && !item.Expire && shared.ClientCompatibleEquipment(item)
+	return item, ok && item.ID > 0 && !item.Expire && s4a21LoadoutCompatible(item)
 }
 
 func hasStartupArtifactCore(cores map[int][]byte) bool {

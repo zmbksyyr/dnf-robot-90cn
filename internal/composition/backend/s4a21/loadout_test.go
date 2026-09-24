@@ -46,8 +46,8 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 	items := []shared.EquipmentCatalogItem{
 		{ID: 1001, ItemType: 1, Level: 40, Durability: 45, UseJob: []int{1}},
 		{ID: 1003, ItemType: 3, Level: 40, Durability: 55, UseJob: []int{1}},
-		{ID: 1011, ItemType: 11, Level: 60, Durability: 30, UseJob: []int{100}},
-		{ID: 1012, ItemType: 12, Level: 68, Durability: 30, UseJob: []int{100}},
+		{ID: 1011, ItemType: 11, Level: 60, Durability: 30, UseJob: []int{100}, ClientIncompatible: true},
+		{ID: 1012, ItemType: 12, Level: 68, Durability: 30, UseJob: []int{100}, ClientIncompatible: true},
 		{ID: 2000, Name: "Hat", ItemType: 20, UseJob: []int{1}, Icon: "avatar/a.img"},
 		{ID: 2001, Name: "Hair", ItemType: 21, UseJob: []int{1}, Icon: "avatar/b.img"},
 		{ID: 2011, Name: "Wrong job hat", ItemType: 20, UseJob: []int{11}, Icon: "avatar/c.img"},

@@ -3,12 +3,15 @@ package s4a21
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	robotstate "robot/internal/capability/robotstate"
 	robottemplate "robot/internal/capability/robottemplate"
+	"robot/internal/foundation/lockhub"
 	"robot/internal/shared"
 )
 
@@ -51,6 +54,62 @@ func (creatorProvisioner) ProvisionCharacters(_ context.Context, requests []shar
 		results[i] = shared.ProvisionCharacterResult{Backend: shared.BackendS4A21, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID}
 	}
 	return results, nil
+}
+
+type concurrentCreatorProvisioner struct {
+	mu   lockhub.Locker
+	uids map[int]struct{}
+}
+
+func (p *concurrentCreatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
+	request := requests[0]
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, exists := p.uids[request.RobotUID]; exists {
+		return nil, fmt.Errorf("duplicate provision uid %d", request.RobotUID)
+	}
+	p.uids[request.RobotUID] = struct{}{}
+	return []shared.ProvisionCharacterResult{{
+		Backend: shared.BackendS4A21, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
+	}}, nil
+}
+
+func TestRobotCreatorSerializesConcurrentIdentityAllocation(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	provisioner := &concurrentCreatorProvisioner{uids: make(map[int]struct{})}
+	creator := RobotCreator{
+		Provisioner: provisioner, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			RobotUIDEnd: 17000019, LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{0},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+		},
+		Names:   robottemplate.NameTemplates{Common: []string{"Alpha", "Beta", "Gamma", "Delta"}},
+		IDStart: 17000000, AccountPrefix: "robot",
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 4)
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 5})
+			if err == nil && len(robots) != 5 {
+				err = fmt.Errorf("created %d robots, want 5", len(robots))
+			}
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	robots, err := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 100})
+	if err != nil || len(robots) != 20 {
+		t.Fatalf("robots=%d err=%v", len(robots), err)
+	}
 }
 
 type profiledCreatorProvisioner struct{}

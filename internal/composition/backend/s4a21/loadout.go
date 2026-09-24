@@ -192,7 +192,7 @@ func selectS4A21Equipment(items []shared.EquipmentCatalogItem, level, job int, r
 		candidates := make([]shared.EquipmentCatalogItem, 0)
 		lowestLevel := math.MaxInt
 		for _, item := range items {
-			if item.ID <= 0 || item.ItemType != slot || item.Expire || !shared.ClientCompatibleEquipment(item) || !equipmentcap.UsableByJob(item.UseJob, job) {
+			if item.ID <= 0 || item.ItemType != slot || item.Expire || !s4a21LoadoutCompatible(item) || !equipmentcap.UsableByJob(item.UseJob, job) {
 				continue
 			}
 			if rc.EquipRarityMax > 0 && (item.Rarity < rc.EquipRarityMin || item.Rarity > rc.EquipRarityMax) {
@@ -362,7 +362,7 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 			return false, nil
 		}
 		item, ok := items[int(binary.LittleEndian.Uint32(core[1:5]))]
-		if !ok || item.ID <= 0 || item.Expire || !shared.ClientCompatibleEquipment(item) {
+		if !ok || item.ID <= 0 || item.Expire || !s4a21LoadoutCompatible(item) {
 			return false, nil
 		}
 		switch {
@@ -448,6 +448,14 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 		}
 	}
 	return true, nil
+}
+
+// The shared incompatibility marker protects the native DP2 item-info
+// consumer from extended fields that precede [equipment type]. S4A21 reads
+// its bundled PVF directly and supports those real support/magic-stone items,
+// so the adapter may use them without weakening the native policy.
+func s4a21LoadoutCompatible(item shared.EquipmentCatalogItem) bool {
+	return shared.ClientCompatibleEquipment(item) || item.ItemType == 11 || item.ItemType == 12
 }
 
 func petSchemaAvailable(ctx context.Context, db *sql.DB) bool {

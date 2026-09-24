@@ -12,11 +12,13 @@ import (
 	robotlifecycle "robot/internal/capability/robotlifecycle"
 	robotstate "robot/internal/capability/robotstate"
 	robottemplate "robot/internal/capability/robottemplate"
+	"robot/internal/foundation/lockhub"
 	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
 )
 
 var creatorBatchSequence atomic.Uint64
+var robotCreationMu lockhub.Locker
 
 type RobotCreator struct {
 	Provisioner   shared.BatchCharacterProvisioner
@@ -36,6 +38,12 @@ type RobotCreator struct {
 }
 
 func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateRequest) ([]robotcap.Info, error) {
+	// UID holes and names are derived from the in-memory directory. Keep the
+	// complete reservation/provision/register sequence atomic so concurrent
+	// scheduler fills cannot plan the same identities.
+	robotCreationMu.Lock()
+	defer robotCreationMu.Unlock()
+
 	if c.Provisioner == nil || c.BatchStore == nil || c.IdentityStore == nil || c.RobotCatalog == nil {
 		return nil, fmt.Errorf("S4A21 creator dependencies are incomplete")
 	}

@@ -43,8 +43,8 @@ UPDATE characters SET town_id=3,area_id=2,pos_x=480,pos_y=240,slot_index=0 WHERE
 	rc.MinPetArtifactSlots, rc.MaxPetArtifactSlots = 1, 1
 	items := []shared.EquipmentCatalogItem{
 		{ID: 1001, ItemType: 1, Level: 40, Durability: 45, UseJob: []int{1}},
-		{ID: 1011, ItemType: 11, Level: 60, Durability: 30, UseJob: []int{100}},
-		{ID: 1012, ItemType: 12, Level: 68, Durability: 30, UseJob: []int{100}},
+		{ID: 1011, ItemType: 11, Level: 60, Durability: 30, UseJob: []int{100}, ClientIncompatible: true},
+		{ID: 1012, ItemType: 12, Level: 68, Durability: 30, UseJob: []int{100}, ClientIncompatible: true},
 		{ID: 3000, Name: "Creature", ItemType: 30, Icon: "creature/pet.img"},
 		{ID: 3100, Name: "Artifact", ItemType: 31, Path: "equipment/creature/artifact_red/hand.equ", Icon: "Item/creature/artifact_red.img"},
 	}
