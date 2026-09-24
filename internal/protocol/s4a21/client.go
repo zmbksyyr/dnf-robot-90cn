@@ -13,10 +13,12 @@ import (
 const DefaultMaxPacketLength = 1024 * 1024
 
 type Client struct {
-	conn    net.Conn
-	udpConn *net.UDPConn
-	sendMu  lockhub.Locker
-	maxSize int
+	conn     net.Conn
+	udpConn  *net.UDPConn
+	sendMu   lockhub.Locker
+	udpMu    lockhub.Locker
+	udpPeers map[string]*partyUDPPeer
+	maxSize  int
 }
 
 func Dial(ctx context.Context, address string) (*Client, error) {
@@ -30,7 +32,9 @@ func Dial(ctx context.Context, address string) (*Client, error) {
 	return NewClient(conn), nil
 }
 
-func NewClient(conn net.Conn) *Client { return &Client{conn: conn, maxSize: DefaultMaxPacketLength} }
+func NewClient(conn net.Conn) *Client {
+	return &Client{conn: conn, maxSize: DefaultMaxPacketLength, udpPeers: make(map[string]*partyUDPPeer)}
+}
 
 func (c *Client) Close() error {
 	if c == nil || c.conn == nil {
@@ -77,38 +81,13 @@ func (c *Client) RegisterUDPEndpoint(ctx context.Context) error {
 		return err
 	}
 	c.udpConn = udpConn
-	go serveUDPEcho(udpConn)
+	go c.servePartyUDP(udpConn)
 	if err := c.send(ctx, Encode(1, CmdSetUDPIPPort, body)); err != nil {
 		_ = udpConn.Close()
 		c.udpConn = nil
 		return err
 	}
 	return nil
-}
-
-// serveUDPEcho keeps the legacy A21 P2P discovery exchange alive. The robot
-// is not a combat peer, but it must answer the initial datagram or the real
-// client remains in "connecting" forever. Gameplay datagrams are otherwise
-// ignored by the adapter.
-func serveUDPEcho(conn *net.UDPConn) {
-	buffer := make([]byte, 2048)
-	lastByPeer := make(map[string]string)
-	for {
-		n, addr, err := conn.ReadFromUDP(buffer)
-		if err != nil {
-			return
-		}
-		if n == 0 || addr == nil {
-			continue
-		}
-		key := addr.String()
-		payload := string(buffer[:n])
-		if lastByPeer[key] == payload {
-			continue
-		}
-		lastByPeer[key] = payload
-		_, _ = conn.WriteToUDP(buffer[:n], addr)
-	}
 }
 
 func (c *Client) Login(ctx context.Context, mID, passwordHash string) error {
