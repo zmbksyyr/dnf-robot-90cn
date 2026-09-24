@@ -22,6 +22,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}
 	capabilities[shared.CapabilityServiceControl] = shared.CapabilityStatus{Reason: "native service scripts and process discovery are not applicable to S4A21"}
 	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
+	capabilities[shared.CapabilityMarket] = shared.CapabilityStatus{Reason: "S4A21 exposes auction opcode enums only; no verified auction or gold-consignment handler/service is present"}
 	return shared.BackendInfo{
 		ID: shared.BackendS4A21, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true,
 		Capabilities: capabilities, MaxOnline: 10000,
