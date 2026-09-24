@@ -151,6 +151,21 @@ func TestSimulatorKeypairCapabilityDoesNotBlockAutoControl(t *testing.T) {
 	}
 }
 
+func TestDashboardCardsFollowBackendCapabilities(t *testing.T) {
+	for _, want := range []string{
+		`key.hidden=!backendCapabilities.keypair?.enabled`,
+		`services.hidden=!['system_announcement','market','service_control'].some`,
+		`function applyBackendCapabilities(){applyDashboardCapabilityVisibility();`,
+	} {
+		if !strings.Contains(appJS, want) {
+			t.Fatalf("dashboard capability visibility is missing %q", want)
+		}
+	}
+	if strings.Contains(appJS, `selectedBackendID==='sim_a21'`) {
+		t.Fatal("dashboard visibility must not branch on a concrete backend")
+	}
+}
+
 func TestHeaderActionsStayRightAlignedAndBackendSelectorIsCompact(t *testing.T) {
 	for _, want := range []string{
 		`class="header-actions-spacer"`,
