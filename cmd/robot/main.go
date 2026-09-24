@@ -35,7 +35,11 @@ import (
 )
 
 func main() {
-	os.Exit(runMain())
+	code := runMain()
+	if code != 0 {
+		waitForFatalExit()
+	}
+	os.Exit(code)
 }
 
 func runMain() int {
@@ -76,6 +80,7 @@ func runMain() int {
 		fmt.Fprintln(os.Stderr, "starting Web admin recovery mode; select a backend and restart the robot")
 		if webErr := runRecoveryWebAdmin(cfg, backendSelection.BackendID, err.Error()); webErr != nil {
 			fmt.Fprintf(os.Stderr, "backend recovery Web admin failed: %v\n", webErr)
+			fmt.Fprintf(os.Stderr, "If Robot is already running, open its Web admin: %s\n", recoveryWebURL(cfg.WebPort))
 			return 1
 		}
 		return 0
