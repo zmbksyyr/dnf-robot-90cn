@@ -40,7 +40,7 @@ func TestLivePartyProbe(t *testing.T) {
 	if err != nil || len(invite.Body) < 3 {
 		t.Fatalf("did not observe party invite notification: type=0x%04X body=%X", invite.Type, invite.Body)
 	}
-	if err := right.AcceptPartyInvite(ctx, leftCID); err != nil {
+	if err := right.AcceptPartyInvite(ctx, leftCID, 0); err != nil {
 		t.Fatal(err)
 	}
 	senderTypes := collectPartyProbeTypes(t, left, 1200*time.Millisecond, "accepted-sender")
@@ -259,7 +259,7 @@ func establishLivePreparedFollowerParty(t *testing.T, ctx context.Context, addre
 		member.Close()
 		t.Fatal(err)
 	}
-	if err := member.AcceptPartyInvite(ctx, leaderCID); err != nil {
+	if err := member.AcceptPartyInvite(ctx, leaderCID, 0); err != nil {
 		leader.Close()
 		member.Close()
 		t.Fatal(err)
@@ -303,7 +303,7 @@ func establishLiveParty(t *testing.T, ctx context.Context, address, prefix strin
 		member.Close()
 		t.Fatal(err)
 	}
-	if err := member.AcceptPartyInvite(ctx, leaderCID); err != nil {
+	if err := member.AcceptPartyInvite(ctx, leaderCID, 0); err != nil {
 		leader.Close()
 		member.Close()
 		t.Fatal(err)

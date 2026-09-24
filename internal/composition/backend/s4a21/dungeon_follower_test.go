@@ -278,7 +278,7 @@ func TestDungeonFollowerWriteFailureStopsSession(t *testing.T) {
 			serverDone <- err
 			return
 		}
-		_, err = serverConn.Write(protocol.EncodeResponse(0, protocol.NotiRequestPeer, []byte{0x34, 0x12, 0}))
+		_, err = serverConn.Write(protocol.EncodeResponse(0, protocol.NotiRequestPeer, []byte{0x34, 0x12, 0, 0x78, 0x56, 0x34, 0x12}))
 		serverDone <- err
 	}()
 

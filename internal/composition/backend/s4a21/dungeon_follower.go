@@ -130,9 +130,9 @@ func (s *Session) followerLoop(ctx context.Context, events <-chan protocol.Packe
 func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Packet) {
 	switch packet.Type {
 	case protocol.NotiRequestPeer:
-		inviterUID, ok := parsePartyInvite(packet)
+		inviterUID, peerValue, ok := parsePartyInvite(packet)
 		if ok && !s.PartyActive() {
-			if err := s.client.AcceptPartyInvite(ctx, inviterUID); err != nil {
+			if err := s.client.AcceptPartyInvite(ctx, inviterUID, peerValue); err != nil {
 				s.abortFollowerSession(ctx)
 			} else {
 				foundationlog.Robotf("S4A21_PARTY_INVITE_ACCEPTED uid=%d inviter_uid=%d\n", s.selfUID, inviterUID)
@@ -286,11 +286,12 @@ func (s *Session) commitFollowerFinishLoading(packet protocol.Packet) {
 	}
 }
 
-func parsePartyInvite(packet protocol.Packet) (uint16, bool) {
-	if packet.Command != 0 || len(packet.Body) < 3 || packet.Body[2] != 0 {
-		return 0, false
+func parsePartyInvite(packet protocol.Packet) (uint16, int32, bool) {
+	if packet.Command != 0 || len(packet.Body) < 7 || packet.Body[2] != 0 {
+		return 0, 0, false
 	}
-	return binary.LittleEndian.Uint16(packet.Body[:2]), true
+	return binary.LittleEndian.Uint16(packet.Body[:2]),
+		int32(binary.LittleEndian.Uint32(packet.Body[3:7])), true
 }
 
 func parsePartyInfoProjection(packet protocol.Packet, selfUID uint16) (uint16, []uint16, bool) {

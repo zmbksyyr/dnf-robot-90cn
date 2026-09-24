@@ -354,7 +354,7 @@ func TestClientPartyProbePrimitives(t *testing.T) {
 	if err := client.RequestPeer(context.Background(), 12, 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.AcceptPartyInvite(context.Background(), 12); err != nil {
+	if err := client.AcceptPartyInvite(context.Background(), 12, 34); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.LeaveParty(context.Background()); err != nil {
