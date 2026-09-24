@@ -155,8 +155,10 @@ func TestDashboardCardsFollowBackendCapabilities(t *testing.T) {
 	for _, want := range []string{
 		`id="mMonitor" hidden`,
 		`id="mKey" hidden`,
+		`id="mStoreCard" hidden`,
 		`key.hidden=!backendCapabilities.keypair?.enabled`,
 		`services.hidden=!['system_announcement','market','service_control'].some`,
+		`store.hidden=!backendCapabilities.store?.enabled`,
 		`function applyBackendCapabilities(){applyDashboardCapabilityVisibility();`,
 	} {
 		if !strings.Contains(indexHTML+appJS, want) {
