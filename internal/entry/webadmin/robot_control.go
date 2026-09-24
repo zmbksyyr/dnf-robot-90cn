@@ -84,7 +84,7 @@ func (s *Server) handleRestartRobot(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, map[string]interface{}{"ok": true, "message": "robot restart queued", "exe": exe})
+	writeJSON(w, map[string]interface{}{"ok": true, "message": "robot restart started", "exe": exe})
 }
 
 func (s *Server) gameEndpointPayload(cfg *config.SysConfig, message string) map[string]interface{} {

@@ -35,8 +35,9 @@ import (
 )
 
 func main() {
+	restartHelper := webadmin.RestartHelperRequested(os.Args[1:])
 	code := runMain()
-	if code != 0 {
+	if code != 0 && !restartHelper {
 		waitForFatalExit()
 	}
 	os.Exit(code)
