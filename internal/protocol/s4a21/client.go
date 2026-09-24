@@ -151,6 +151,10 @@ func (c *Client) AcceptPartyInvite(ctx context.Context, inviterUID uint16) error
 	return c.send(ctx, Encode(1, CmdResponsePeer, ResponsePeerBody(inviterUID, 0)))
 }
 
+func (c *Client) AcceptGuildInvite(ctx context.Context) error {
+	return c.send(ctx, Encode(1, CmdReplyGuildInvite, GuildInviteReplyBody(true)))
+}
+
 func (c *Client) LeaveParty(ctx context.Context) error {
 	return c.send(ctx, Encode(1, CmdLeaveParty, LeavePartyBody()))
 }

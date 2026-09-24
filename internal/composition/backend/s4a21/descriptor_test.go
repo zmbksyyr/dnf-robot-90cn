@@ -12,7 +12,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 		t.Fatalf("S4A21 metadata = %+v", info)
 	}
 	for _, capability := range []shared.BackendCapability{
-		shared.CapabilityProvision, shared.CapabilityTownMove, shared.CapabilityDungeonFollow, shared.CapabilityParty,
+		shared.CapabilityProvision, shared.CapabilityTownMove, shared.CapabilityDungeonFollow, shared.CapabilityParty, shared.CapabilityGuildInvite,
 		shared.CapabilityShout, shared.CapabilityDatabase, shared.CapabilityCleanup,
 	} {
 		if !info.Supports(capability) {

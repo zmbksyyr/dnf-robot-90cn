@@ -31,6 +31,7 @@ const (
 	CmdEnterSelectDungeon   uint16 = 0x000F
 	CmdSelectDungeon        uint16 = 0x0010
 	CmdChangeTutorialFlag   uint16 = 0x008F
+	CmdReplyGuildInvite     uint16 = 0x0098
 	CmdFinishLoading        uint16 = 0x0025
 	CmdSetUserPosition      uint16 = 0x0023
 	CmdSetUserArea          uint16 = 0x0024
@@ -46,6 +47,7 @@ const (
 	NotiRequestPeer         uint16 = 0x0007
 	NotiUserUDPIPPort       uint16 = 0x000B
 	NotiPartyRealtimeInfo   uint16 = 0x0099
+	NotiGuildInvite         uint16 = 0x0093
 	NotiEnterSelectDungeon  uint16 = 0x001B
 	NotiDungeonInfo         uint16 = 0x001C
 	NotiStartMap            uint16 = 0x001D
@@ -67,6 +69,47 @@ type Packet struct {
 type AcceptableQuestList struct {
 	Level    byte
 	QuestIDs []uint16
+}
+
+// GuildInvite is the verified A21 invitation notification identity. Unlike
+// the native backend, A21 sends character ID, session UID and inviter name.
+type GuildInvite struct {
+	InviterCharacterID uint32
+	InviterUID         uint16
+	InviterName        []byte
+}
+
+func ParseGuildInvite(body []byte) (GuildInvite, error) {
+	if len(body) < 8 {
+		return GuildInvite{}, fmt.Errorf("s4a21 guild invitation is truncated")
+	}
+	characterID := binary.LittleEndian.Uint32(body[0:4])
+	uid := binary.LittleEndian.Uint16(body[4:6])
+	nameLength := int(body[6])
+	if characterID == 0 {
+		return GuildInvite{}, fmt.Errorf("s4a21 guild invitation has invalid character ID")
+	}
+	if uid == 0 || uid == 0xFFFF {
+		return GuildInvite{}, fmt.Errorf("s4a21 guild invitation has invalid UID %d", uid)
+	}
+	if nameLength < 1 || nameLength > 29 {
+		return GuildInvite{}, fmt.Errorf("s4a21 guild invitation name length=%d", nameLength)
+	}
+	if len(body) != 7+nameLength {
+		return GuildInvite{}, fmt.Errorf("s4a21 guild invitation length=%d want=%d", len(body), 7+nameLength)
+	}
+	return GuildInvite{
+		InviterCharacterID: characterID,
+		InviterUID:         uid,
+		InviterName:        append([]byte(nil), body[7:]...),
+	}, nil
+}
+
+func GuildInviteReplyBody(accept bool) []byte {
+	if accept {
+		return []byte{1}
+	}
+	return []byte{0}
 }
 
 func ParseAcceptableQuestList(body []byte) (AcceptableQuestList, error) {

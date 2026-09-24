@@ -226,3 +226,52 @@ func TestPartyProbeBodiesUseVerifiedA21Shapes(t *testing.T) {
 		t.Fatalf("walkout body = %X", got)
 	}
 }
+
+func TestGuildInviteUsesVerifiedA21Shapes(t *testing.T) {
+	body := make([]byte, 7+len("guild-leader"))
+	binary.LittleEndian.PutUint32(body[0:4], 0x01020304)
+	binary.LittleEndian.PutUint16(body[4:6], 0x1234)
+	body[6] = byte(len("guild-leader"))
+	copy(body[7:], "guild-leader")
+
+	invite, err := ParseGuildInvite(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invite.InviterCharacterID != 0x01020304 || invite.InviterUID != 0x1234 || string(invite.InviterName) != "guild-leader" {
+		t.Fatalf("invitation = %+v", invite)
+	}
+	invite.InviterName[0] = 'x'
+	if body[7] != 'g' {
+		t.Fatal("guild invitation parser did not copy inviter name")
+	}
+	if got := GuildInviteReplyBody(true); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("accept body = %X", got)
+	}
+	if got := GuildInviteReplyBody(false); len(got) != 1 || got[0] != 0 {
+		t.Fatalf("decline body = %X", got)
+	}
+}
+
+func TestParseGuildInviteRejectsMalformedIdentityAndLength(t *testing.T) {
+	valid := make([]byte, 8)
+	binary.LittleEndian.PutUint32(valid[0:4], 1)
+	binary.LittleEndian.PutUint16(valid[4:6], 2)
+	valid[6], valid[7] = 1, 'a'
+
+	tests := [][]byte{
+		nil,
+		valid[:7],
+		append(append([]byte(nil), valid...), 0),
+		func() []byte { body := append([]byte(nil), valid...); body[0] = 0; return body }(),
+		func() []byte { body := append([]byte(nil), valid...); body[4], body[5] = 0, 0; return body }(),
+		func() []byte { body := append([]byte(nil), valid...); body[4], body[5] = 0xFF, 0xFF; return body }(),
+		func() []byte { body := append([]byte(nil), valid...); body[6] = 0; return body }(),
+		func() []byte { body := append([]byte(nil), valid...); body[6] = 30; return body }(),
+	}
+	for _, body := range tests {
+		if _, err := ParseGuildInvite(body); err == nil {
+			t.Fatalf("malformed guild invitation %X unexpectedly parsed", body)
+		}
+	}
+}

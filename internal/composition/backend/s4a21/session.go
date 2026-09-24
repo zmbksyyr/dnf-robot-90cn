@@ -21,12 +21,14 @@ type SessionFactory struct {
 
 const sessionKeepaliveInterval = 5 * time.Second
 const townAreaTransitionTimeout = 5 * time.Second
+const guildInviteQueueSize = 4
 
 type Session struct {
 	client             *protocol.Client
 	cancel             context.CancelFunc
 	done               chan struct{}
 	keepaliveDone      chan struct{}
+	guildInviteEvents  chan protocol.GuildInvite
 	packetObserverLock lockhub.RWLocker
 	packetObserver     *packetObserverRegistration
 	terminationGuard   lockhub.Locker
@@ -100,7 +102,10 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 		}
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	session := &Session{client: client, cancel: cancel, done: make(chan struct{}), keepaliveDone: make(chan struct{}), selfUID: selfUID}
+	session := &Session{
+		client: client, cancel: cancel, done: make(chan struct{}), keepaliveDone: make(chan struct{}),
+		guildInviteEvents: make(chan protocol.GuildInvite, guildInviteQueueSize), selfUID: selfUID,
+	}
 	go session.drain(runCtx)
 	go session.keepalive(runCtx)
 	if request.EnablePartyDungeonFollower {
@@ -320,6 +325,16 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 			}
 		}
 	}
+	if packet.Type == protocol.NotiGuildInvite && s.guildInviteEvents != nil {
+		invitation, err := protocol.ParseGuildInvite(packet.Body)
+		if err == nil {
+			select {
+			case s.guildInviteEvents <- invitation:
+			default:
+				s.abort()
+			}
+		}
+	}
 	s.packetObserverLock.RLock()
 	observer := s.packetObserver
 	s.packetObserverLock.RUnlock()
@@ -350,16 +365,35 @@ func (s *Session) keepalive(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-s.guildInviteEvents:
+			replyCtx, cancel := context.WithTimeout(ctx, sessionKeepaliveInterval/2)
+			err := s.client.AcceptGuildInvite(replyCtx)
+			cancel()
+			if err != nil {
+				s.abort()
+				return
+			}
 		case <-ticker.C:
 			pingCtx, cancel := context.WithTimeout(ctx, sessionKeepaliveInterval/2)
 			err := s.client.CheckConnection(pingCtx)
 			cancel()
 			if err != nil {
-				s.cancel()
-				_ = s.client.Close()
+				s.abort()
 				return
 			}
 		}
+	}
+}
+
+func (s *Session) abort() {
+	if s == nil {
+		return
+	}
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.client != nil {
+		_ = s.client.Close()
 	}
 }
 
