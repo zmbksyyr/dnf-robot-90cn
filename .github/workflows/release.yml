@@ -30,18 +30,21 @@ jobs:
         working-directory: tools/deploy-launcher
         run: go test ./...
 
-      - name: Prepare output
+      - name: Prepare package
         shell: pwsh
-        run: New-Item -ItemType Directory -Force -Path dist | Out-Null
+        run: New-Item -ItemType Directory -Force -Path dist/package | Out-Null
 
-      - name: Build main program
+      - name: Build Linux and Windows robots
         shell: pwsh
         run: |
-          $env:GOOS = "linux"
-          $env:GOARCH = "amd64"
           $env:CGO_ENABLED = "0"
-          go build -trimpath -ldflags="-s -w" -o dist/robot ./cmd/robot
-          Copy-Item -LiteralPath dist/robot -Destination dist/robot-no-upx
+          $env:GOARCH = "amd64"
+
+          $env:GOOS = "linux"
+          go build -trimpath -buildvcs=false -ldflags="-s -w" -o dist/package/robot ./cmd/robot
+
+          $env:GOOS = "windows"
+          go build -trimpath -buildvcs=false -ldflags="-s -w" -o dist/package/robot.exe ./cmd/robot
 
       - name: Generate deploy launcher manifest resource
         working-directory: tools/deploy-launcher
@@ -53,22 +56,13 @@ jobs:
       - name: Build deploy launcher
         working-directory: tools/deploy-launcher
         shell: pwsh
-        run: go build -trimpath -ldflags="-s -w -H windowsgui" -o ../../dist/deploy-launcher.exe .
-
-      - name: Compress executables
-        shell: pwsh
-        run: |
-          choco install upx -y --no-progress
-          upx --best --lzma dist/robot dist/deploy-launcher.exe
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -H windowsgui" -o ../../dist/package/deploy-launcher.exe .
 
       - name: Package release archive
         shell: pwsh
         run: |
           $date = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow, "China Standard Time").ToString("yyyyMMdd")
           $archive = "dofrobot-main_$date.zip"
-          New-Item -ItemType Directory -Force -Path dist/package | Out-Null
-          Copy-Item -LiteralPath dist/deploy-launcher.exe -Destination dist/package/deploy-launcher.exe
-          Copy-Item -LiteralPath dist/robot-no-upx -Destination dist/package/robot
           Compress-Archive -Path dist/package/* -DestinationPath "dist/$archive" -Force
           Remove-Item -LiteralPath dist/package -Recurse -Force
           "RELEASE_ZIP=$archive" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -123,9 +117,6 @@ jobs:
           for ($attempt = 1; $attempt -le 3; $attempt++) {
             gh release upload $tag `
               --clobber `
-              dist/robot `
-              dist/robot-no-upx `
-              dist/deploy-launcher.exe `
               "dist/$env:RELEASE_ZIP"
             if ($LASTEXITCODE -eq 0) {
               $assetsUploaded = $true
