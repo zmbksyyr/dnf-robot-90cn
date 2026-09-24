@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -316,9 +315,7 @@ func runRecoveryWebAdmin(cfg *config.SysConfig, backend shared.BackendID, reason
 	defer stop()
 	catalog := backendregistry.Available()
 	server := webadmin.NewRecoveryWithCatalog(cfg, fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort), fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), backend, catalog, reason)
-	if runtime.GOOS == "windows" {
-		go openRecoveryBrowserWhenReady(ctx, cfg.WebPort)
-	}
+	fmt.Fprintf(os.Stderr, "Recovery Web: %s\n", recoveryWebURL(cfg.WebPort))
 	if err := server.Serve(ctx); err != nil {
 		return err
 	}
@@ -327,25 +324,6 @@ func runRecoveryWebAdmin(cfg *config.SysConfig, backend shared.BackendID, reason
 
 func recoveryWebURL(port int) string {
 	return fmt.Sprintf("http://127.0.0.1:%d/", port)
-}
-
-func openRecoveryBrowserWhenReady(ctx context.Context, port int) {
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	for attempt := 0; attempt < 30; attempt++ {
-		conn, err := net.DialTimeout("tcp", addr, 150*time.Millisecond)
-		if err == nil {
-			_ = conn.Close()
-			if err := openRecoveryBrowser(recoveryWebURL(port)); err != nil {
-				fmt.Fprintf(os.Stderr, "open recovery Web browser error: %v\n", err)
-			}
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
 }
 
 func runtimeConfigPaths() (string, string, error) {
