@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -74,7 +75,7 @@ func runMain() int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
 		fmt.Fprintln(os.Stderr, "starting Web admin recovery mode; select a backend and restart the robot")
-		if webErr := runRecoveryWebAdmin(cfg, backendSelection.BackendID); webErr != nil {
+		if webErr := runRecoveryWebAdmin(cfg, backendSelection.BackendID, err.Error()); webErr != nil {
 			fmt.Fprintf(os.Stderr, "backend recovery Web admin failed: %v\n", webErr)
 			return 1
 		}
@@ -307,18 +308,44 @@ func loadBackendSelection(path string) (shared.BackendSelection, error) {
 	return shared.DecodeBackendSelection(data)
 }
 
-func runRecoveryWebAdmin(cfg *config.SysConfig, backend shared.BackendID) error {
+func runRecoveryWebAdmin(cfg *config.SysConfig, backend shared.BackendID, reason string) error {
 	if cfg == nil {
 		return fmt.Errorf("recovery Web requires config")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	catalog := backendregistry.Available()
-	server := webadmin.NewRecoveryWithCatalog(cfg, fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort), fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), backend, catalog)
+	server := webadmin.NewRecoveryWithCatalog(cfg, fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort), fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), backend, catalog, reason)
+	if runtime.GOOS == "windows" {
+		go openRecoveryBrowserWhenReady(ctx, cfg.WebPort)
+	}
 	if err := server.Serve(ctx); err != nil {
 		return err
 	}
 	return nil
+}
+
+func recoveryWebURL(port int) string {
+	return fmt.Sprintf("http://127.0.0.1:%d/", port)
+}
+
+func openRecoveryBrowserWhenReady(ctx context.Context, port int) {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	for attempt := 0; attempt < 30; attempt++ {
+		conn, err := net.DialTimeout("tcp", addr, 150*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			if err := openRecoveryBrowser(recoveryWebURL(port)); err != nil {
+				fmt.Fprintf(os.Stderr, "open recovery Web browser error: %v\n", err)
+			}
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func runtimeConfigPaths() (string, string, error) {

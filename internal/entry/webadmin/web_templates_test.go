@@ -190,6 +190,24 @@ func TestHeaderActionsStayRightAlignedAndBackendSelectorIsCompact(t *testing.T) 
 	}
 }
 
+func TestRecoveryModeGuidesFirstWindowsStartup(t *testing.T) {
+	for _, want := range []string{
+		`{{if .Recovery}}`,
+		`data-i18n="login.recovery"`,
+		`r.recovery_mode?`,
+		`r.recovery_reason||''`,
+		`if(backend?.recovery_mode){await openBackendDialog();return}`,
+		`restartRecovery=!!(r.recovery_mode&&r.restart_required)`,
+		`if(restartRecovery)await restartRobot()`,
+		`'backend.recovery':'Robot needs a server selection before it can start.'`,
+		`'backend.recovery':'Robot 启动前需要选择服务端。'`,
+	} {
+		if !strings.Contains(loginHTML+appJS+i18nJS, want) {
+			t.Fatalf("recovery startup UI is missing %q", want)
+		}
+	}
+}
+
 func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
 	for _, want := range []string{
 		"Category unit-price ranges", "分类单价范围",

@@ -162,7 +162,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) writeLogin(w http.ResponseWriter, errText string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := cleanLoginTemplate.Execute(w, map[string]string{"Error": errText}); err != nil {
+	if err := cleanLoginTemplate.Execute(w, map[string]interface{}{"Error": errText, "Recovery": s.recoveryMode}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

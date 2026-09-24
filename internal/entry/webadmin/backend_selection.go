@@ -32,6 +32,8 @@ type backendSelectionPayload struct {
 	Error              string               `json:"error,omitempty"`
 	Message            string               `json:"message,omitempty"`
 	Settings           map[string]string    `json:"settings,omitempty"`
+	RecoveryMode       bool                 `json:"recovery_mode,omitempty"`
+	RecoveryReason     string               `json:"recovery_reason,omitempty"`
 }
 
 func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +90,7 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) backendSelectionResponse(state backendSelectionState, persisted bool, message string) backendSelectionPayload {
-	return backendSelectionPayload{OK: true, Selected: state.BackendID, ConfigGeneration: state.ConfigGeneration, SelectedAt: state.SelectedAt, Persisted: persisted, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Message: message, Settings: state.Settings}
+	return backendSelectionPayload{OK: true, Selected: state.BackendID, ConfigGeneration: state.ConfigGeneration, SelectedAt: state.SelectedAt, Persisted: persisted, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Message: message, Settings: state.Settings, RecoveryMode: s.recoveryMode, RecoveryReason: s.recoveryReason}
 }
 
 func (s *Server) backendSettingsWithDefaults(state backendSelectionState) map[string]string {

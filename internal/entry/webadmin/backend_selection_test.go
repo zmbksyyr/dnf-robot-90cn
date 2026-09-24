@@ -35,6 +35,21 @@ func TestBackendSelectionDefaultsWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestRecoveryBackendResponseExplainsStartupFailure(t *testing.T) {
+	dir := t.TempDir()
+	s := NewRecoveryWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog(), "backend native does not support windows")
+	req := httptest.NewRequest(http.MethodGet, "/api/backend", nil)
+	rec := httptest.NewRecorder()
+	s.handleBackend(rec, req)
+	var got backendSelectionPayload
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.OK || !got.RecoveryMode || got.RecoveryReason != "backend native does not support windows" {
+		t.Fatalf("payload = %+v", got)
+	}
+}
+
 func TestBackendCatalogDisablesPlatformUnsupportedBackends(t *testing.T) {
 	windows := backendCatalogForPlatform(testBackendCatalog(), "windows")
 	linux := backendCatalogForPlatform(testBackendCatalog(), "linux")

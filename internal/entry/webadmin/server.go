@@ -44,21 +44,28 @@ type Server struct {
 	backendInfo             shared.BackendInfo
 	backendCatalog          []shared.BackendInfo
 	recoveryMode            bool
+	recoveryReason          string
 }
 
 // NewRecovery creates the backend-neutral Web surface used when the persisted
 // backend cannot run on the current platform. It must not start any
 // backend-specific watcher or supervisor before the operator selects a valid
 // backend and restarts the process.
-func NewRecovery(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID) *Server {
+func NewRecovery(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID, reason ...string) *Server {
 	server := New(cfg, robotAddr, webAddr, selected)
 	server.recoveryMode = true
+	if len(reason) > 0 {
+		server.recoveryReason = strings.TrimSpace(reason[0])
+	}
 	return server
 }
 
-func NewRecoveryWithCatalog(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID, catalog []shared.BackendInfo) *Server {
+func NewRecoveryWithCatalog(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID, catalog []shared.BackendInfo, reason ...string) *Server {
 	server := newServer(cfg, robotAddr, webAddr, selected, catalog)
 	server.recoveryMode = true
+	if len(reason) > 0 {
+		server.recoveryReason = strings.TrimSpace(reason[0])
+	}
 	return server
 }
 
