@@ -19,7 +19,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 			t.Fatalf("verified capability %s is disabled", capability)
 		}
 	}
-	if info.Capabilities[shared.CapabilityDungeonFollow].Mode != "toggle" {
+	if info.Capabilities[shared.CapabilityDungeonFollow].Mode != "auto_accept" {
 		t.Fatalf("dungeon follower mode = %+v", info.Capabilities[shared.CapabilityDungeonFollow])
 	}
 	if info.Capabilities[shared.CapabilityDatabase].Mode != "sqlite_health" {

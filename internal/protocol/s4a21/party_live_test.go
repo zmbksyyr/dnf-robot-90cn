@@ -2,7 +2,6 @@ package s4a21
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"testing"
@@ -351,9 +350,21 @@ func livePartyProbeSession(t *testing.T, ctx context.Context, address, prefix st
 		client.Close()
 		t.Fatal(err)
 	}
-	if err := waitForPacket(ctx, client, CmdSelectCharacter, 1); err != nil {
-		client.Close()
-		t.Fatal(err)
+	var wireUID uint16
+	for wireUID == 0 {
+		packet, err := client.Read(ctx)
+		if err != nil {
+			client.Close()
+			t.Fatal(err)
+		}
+		if packet.Type != CmdSelectCharacter || packet.Command != 1 {
+			continue
+		}
+		wireUID, err = SelectCharacterUID(packet.Body)
+		if err != nil {
+			client.Close()
+			t.Fatal(err)
+		}
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -365,9 +376,10 @@ func livePartyProbeSession(t *testing.T, ctx context.Context, address, prefix st
 		if packet.Type != 0x0002 || len(packet.Body) < 5 {
 			continue
 		}
-		// USERINFO subtype 6: subtype:u8, version:u16, owner CID:u16.
+		// USERINFO subtype 6 marks the end of the initial projection. The party
+		// wire identity comes from SELECT_CHARACTER, not this owner CID field.
 		if packet.Body[0] == 6 {
-			return client, binary.LittleEndian.Uint16(packet.Body[3:5])
+			return client, wireUID
 		}
 	}
 	client.Close()

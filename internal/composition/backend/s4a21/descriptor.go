@@ -6,7 +6,7 @@ func Info() shared.BackendInfo {
 	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "S4A21 protocol operation is not implemented yet"})
 	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true}
 	capabilities[shared.CapabilityTownMove] = shared.CapabilityStatus{Enabled: true, Reason: "coordinates and verified town-area transitions"}
-	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Enabled: true, Mode: "toggle", Reason: "accepts ordinary party invitations without filtering by inviter account"}
+	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Enabled: true, Mode: "auto_accept", Reason: "accepts ordinary party invitations without filtering by inviter account"}
 	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Enabled: true, Mode: "follower", Reason: "accepts leader invitations and follows server party projections; no active invite or party creation"}
 	capabilities[shared.CapabilityGuildInvite] = shared.CapabilityStatus{Enabled: true, Mode: "auto_accept", Reason: "automatically accepts verified A21 guild invitation notifications"}
 	capabilities[shared.CapabilityShout] = shared.CapabilityStatus{Enabled: true, Reason: "area channel only; party requires the separate party capability"}

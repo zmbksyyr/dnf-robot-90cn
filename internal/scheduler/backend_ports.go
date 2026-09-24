@@ -122,7 +122,7 @@ func (d protocolSessionDriver) SendOnline(users []shared.RuntimeOnlineUser) erro
 		}
 		if err := d.transport.Open(context.Background(), user.UID, shared.OpenSessionRequest{
 			AccountName: user.AccountName, PasswordHash: user.PasswordHash, CharacterSlot: uint16(user.CharacterSlot),
-			EnablePartyDungeonFollower: strings.TrimSpace(rc.FollowAccount) != "",
+			EnablePartyDungeonFollower: backendPartyFollowerEnabled(d.manager.backendInfo, rc),
 			InitialTownKnown:           true,
 			InitialVillage:             user.BirthVillage,
 			InitialArea:                user.BirthArea,
@@ -135,6 +135,20 @@ func (d protocolSessionDriver) SendOnline(users []shared.RuntimeOnlineUser) erro
 		opened = append(opened, user.UID)
 	}
 	return nil
+}
+
+func backendPartyFollowerEnabled(info shared.BackendInfo, rc robotconfig.RuntimeConfig) bool {
+	status := info.Capabilities[shared.CapabilityDungeonFollow]
+	if !status.Enabled {
+		return false
+	}
+	// Account mode is the native policy: only the configured operator account may
+	// drive followers. Protocol backends can declare auto-accept without
+	// borrowing that native-only setting.
+	if status.Mode == "account" {
+		return strings.TrimSpace(rc.FollowAccount) != ""
+	}
+	return true
 }
 
 func (d protocolSessionDriver) closeOpened(uids []int) {

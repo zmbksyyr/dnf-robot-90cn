@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	foundationlog "robot/internal/foundation/log"
 	protocol "robot/internal/protocol/s4a21"
 )
 
@@ -133,11 +134,14 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 		if ok && !s.PartyActive() {
 			if err := s.client.AcceptPartyInvite(ctx, inviterUID); err != nil {
 				s.abortFollowerSession(ctx)
+			} else {
+				foundationlog.Robotf("S4A21_PARTY_INVITE_ACCEPTED uid=%d inviter_uid=%d\n", s.selfUID, inviterUID)
 			}
 		}
 	case protocol.NotiPartyInfo:
 		s.followerGuard.Lock()
-		selfUID, currentPartyID := s.selfUID, s.partyID
+		selfUID, currentPartyID, wasActive := s.selfUID, s.partyID, s.partyActive
+		previousPartyID := currentPartyID
 		s.followerGuard.Unlock()
 		memberPartyID, leaderUID, clearedPartyIDs, ok := parsePartyInfoProjectionWithLeader(packet, selfUID)
 		if ok {
@@ -165,6 +169,11 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 				s.dungeonStateGuard.Lock()
 				s.dungeonState = nil
 				s.dungeonStateGuard.Unlock()
+			}
+			if active && (!wasActive || memberPartyID != previousPartyID) {
+				foundationlog.Robotf("S4A21_PARTY_JOINED uid=%d party_id=%d leader_uid=%d\n", selfUID, memberPartyID, leaderUID)
+			} else if !active && wasActive {
+				foundationlog.Robotf("S4A21_PARTY_LEFT uid=%d\n", selfUID)
 			}
 		}
 	case protocol.NotiUserPosition:

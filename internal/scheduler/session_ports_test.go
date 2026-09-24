@@ -130,8 +130,9 @@ func TestSimulatorOnlineReappliesFixedTownToExistingRobot(t *testing.T) {
 	}
 }
 
-func TestBackendSessionTransportOptsS4A21FollowersFromFollowAccount(t *testing.T) {
-	m := testRobotManagerWithConfig(t, "[follow]\nfollow_account = leader\n")
+func TestBackendSessionTransportEnablesCapabilityDeclaredFollower(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.ConfigureBackendRuntime(testS4BackendInfo(), nil, nil)
 	backend := &backendSessionStub{}
 	m.SetBackendSessionTransport(backend)
 	if err := (sessionActionEnv{manager: m}).SendOnline([]shared.RuntimeOnlineUser{{
@@ -140,7 +141,31 @@ func TestBackendSessionTransportOptsS4A21FollowersFromFollowAccount(t *testing.T
 		t.Fatal(err)
 	}
 	if len(backend.opened) != 1 || !backend.opened[0].EnablePartyDungeonFollower {
-		t.Fatalf("opened=%+v, want explicit dungeon follower", backend.opened)
+		t.Fatalf("opened=%+v, want backend-declared dungeon follower", backend.opened)
+	}
+}
+
+func TestBackendSessionTransportKeepsAccountModeExplicit(t *testing.T) {
+	for _, tc := range []struct {
+		name, config string
+		want         bool
+	}{
+		{name: "empty", config: "", want: false},
+		{name: "configured", config: "[follow]\nfollow_account = leader\n", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testRobotManagerWithConfig(t, tc.config)
+			m.ConfigureBackendRuntime(testS4BackendInfo(), nil, nil)
+			m.backendInfo.Capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Enabled: true, Mode: "account"}
+			backend := &backendSessionStub{}
+			m.SetBackendSessionTransport(backend)
+			if err := (sessionActionEnv{manager: m}).SendOnline([]shared.RuntimeOnlineUser{{UID: 7, AccountName: "acct"}}); err != nil {
+				t.Fatal(err)
+			}
+			if got := backend.opened[0].EnablePartyDungeonFollower; got != tc.want {
+				t.Fatalf("follower enabled=%t want=%t", got, tc.want)
+			}
+		})
 	}
 }
 
