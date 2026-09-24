@@ -97,6 +97,33 @@ type recordingCharacterInitializer struct {
 	loadoutCalls int
 }
 
+type failingLoadoutInitializer struct{}
+
+func (failingLoadoutInitializer) ApplyCharacterLoadout(context.Context, string, robotcap.Info) error {
+	return errors.New("test loadout failure")
+}
+
+func TestRobotCreatorDoesNotRegisterPartiallyInitializedCharacter(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	creator := RobotCreator{
+		Provisioner: creatorProvisioner{}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{0},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+		},
+		Names: robottemplate.NameTemplates{Common: []string{"Alpha"}}, IDStart: 17000000, AccountPrefix: "robot",
+		Loadouts: failingLoadoutInitializer{},
+	}
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1})
+	if err == nil || len(robots) != 0 {
+		t.Fatalf("robots=%+v err=%v", robots, err)
+	}
+	registered, selectErr := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 10})
+	if selectErr != nil || len(registered) != 0 {
+		t.Fatalf("partially initialized robots=%+v err=%v", registered, selectErr)
+	}
+}
+
 func (a *recordingCharacterInitializer) ResolveCharacterProfile(_ context.Context, _ string, info robotcap.Info) (robotcap.Info, error) {
 	a.profileCalls++
 	return info, nil
@@ -117,7 +144,7 @@ func (a *recordingCharacterInitializer) ApplyCharacterLoadout(_ context.Context,
 	return nil
 }
 
-func TestRobotCreatorPreservesReusedCharacterProfileAndLoadout(t *testing.T) {
+func TestRobotCreatorPreservesReusedProfileAndReconcilesLoadout(t *testing.T) {
 	store := robotstate.NewMemoryStore(nil)
 	initializer := &recordingCharacterInitializer{}
 	creator := RobotCreator{
@@ -136,8 +163,8 @@ func TestRobotCreatorPreservesReusedCharacterProfileAndLoadout(t *testing.T) {
 	if robots[0].Name != "existing-character" || robots[0].Job != 3 || robots[0].Grow != 2 || robots[0].Level != 63 {
 		t.Fatalf("reused profile was replaced: %+v", robots[0])
 	}
-	if initializer.profileCalls != 0 || initializer.loadoutCalls != 0 {
-		t.Fatalf("reused character was initialized: profile=%d loadout=%d", initializer.profileCalls, initializer.loadoutCalls)
+	if initializer.profileCalls != 0 || initializer.loadoutCalls != 1 {
+		t.Fatalf("reused character initialization: profile=%d loadout=%d", initializer.profileCalls, initializer.loadoutCalls)
 	}
 	identities, err := store.Identities(context.Background(), shared.BackendS4A21)
 	if err != nil || len(identities) != 1 || identities[0].Account != "robot17000000" || identities[0].CharacterName != "existing-character" {

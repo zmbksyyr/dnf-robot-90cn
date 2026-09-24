@@ -15,17 +15,23 @@ import (
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/foundation/charset"
+	"robot/internal/foundation/lockhub"
 	"robot/internal/shared"
 
 	_ "modernc.org/sqlite"
 )
 
+var sqliteMutationMu lockhub.Locker
+
 const (
 	a21ItemCoreSize      = 99
 	a21ListTypeEquipment = 3
 	a21ItemKindEquipment = 1
+	a21ItemKindCreature  = 5
+	a21ItemKindArtifact  = 6
 	a21ItemKindAvatar    = 8
-	a21PetArtifactSlot   = 25
+	a21CreatureSlot      = 25
+	a21ArtifactSlotBase  = 26
 )
 
 type CharacterLoadoutApplier interface {
@@ -109,6 +115,8 @@ func (i PersistenceInspector) Status(ctx context.Context) shared.PersistenceStat
 }
 
 func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account string, info robotcap.Info) error {
+	sqliteMutationMu.Lock()
+	defer sqliteMutationMu.Unlock()
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return fmt.Errorf("S4A21 loadout database path is required")
 	}
@@ -131,7 +139,7 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 }
 
 func (a SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) error {
-	selectedEquipment := equipmentcap.SelectEquipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
+	selectedEquipment := selectS4A21Equipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
 	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
 	selectedPet, selectedArtifacts, petSelected := equipmentcap.SelectPet(a.Equipment, a.Config, a.RandIntn)
 	if petSelected && !petSchema {
@@ -165,9 +173,60 @@ func (a SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context,
 	return nil
 }
 
+// S4A21 exposes support and magic-stone slots for every generated character,
+// while its PVF only contains those items at level 60 and above. Keep the
+// shared selector's level rules for ordinary equipment, then fill either
+// special slot with the lowest compatible PVF item when the configured random
+// level is below the first available item.
+func selectS4A21Equipment(items []shared.EquipmentCatalogItem, level, job int, rc robotconfig.RuntimeConfig, randIntn func(int) int) map[int]shared.EquipmentCatalogItem {
+	selected := equipmentcap.SelectEquipment(items, level, job, rc, randIntn)
+	configured := func(slot int) bool {
+		if len(rc.EquipSlots) == 0 {
+			return true
+		}
+		for _, configuredSlot := range rc.EquipSlots {
+			if configuredSlot == slot {
+				return true
+			}
+		}
+		return false
+	}
+	for _, slot := range []int{11, 12} {
+		if !configured(slot) {
+			continue
+		}
+		if _, ok := selected[slot]; ok {
+			continue
+		}
+		candidates := make([]shared.EquipmentCatalogItem, 0)
+		lowestLevel := math.MaxInt
+		for _, item := range items {
+			if item.ID <= 0 || item.ItemType != slot || item.Expire || !shared.ClientCompatibleEquipment(item) || !equipmentcap.UsableByJob(item.UseJob, job) {
+				continue
+			}
+			if rc.EquipRarityMax > 0 && (item.Rarity < rc.EquipRarityMin || item.Rarity > rc.EquipRarityMax) {
+				continue
+			}
+			if item.Level < lowestLevel {
+				lowestLevel = item.Level
+				candidates = candidates[:0]
+			}
+			if item.Level == lowestLevel {
+				candidates = append(candidates, item)
+			}
+		}
+		if len(candidates) > 0 {
+			selected[slot] = candidates[randomBetween(randIntn, 0, len(candidates)-1)]
+		}
+	}
+	return selected
+}
+
 // ReconcileCharacterLoadouts keeps startup validation on one SQLite handle.
 // Sessions are not started until it returns, so persistence remains offline.
 func (a SQLiteLoadoutApplier) ReconcileCharacterLoadouts(ctx context.Context, requests []CharacterLoadoutRequest) ([]robotcap.Info, error) {
+	sqliteMutationMu.Lock()
+	defer sqliteMutationMu.Unlock()
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return nil, fmt.Errorf("S4A21 loadout database path is required")
 	}
@@ -227,6 +286,8 @@ func (a SQLiteLoadoutApplier) ApplyPlannedCharacterLevel(ctx context.Context, ac
 }
 
 func (a SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
+	sqliteMutationMu.Lock()
+	defer sqliteMutationMu.Unlock()
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return info, fmt.Errorf("S4A21 profile database path is required")
 	}
@@ -263,6 +324,8 @@ func (a SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Contex
 }
 
 func (a SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
+	sqliteMutationMu.Lock()
+	defer sqliteMutationMu.Unlock()
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return info, fmt.Errorf("S4A21 profile database path is required")
 	}
@@ -332,7 +395,7 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 
 func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
 	rows, err := db.QueryContext(ctx, `SELECT slot_index,item_core FROM character_inventory_items
-WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 27`, characterID, a21ListTypeEquipment)
+WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, characterID, a21ListTypeEquipment)
 	if err != nil {
 		return false, fmt.Errorf("inspect S4A21 loadout: %w", err)
 	}
@@ -354,7 +417,8 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 27`, character
 		switch {
 		case slot >= 12 && slot <= 23:
 			equipmentCount++
-			if item.ItemType != slot-11 || item.Level > info.Level || !equipmentcap.UsableByJob(item.UseJob, info.Job) {
+			levelIncompatible := slot < 22 && item.Level > info.Level
+			if item.ItemType != slot-11 || levelIncompatible || !equipmentcap.UsableByJob(item.UseJob, info.Job) {
 				return false, nil
 			}
 		case slot >= 0 && slot <= 9:
@@ -371,6 +435,17 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 27`, character
 		return false, nil
 	}
 	if wantPet {
+		var creatureCore []byte
+		if err := db.QueryRowContext(ctx, `SELECT item_core FROM character_inventory_items WHERE character_id=? AND list_type=? AND slot_index=?`, characterID, a21ListTypeEquipment, a21CreatureSlot).Scan(&creatureCore); err != nil {
+			return false, nil
+		}
+		if len(creatureCore) < 9 || creatureCore[0] != a21ItemKindCreature || int(binary.LittleEndian.Uint32(creatureCore[1:5])) != pet.ID {
+			return false, nil
+		}
+		creatureUID := int(binary.LittleEndian.Uint32(creatureCore[5:9]))
+		if creatureUID <= 0 {
+			return false, nil
+		}
 		petCore, err := db.QueryContext(ctx, `SELECT creature_buffer FROM character_subtype0_fields WHERE character_id=?`, characterID)
 		if err != nil {
 			return false, err
@@ -392,12 +467,12 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 27`, character
 		if !petPresent {
 			return false, nil
 		}
-		var creatureID int
-		if err := db.QueryRowContext(ctx, `SELECT creature_key FROM character_creatures WHERE character_id=? AND sort_order=0`, characterID).Scan(&creatureID); err != nil || creatureID != pet.ID {
+		var storedCreatureUID int
+		if err := db.QueryRowContext(ctx, `SELECT creature_key FROM character_creatures WHERE character_id=? AND sort_order=0`, characterID).Scan(&storedCreatureUID); err != nil || storedCreatureUID != creatureUID {
 			return false, nil
 		}
 		for itemType, item := range artifacts {
-			slot := a21PetArtifactSlot + itemType - 31
+			slot := a21ArtifactSlotBase + itemType - 31
 			core, err := db.QueryContext(ctx, `SELECT item_core FROM character_inventory_items WHERE character_id=? AND list_type=? AND slot_index=?`, characterID, a21ListTypeEquipment, slot)
 			if err != nil {
 				return false, err
@@ -409,7 +484,7 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 27`, character
 					core.Close()
 					return false, err
 				}
-				valid = len(raw) >= 5 && int(binary.LittleEndian.Uint32(raw[1:5])) == item.ID
+				valid = len(raw) >= 5 && raw[0] == a21ItemKindArtifact && int(binary.LittleEndian.Uint32(raw[1:5])) == item.ID
 			}
 			if err := core.Err(); err != nil {
 				core.Close()
@@ -425,7 +500,7 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 27`, character
 }
 
 func petSchemaAvailable(ctx context.Context, db *sql.DB) bool {
-	for _, table := range []string{"character_creatures", "character_subtype0_fields", "character_subtype1_fields"} {
+	for _, table := range []string{"character_creatures", "character_creature_uid_sequence", "character_subtype0_fields", "character_subtype1_fields"} {
 		var found string
 		if err := db.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&found); err != nil {
 			return false
@@ -460,7 +535,7 @@ func replaceLoadout(ctx context.Context, tx *sql.Tx, accountID, characterID int,
 		return fmt.Errorf("clear S4A21 avatar details character=%d: %w", characterID, err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM character_inventory_items
-	WHERE character_id = ? AND list_type = ? AND slot_index BETWEEN 0 AND 27`, characterID, a21ListTypeEquipment); err != nil {
+	WHERE character_id = ? AND list_type = ? AND slot_index BETWEEN 0 AND 28`, characterID, a21ListTypeEquipment); err != nil {
 		return fmt.Errorf("clear S4A21 equipped loadout: %w", err)
 	}
 	for commonSlot, item := range equipment {
@@ -489,6 +564,16 @@ VALUES (?, ?, ?, ?, 0, 0, zeroblob(30), 0, 0, 0)`, avatarUID, accountID, charact
 		}
 	}
 	if petSelected {
+		var creatureUID int64
+		if err := tx.QueryRowContext(ctx, `INSERT INTO character_creature_uid_sequence DEFAULT VALUES RETURNING creature_uid`).Scan(&creatureUID); err != nil {
+			return fmt.Errorf("allocate S4A21 creature uid: %w", err)
+		}
+		if creatureUID <= 0 || creatureUID > math.MaxInt32 {
+			return fmt.Errorf("S4A21 creature uid out of range: %d", creatureUID)
+		}
+		if err := upsertEquippedCore(ctx, tx, characterID, a21CreatureSlot, a21ItemCore(a21ItemKindCreature, pet, 0, int32(creatureUID))); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO character_subtype0_fields(character_id) VALUES(?)`, characterID); err != nil {
 			return fmt.Errorf("initialize S4A21 creature state character=%d: %w", characterID, err)
 		}
@@ -500,8 +585,8 @@ VALUES (?, ?, ?, ?, 0, 0, zeroblob(30), 0, 0, 0)`, avatarUID, accountID, charact
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO character_creatures
 (character_id,sort_order,creature_key,field04,mode_flag,progress_value,mode1_field0a,mode1_field0b,field_after_value,creature_text,tail_flag,extra_json)
-VALUES (?,0,?,0,0,0,0,0,0,NULL,0,'{}')`, characterID, pet.ID); err != nil {
-			return fmt.Errorf("insert S4A21 creature character=%d item=%d: %w", characterID, pet.ID, err)
+VALUES (?,0,?,0,0,0,0,0,0,NULL,0,'{}')`, characterID, creatureUID); err != nil {
+			return fmt.Errorf("insert S4A21 creature character=%d uid=%d: %w", characterID, creatureUID, err)
 		}
 		creatureBuffer := make([]byte, 8)
 		binary.LittleEndian.PutUint32(creatureBuffer, uint32(pet.ID))
@@ -512,8 +597,8 @@ VALUES (?,0,?,0,0,0,0,0,0,NULL,0,'{}')`, characterID, pet.ID); err != nil {
 			return fmt.Errorf("set S4A21 creature level character=%d: %w", characterID, err)
 		}
 		for itemType, item := range artifacts {
-			slot := a21PetArtifactSlot + itemType - 31
-			if err := upsertEquippedCore(ctx, tx, characterID, slot, a21ItemCore(a21ItemKindEquipment, item, 0, int32(randomPositive(randIntn)))); err != nil {
+			slot := a21ArtifactSlotBase + itemType - 31
+			if err := upsertEquippedCore(ctx, tx, characterID, slot, a21ItemCore(a21ItemKindArtifact, item, 0, int32(randomPositive(randIntn)))); err != nil {
 				return err
 			}
 		}
@@ -529,7 +614,7 @@ VALUES (?,0,?,0,0,0,0,0,0,NULL,0,'{}')`, characterID, pet.ID); err != nil {
 }
 
 func petSchemaAvailableTx(ctx context.Context, tx *sql.Tx) bool {
-	for _, table := range []string{"character_creatures", "character_subtype0_fields", "character_subtype1_fields"} {
+	for _, table := range []string{"character_creatures", "character_creature_uid_sequence", "character_subtype0_fields", "character_subtype1_fields"} {
 		var found string
 		if err := tx.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&found); err != nil {
 			return false
