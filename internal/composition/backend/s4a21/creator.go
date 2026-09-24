@@ -42,23 +42,18 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	if c.IDStart <= 0 {
 		return nil, fmt.Errorf("S4A21 creator id start is required")
 	}
-	idStart, nameExists, err := c.nextProvisioningRange(ctx)
+	if request.Count <= 0 {
+		return nil, fmt.Errorf("S4A21 create count must be positive")
+	}
+	const maxConflictSkips = 64
+	candidateIDs, nameExists, err := c.nextProvisioningIDs(ctx, request.Count+maxConflictSkips)
 	if err != nil {
 		return nil, err
 	}
-	options := robotlifecycle.ProtocolPlanOptions{
-		Backend: shared.BackendS4A21, Count: request.Count, IDStart: idStart, AccountPrefix: c.AccountPrefix,
-		PasswordHash: c.PasswordHash, Config: c.Config, Names: c.Names, Maps: c.Maps, RandIntn: c.RandIntn, RandBetween: c.RandBetween,
-		NameExists: nameExists,
+	if len(candidateIDs) < request.Count {
+		return nil, fmt.Errorf("S4A21 robot UID range has %d free identities, need %d", len(candidateIDs), request.Count)
 	}
-	plans, err := robotlifecycle.BuildProtocolRobotPlans(options)
-	if err != nil {
-		return nil, err
-	}
-	reservedNames := make(map[string]struct{}, len(plans))
-	for _, plan := range plans {
-		reservedNames[robottemplate.DBName(plan.Info.Name)] = struct{}{}
-	}
+	reservedNames := make(map[string]struct{}, request.Count+maxConflictSkips)
 	nameTaken := func(name string) bool {
 		if nameExists(name) {
 			return true
@@ -66,8 +61,27 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		_, exists := reservedNames[robottemplate.DBName(name)]
 		return exists
 	}
-	nextID := idStart + len(plans)
-	const maxConflictSkips = 64
+	buildPlan := func(uid int) (robotlifecycle.ProtocolRobotPlan, error) {
+		plans, err := robotlifecycle.BuildProtocolRobotPlans(robotlifecycle.ProtocolPlanOptions{
+			Backend: shared.BackendS4A21, Count: 1, IDStart: uid, AccountPrefix: c.AccountPrefix,
+			PasswordHash: c.PasswordHash, Config: c.Config, Names: c.Names, Maps: c.Maps, RandIntn: c.RandIntn, RandBetween: c.RandBetween,
+			NameExists: nameTaken,
+		})
+		if err != nil {
+			return robotlifecycle.ProtocolRobotPlan{}, err
+		}
+		reservedNames[robottemplate.DBName(plans[0].Info.Name)] = struct{}{}
+		return plans[0], nil
+	}
+	plans := make([]robotlifecycle.ProtocolRobotPlan, 0, request.Count+maxConflictSkips)
+	for _, uid := range candidateIDs[:request.Count] {
+		plan, err := buildPlan(uid)
+		if err != nil {
+			return nil, err
+		}
+		plans = append(plans, plan)
+	}
+	nextCandidate := request.Count
 	conflictSkips := 0
 	robots := make([]robotcap.Info, 0, request.Count)
 	for i := 0; i < len(plans) && len(robots) < request.Count; i++ {
@@ -85,17 +99,15 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 				if conflictSkips > maxConflictSkips {
 					return robots, fmt.Errorf("S4A21 account recovery exceeded %d roster conflicts: %w", maxConflictSkips, provisionErr)
 				}
-				replacementOptions := options
-				replacementOptions.Count = 1
-				replacementOptions.IDStart = nextID
-				replacementOptions.NameExists = nameTaken
-				replacements, buildErr := robotlifecycle.BuildProtocolRobotPlans(replacementOptions)
+				if nextCandidate >= len(candidateIDs) {
+					return robots, fmt.Errorf("S4A21 robot UID range exhausted after account conflict: %w", provisionErr)
+				}
+				replacement, buildErr := buildPlan(candidateIDs[nextCandidate])
 				if buildErr != nil {
 					return robots, buildErr
 				}
-				nextID++
-				reservedNames[robottemplate.DBName(replacements[0].Info.Name)] = struct{}{}
-				plans = append(plans, replacements[0])
+				nextCandidate++
+				plans = append(plans, replacement)
 				continue
 			}
 			return robots, provisionErr
@@ -134,30 +146,32 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	return robots, nil
 }
 
-func (c RobotCreator) nextProvisioningRange(ctx context.Context) (int, func(string) bool, error) {
-	idStart := c.IDStart
+func (c RobotCreator) nextProvisioningIDs(ctx context.Context, count int) ([]int, func(string) bool, error) {
 	var existing []robotcap.Info
 	if directory, ok := c.RobotCatalog.(robotstate.Directory); ok {
 		robots, err := directory.SelectRobots(ctx, robotcap.CommandRequest{Count: 1 << 30})
 		if err != nil {
-			return 0, nil, fmt.Errorf("read S4A21 robot directory: %w", err)
+			return nil, nil, fmt.Errorf("read S4A21 robot directory: %w", err)
 		}
 		existing = robots
-		maxUID := idStart - 1
-		for _, robot := range robots {
-			if robot.UID >= idStart && robot.UID > maxUID {
-				maxUID = robot.UID
-			}
-		}
-		if maxUID >= idStart {
-			idStart = maxUID + 1
-		}
 	}
+	usedUIDs := make(map[int]struct{}, len(existing))
 	usedNames := make(map[string]struct{}, len(existing))
 	for _, robot := range existing {
+		usedUIDs[robot.UID] = struct{}{}
 		usedNames[robottemplate.DBName(robot.Name)] = struct{}{}
 	}
-	return idStart, func(name string) bool {
+	end := c.Config.RobotUIDEnd
+	if end < c.IDStart {
+		end = c.IDStart + count - 1
+	}
+	ids := make([]int, 0, count)
+	for uid := c.IDStart; uid <= end && len(ids) < count; uid++ {
+		if _, used := usedUIDs[uid]; !used {
+			ids = append(ids, uid)
+		}
+	}
+	return ids, func(name string) bool {
 		_, exists := usedNames[robottemplate.DBName(name)]
 		return exists
 	}, nil

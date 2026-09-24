@@ -1,46 +1,15 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	runtimeinit "robot/internal/bootstrap/runtime"
-	robotcap "robot/internal/capability/robot"
-	robotstate "robot/internal/capability/robotstate"
-	s4a21backend "robot/internal/composition/backend/s4a21"
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
 	"robot/internal/shared"
 )
-
-type recordingLoadoutApplier struct {
-	calls []string
-}
-
-func (a *recordingLoadoutApplier) ApplyCharacterLoadout(_ context.Context, account string, info robotcap.Info) error {
-	a.calls = append(a.calls, account+"/"+info.Name)
-	return nil
-}
-
-type recordingBatchLoadoutApplier struct {
-	requests []s4a21backend.CharacterLoadoutRequest
-}
-
-func (a *recordingBatchLoadoutApplier) ApplyCharacterLoadout(context.Context, string, robotcap.Info) error {
-	return nil
-}
-
-func (a *recordingBatchLoadoutApplier) ReconcileCharacterLoadouts(_ context.Context, requests []s4a21backend.CharacterLoadoutRequest) ([]robotcap.Info, error) {
-	a.requests = append(a.requests, requests...)
-	updates := make([]robotcap.Info, 0, len(requests))
-	for _, request := range requests {
-		request.Robot.Level = 70
-		updates = append(updates, request.Robot)
-	}
-	return updates, nil
-}
 
 func TestSimulatorStartupDoesNotMarkRuntimeBeforePVFInit(t *testing.T) {
 	root := t.TempDir()
@@ -63,54 +32,5 @@ func TestSimulatorStartupDoesNotMarkRuntimeBeforePVFInit(t *testing.T) {
 	}
 	if _, err := runtimeinit.PrepareBackendRuntime(paths, selection); err != nil {
 		t.Fatalf("failed startup left runtime layout unusable: %v", err)
-	}
-}
-
-func TestReconcileSimulatorLoadoutsUsesPersistedIdentity(t *testing.T) {
-	state, err := robotstate.OpenFileStore(filepath.Join(t.TempDir(), "robot_state.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	if err := state.RegisterRobots(ctx, []robotcap.Info{{UID: 7, Name: "bot"}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := state.RegisterIdentity(ctx, robotstate.Identity{Backend: shared.BackendS4A21, Account: "robot7", CharacterName: "bot"}); err != nil {
-		t.Fatal(err)
-	}
-	applier := &recordingLoadoutApplier{}
-	if err := reconcileSimulatorLoadouts(ctx, state, applier); err != nil {
-		t.Fatal(err)
-	}
-	if len(applier.calls) != 1 || applier.calls[0] != "robot7/bot" {
-		t.Fatalf("loadout calls=%v", applier.calls)
-	}
-}
-
-func TestReconcileSimulatorLoadoutsUsesBatchAdapter(t *testing.T) {
-	state, err := robotstate.OpenFileStore(filepath.Join(t.TempDir(), "robot_state.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	if err := state.RegisterRobots(ctx, []robotcap.Info{{UID: 7, Name: "bot", Level: 1}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := state.RegisterIdentity(ctx, robotstate.Identity{Backend: shared.BackendS4A21, Account: "robot7", CharacterName: "bot"}); err != nil {
-		t.Fatal(err)
-	}
-	applier := &recordingBatchLoadoutApplier{}
-	if err := reconcileSimulatorLoadouts(ctx, state, applier); err != nil {
-		t.Fatal(err)
-	}
-	if len(applier.requests) != 1 || applier.requests[0].Account != "robot7" || applier.requests[0].Robot.Name != "bot" {
-		t.Fatalf("batch requests=%+v", applier.requests)
-	}
-	robots, err := state.SelectRobots(ctx, robotcap.CommandRequest{Count: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(robots) != 1 || robots[0].Level != 70 {
-		t.Fatalf("updated robots=%+v", robots)
 	}
 }

@@ -184,7 +184,8 @@ func openLoadoutTestDB(t *testing.T, path string) *sql.DB {
 	}
 	if _, err := db.Exec(`PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS accounts(account_id INTEGER PRIMARY KEY,m_id TEXT UNIQUE);
-CREATE TABLE IF NOT EXISTS characters(character_id INTEGER PRIMARY KEY,account_id INTEGER,name TEXT,job INTEGER,grow_type INTEGER NOT NULL DEFAULT 0,level INTEGER,exp INTEGER NOT NULL DEFAULT 0,delete_flag INTEGER,updated_at TEXT);
+CREATE TABLE IF NOT EXISTS characters(character_id INTEGER PRIMARY KEY,account_id INTEGER,name TEXT,job INTEGER,grow_type INTEGER NOT NULL DEFAULT 0,level INTEGER,exp INTEGER NOT NULL DEFAULT 0,town_id INTEGER NOT NULL DEFAULT 1,area_id INTEGER NOT NULL DEFAULT 0,pos_x INTEGER NOT NULL DEFAULT 0,pos_y INTEGER NOT NULL DEFAULT 0,slot_index INTEGER NOT NULL DEFAULT 0,delete_flag INTEGER,updated_at TEXT,FOREIGN KEY(account_id) REFERENCES accounts(account_id) ON DELETE CASCADE);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_characters_name_unique ON characters(name);
 CREATE TABLE IF NOT EXISTS character_inventory_items(item_uid INTEGER PRIMARY KEY AUTOINCREMENT,character_id INTEGER,list_type INTEGER,slot_index INTEGER,item_core BLOB,created_at TEXT,updated_at TEXT,UNIQUE(character_id,list_type,slot_index));
 CREATE TABLE IF NOT EXISTS character_avatar_detail(item_uid INTEGER PRIMARY KEY,owner_id INTEGER,character_id INTEGER,item_id INTEGER,expire_date INTEGER,clear_avatar_id INTEGER,jewel_socket BLOB,color1 INTEGER,color2 INTEGER,delete_date INTEGER);
 CREATE TABLE IF NOT EXISTS character_avatar_uid_sequence(avatar_uid INTEGER PRIMARY KEY AUTOINCREMENT);

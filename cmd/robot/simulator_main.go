@@ -10,7 +10,6 @@ import (
 
 	runtimeinit "robot/internal/bootstrap/runtime"
 	"robot/internal/capability/catalog"
-	robotcap "robot/internal/capability/robot"
 	"robot/internal/capability/robotconfig"
 	robotstate "robot/internal/capability/robotstate"
 	backendregistry "robot/internal/composition/backend"
@@ -42,11 +41,6 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 		foundationlog.Robotf("SIMULATOR_OPEN_FILE_CAPACITY_FAILED err=%v\n", err)
 		return 1
 	}
-	state, err := openBackendRobotState(info, paths)
-	if err != nil {
-		foundationlog.Robotf("SIMULATOR_ROBOT_STATE_FAILED err=%v\n", err)
-		return 1
-	}
 	transports, err := composeBackendTransports(info, cfg)
 	if err != nil {
 		foundationlog.Robotf("SIMULATOR_TRANSPORT_FAILED err=%v\n", err)
@@ -67,6 +61,21 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 		foundationlog.Robotf("SIMULATOR_LOADOUT_DATABASE_FAILED err=%v\n", err)
 		return 1
 	}
+	equipment := catalog.ViewItemCatalogs(paths.PVF).Equipment
+	inventory, err := (s4a21backend.SQLiteStartupInventory{
+		DatabasePath: loadoutDB, AccountPrefix: "robot", Config: rc, Equipment: equipment,
+	}).ScanAndClean(context.Background())
+	if err != nil {
+		foundationlog.Robotf("SIMULATOR_STARTUP_INVENTORY_FAILED err=%v\n", err)
+		return 1
+	}
+	state := robotstate.NewMemoryStore(inventory.Robots)
+	if err := state.RegisterIdentities(context.Background(), inventory.Identities); err != nil {
+		foundationlog.Robotf("SIMULATOR_STARTUP_IDENTITIES_FAILED err=%v\n", err)
+		return 1
+	}
+	foundationlog.Robotf("SIMULATOR_STARTUP_INVENTORY scanned=%d adopted=%d deleted_accounts=%d deleted_characters=%d\n",
+		inventory.ScannedAccounts, len(inventory.Robots), inventory.DeletedAccounts, inventory.DeletedCharacters)
 	// Do not mark the generation as applied until simulator-specific
 	// initialization (including transport composition and PVF projection) has
 	// succeeded. A failed startup must retry the reinitialization next time.
@@ -78,25 +87,12 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 	manager.ConfigureBackendRuntime(info, s4a21backend.PersistenceInspector{DatabasePath: loadoutDB}, nil)
 	manager.SetBackendRobotCreator(info, nil)
 	manager.SetRobotStateDirectory(state)
-	defer func() {
-		if err := state.Flush(); err != nil {
-			foundationlog.Robotf("SIMULATOR_STATE_FLUSH_FAILED err=%v\n", err)
-		}
-	}()
 	manager.SetBackendActionTransport(transports.actions)
 	manager.SetBackendSessionTransport(transports.sessions)
 	manager.SetTownMapCatalog(townMaps)
 	nameTemplates := catalog.NameTemplates(paths.Templates)
 	loadouts := s4a21backend.SQLiteLoadoutApplier{
-		DatabasePath: loadoutDB, Config: rc, Equipment: catalog.ViewItemCatalogs(paths.PVF).Equipment, RandIntn: manager.RandIntn,
-	}
-	if os.Getenv("DNF_ROBOT_S4A21_REPAIR_LOADOUTS") == "1" {
-		foundationlog.Robotf("SIMULATOR_LOADOUT_REPAIR_STARTED\n")
-		if err := reconcileSimulatorLoadouts(context.Background(), state, loadouts); err != nil {
-			foundationlog.Robotf("SIMULATOR_LOADOUT_REPAIR_FAILED err=%v\n", err)
-			return 1
-		}
-		foundationlog.Robotf("SIMULATOR_LOADOUT_REPAIR_COMPLETED\n")
+		DatabasePath: loadoutDB, Config: rc, Equipment: equipment, RandIntn: manager.RandIntn,
 	}
 	manager.SetBackendRobotCreator(info, s4a21backend.RobotCreator{
 		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
@@ -159,72 +155,6 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 
 func backendSetting(selection shared.BackendSelection, key string) string {
 	return selection.Settings[key]
-}
-
-func reconcileSimulatorLoadouts(ctx context.Context, state *robotstate.FileStore, applier s4a21backend.CharacterLoadoutApplier) error {
-	robots, err := state.SelectRobots(ctx, robotcap.CommandRequest{Count: 1 << 30})
-	if err != nil {
-		return err
-	}
-	identities, err := state.Identities(ctx, shared.BackendS4A21)
-	if err != nil {
-		return err
-	}
-	accounts := make(map[string]string, len(identities))
-	for _, identity := range identities {
-		accounts[identity.CharacterName] = identity.Account
-	}
-	if batch, ok := applier.(s4a21backend.CharacterLoadoutBatchReconciler); ok {
-		requests := make([]s4a21backend.CharacterLoadoutRequest, 0, len(robots))
-		for _, robot := range robots {
-			account := accounts[robot.Name]
-			if account == "" {
-				return fmt.Errorf("S4A21 robot %d/%s has no account identity", robot.UID, robot.Name)
-			}
-			requests = append(requests, s4a21backend.CharacterLoadoutRequest{Account: account, Robot: robot})
-		}
-		updates, err := batch.ReconcileCharacterLoadouts(ctx, requests)
-		if err != nil {
-			return fmt.Errorf("reconcile S4A21 loadouts: %w", err)
-		}
-		if len(updates) > 0 {
-			if err := state.UpdateRobotProfiles(ctx, updates); err != nil {
-				return fmt.Errorf("persist S4A21 profiles: %w", err)
-			}
-		}
-		return nil
-	}
-	profiles, canResolve := applier.(s4a21backend.CharacterProfileReader)
-	profileAdapter, canReconcileLevel := applier.(s4a21backend.CharacterProfileAdapter)
-	updates := make([]robotcap.Info, 0, len(robots))
-	for _, robot := range robots {
-		account := accounts[robot.Name]
-		if account == "" {
-			return fmt.Errorf("S4A21 robot %d/%s has no account identity", robot.UID, robot.Name)
-		}
-		if canReconcileLevel {
-			robot, err = profileAdapter.ReconcileConfiguredCharacterLevel(ctx, account, robot)
-			if err != nil {
-				return fmt.Errorf("reconcile S4A21 level uid=%d: %w", robot.UID, err)
-			}
-			updates = append(updates, robot)
-		} else if canResolve {
-			robot, err = profiles.ResolveCharacterProfile(ctx, account, robot)
-			if err != nil {
-				return fmt.Errorf("resolve S4A21 profile uid=%d: %w", robot.UID, err)
-			}
-			updates = append(updates, robot)
-		}
-		if err := applier.ApplyCharacterLoadout(ctx, account, robot); err != nil {
-			return fmt.Errorf("reconcile S4A21 loadout uid=%d: %w", robot.UID, err)
-		}
-	}
-	if len(updates) > 0 {
-		if err := state.UpdateRobotProfiles(ctx, updates); err != nil {
-			return fmt.Errorf("persist S4A21 profiles: %w", err)
-		}
-	}
-	return nil
 }
 
 func ensureSimulatorOpenFileLimit(rc robotconfig.RuntimeConfig) error {

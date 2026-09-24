@@ -46,23 +46,3 @@ func TestSimulatorShoutNameUsesRobotStateWithoutSchemaRepository(t *testing.T) {
 		t.Fatalf("name=%q, want sim-robot", got)
 	}
 }
-
-func TestFileStoreRobotRegistrationSurvivesReload(t *testing.T) {
-	path := t.TempDir() + "/robot_state.json"
-	store, err := robotstate.OpenFileStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	robot := robotcap.Info{UID: 8, Name: "persisted"}
-	if err := store.RegisterRobots(context.Background(), []robotcap.Info{robot}); err != nil {
-		t.Fatal(err)
-	}
-	reloaded, err := robotstate.OpenFileStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	robots, err := reloaded.SelectRobots(context.Background(), robotcap.CommandRequest{UIDs: []int{robot.UID}})
-	if err != nil || len(robots) != 1 || robots[0].Name != robot.Name {
-		t.Fatalf("robots=%+v err=%v", robots, err)
-	}
-}

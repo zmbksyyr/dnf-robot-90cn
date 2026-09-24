@@ -38,10 +38,6 @@ type CharacterLoadoutApplier interface {
 	ApplyCharacterLoadout(context.Context, string, robotcap.Info) error
 }
 
-type CharacterLoadoutBatchReconciler interface {
-	ReconcileCharacterLoadouts(context.Context, []CharacterLoadoutRequest) ([]robotcap.Info, error)
-}
-
 type CharacterProfileReader interface {
 	ResolveCharacterProfile(context.Context, string, robotcap.Info) (robotcap.Info, error)
 }
@@ -50,11 +46,6 @@ type CharacterProfileAdapter interface {
 	CharacterProfileReader
 	ApplyPlannedCharacterLevel(context.Context, string, robotcap.Info, int) (robotcap.Info, error)
 	ReconcileConfiguredCharacterLevel(context.Context, string, robotcap.Info) (robotcap.Info, error)
-}
-
-type CharacterLoadoutRequest struct {
-	Account string
-	Robot   robotcap.Info
 }
 
 type SQLiteLoadoutApplier struct {
@@ -220,46 +211,6 @@ func selectS4A21Equipment(items []shared.EquipmentCatalogItem, level, job int, r
 		}
 	}
 	return selected
-}
-
-// ReconcileCharacterLoadouts keeps startup validation on one SQLite handle.
-// Sessions are not started until it returns, so persistence remains offline.
-func (a SQLiteLoadoutApplier) ReconcileCharacterLoadouts(ctx context.Context, requests []CharacterLoadoutRequest) ([]robotcap.Info, error) {
-	sqliteMutationMu.Lock()
-	defer sqliteMutationMu.Unlock()
-	if strings.TrimSpace(a.DatabasePath) == "" {
-		return nil, fmt.Errorf("S4A21 loadout database path is required")
-	}
-	db, err := sql.Open("sqlite", a.DatabasePath)
-	if err != nil {
-		return nil, fmt.Errorf("open S4A21 loadout database: %w", err)
-	}
-	defer db.Close()
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
-		return nil, fmt.Errorf("configure S4A21 loadout database: %w", err)
-	}
-	if err := validateLoadoutSchema(ctx, db); err != nil {
-		return nil, err
-	}
-	items := equipmentByID(a.Equipment)
-	petSchema := petSchemaAvailable(ctx, db)
-	updates := make([]robotcap.Info, 0, len(requests))
-	for _, request := range requests {
-		accountID, characterID, actual, err := resolveCharacterProfile(ctx, db, request.Account, request.Robot)
-		if err != nil {
-			return nil, err
-		}
-		actual, err = a.reconcileResolvedCharacterLevel(ctx, db, characterID, actual)
-		if err != nil {
-			return nil, err
-		}
-		if err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema); err != nil {
-			return nil, err
-		}
-		updates = append(updates, actual)
-	}
-	return updates, nil
 }
 
 func (a SQLiteLoadoutApplier) ResolveCharacterProfile(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {

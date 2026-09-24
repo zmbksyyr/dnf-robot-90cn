@@ -284,3 +284,22 @@ func TestRobotCreatorContinuesAfterExistingSimulatorBatch(t *testing.T) {
 		t.Fatalf("second name=%q collides with first=%+v", second[0].Name, first)
 	}
 }
+
+func TestRobotCreatorReusesFirstAvailableUIDGap(t *testing.T) {
+	store := robotstate.NewMemoryStore([]robotcap.Info{
+		{UID: 17000000, Name: "ExistingA"},
+		{UID: 17000002, Name: "ExistingC"},
+	})
+	creator := RobotCreator{
+		Provisioner: creatorProvisioner{}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			RobotUIDEnd: 17000003, LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{0},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+		},
+		Names: robottemplate.NameTemplates{Common: []string{"Alpha"}}, IDStart: 17000000, AccountPrefix: "robot",
+	}
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1})
+	if err != nil || len(robots) != 1 || robots[0].UID != 17000001 {
+		t.Fatalf("robots=%+v err=%v", robots, err)
+	}
+}

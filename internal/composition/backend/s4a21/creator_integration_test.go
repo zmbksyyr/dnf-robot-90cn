@@ -3,7 +3,6 @@ package s4a21
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -24,11 +23,7 @@ func TestLiveRobotCreatorThroughProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	storePath := filepath.Join(t.TempDir(), "robot_state.json")
-	store, err := robotstate.OpenFileStore(storePath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := robotstate.NewMemoryStore(nil)
 	prefix := "r" + time.Now().Format("150405")
 	creator := RobotCreator{
 		Provisioner: Provisioner{Address: address, Timeout: 20 * time.Second},
@@ -58,13 +53,5 @@ func TestLiveRobotCreatorThroughProtocol(t *testing.T) {
 	selected, err := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: count})
 	if err != nil || len(selected) != count {
 		t.Fatalf("selected=%+v err=%v", selected, err)
-	}
-	reloaded, err := robotstate.OpenFileStore(storePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	selected, err = reloaded.SelectRobots(context.Background(), robotcap.CommandRequest{Count: count})
-	if err != nil || len(selected) != count {
-		t.Fatalf("reloaded selected=%+v err=%v", selected, err)
 	}
 }

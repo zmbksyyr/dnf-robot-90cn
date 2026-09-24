@@ -102,7 +102,7 @@ func TestPrepareBackendRuntimeDoesNotCarrySimulatorStateIntoNative(t *testing.T)
 	if err := os.WriteFile(paths.MainConfig(), []byte("system-config"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(paths.State, "robot_state.json"), []byte(`{"backend":"sim_a21"}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(paths.State, "simulator.cache"), []byte(`{"backend":"sim_a21"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	previous := shared.BackendSelection{BackendID: shared.BackendS4A21, ConfigGeneration: 4}
@@ -119,7 +119,7 @@ func TestPrepareBackendRuntimeDoesNotCarrySimulatorStateIntoNative(t *testing.T)
 	if err != nil || !changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
-	if _, err := os.Stat(filepath.Join(paths.State, "robot_state.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(paths.State, "simulator.cache")); !os.IsNotExist(err) {
 		t.Fatalf("simulator robot state survived native switch: %v", err)
 	}
 	if got, err := os.ReadFile(paths.MainConfig()); err != nil || string(got) != "system-config" {

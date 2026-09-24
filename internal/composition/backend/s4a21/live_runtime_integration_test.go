@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -30,10 +29,7 @@ func TestLiveS4A21RuntimeActions(t *testing.T) {
 		count = parsed
 	}
 	prefix := "live" + strconv.FormatInt(time.Now().UnixNano()%1000000, 10)
-	store, err := robotstate.OpenFileStore(filepath.Join(t.TempDir(), "robot_state.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := robotstate.NewMemoryStore(nil)
 	creator := RobotCreator{
 		Provisioner: Provisioner{Address: address, Timeout: 20 * time.Second},
 		BatchStore:  store, IdentityStore: store, RobotCatalog: store,

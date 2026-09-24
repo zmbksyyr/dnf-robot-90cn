@@ -1,11 +1,9 @@
 package main
 
 import (
-	"path/filepath"
 	"testing"
 
 	"robot/internal/foundation/config"
-	"robot/internal/foundation/layout"
 	"robot/internal/shared"
 )
 
@@ -16,13 +14,6 @@ func TestComposeNativeTransportsLeavesAdaptersUnset(t *testing.T) {
 	}
 	if err := bundle.close(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestOpenBackendRobotStateNativeUsesLegacyRepository(t *testing.T) {
-	state, err := openBackendRobotState(shared.BackendInfo{ID: shared.BackendNative}, layout.New(filepath.Join(t.TempDir(), "config")))
-	if err != nil || state != nil {
-		t.Fatalf("state=%T err=%v", state, err)
 	}
 }
 
