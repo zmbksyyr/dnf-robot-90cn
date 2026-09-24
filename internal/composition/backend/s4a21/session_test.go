@@ -90,6 +90,7 @@ func TestSessionFactoryEnablesPartyDungeonFollower(t *testing.T) {
 		for _, typ := range []uint16{
 			protocol.CmdLogin,
 			protocol.CmdSelectCharacter,
+			protocol.CmdSetUDPIPPort,
 			protocol.CmdCheckConnection,
 			protocol.CmdChangeTutorialFlag,
 		} {

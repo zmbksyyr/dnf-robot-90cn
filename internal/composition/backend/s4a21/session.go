@@ -90,6 +90,11 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	if request.EnablePartyDungeonFollower && identityErr != nil {
 		return nil, fmt.Errorf("S4A21 follower identity: %w", identityErr)
 	}
+	if request.EnablePartyDungeonFollower {
+		if err := client.RegisterUDPEndpoint(openCtx); err != nil {
+			return nil, err
+		}
+	}
 	if err := client.CheckConnection(openCtx); err != nil {
 		return nil, err
 	}

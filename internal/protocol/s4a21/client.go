@@ -14,6 +14,7 @@ const DefaultMaxPacketLength = 1024 * 1024
 
 type Client struct {
 	conn    net.Conn
+	udpConn *net.UDPConn
 	sendMu  lockhub.Locker
 	maxSize int
 }
@@ -35,7 +36,53 @@ func (c *Client) Close() error {
 	if c == nil || c.conn == nil {
 		return nil
 	}
-	return c.conn.Close()
+	err := c.conn.Close()
+	if c.udpConn != nil {
+		_ = c.udpConn.Close()
+		c.udpConn = nil
+	}
+	return err
+}
+
+// RegisterUDPEndpoint announces a real local UDP port before party packets
+// can reference this session. A21 clients expect this endpoint to be present;
+// the server's fallback port is not a valid robot endpoint.
+func (c *Client) RegisterUDPEndpoint(ctx context.Context) error {
+	if c == nil || c.conn == nil {
+		return fmt.Errorf("s4a21 client is closed")
+	}
+	if c.udpConn != nil {
+		return nil
+	}
+	localIP := net.IPv4zero
+	if addr, ok := c.conn.LocalAddr().(*net.TCPAddr); ok && addr.IP.To4() != nil {
+		localIP = addr.IP.To4()
+	}
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: localIP, Port: 0})
+	if err != nil {
+		return fmt.Errorf("s4a21 udp endpoint: %w", err)
+	}
+	endpoint := udpConn.LocalAddr().(*net.UDPAddr)
+	ip := endpoint.IP.To4()
+	if ip == nil || ip.IsUnspecified() {
+		ip = localIP.To4()
+	}
+	if ip == nil || ip.IsUnspecified() {
+		_ = udpConn.Close()
+		return fmt.Errorf("s4a21 udp endpoint has no IPv4 address")
+	}
+	body, err := SetUDPIPPortBody(ip, uint16(endpoint.Port), 1200)
+	if err != nil {
+		_ = udpConn.Close()
+		return err
+	}
+	c.udpConn = udpConn
+	if err := c.send(ctx, Encode(1, CmdSetUDPIPPort, body)); err != nil {
+		_ = udpConn.Close()
+		c.udpConn = nil
+		return err
+	}
+	return nil
 }
 
 func (c *Client) Login(ctx context.Context, mID, passwordHash string) error {

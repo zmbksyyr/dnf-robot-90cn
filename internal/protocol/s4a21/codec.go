@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net"
 )
 
 const (
@@ -322,6 +323,23 @@ func SetUserAreaBody(town, area byte, x, y int16) []byte {
 	binary.LittleEndian.PutUint16(body[2:4], uint16(x))
 	binary.LittleEndian.PutUint16(body[4:6], uint16(y))
 	return body
+}
+
+// SetUDPIPPortBody is the fixed A21 endpoint announcement used by party
+// P2P projection. The robot keeps the corresponding UDP socket open for the
+// lifetime of the TCP session.
+func SetUDPIPPortBody(ip net.IP, port uint16, mtu uint32) ([]byte, error) {
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return nil, fmt.Errorf("udp endpoint requires an IPv4 address")
+	}
+	body := make([]byte, 15)
+	body[0] = 0 // NAT type: direct/private endpoint
+	copy(body[1:5], ipv4)
+	copy(body[5:9], ipv4)
+	binary.LittleEndian.PutUint16(body[9:11], port)
+	binary.LittleEndian.PutUint32(body[11:15], mtu)
+	return body, nil
 }
 
 // EnterSelectDungeonBody is the verified A21 four-byte dungeon selection
