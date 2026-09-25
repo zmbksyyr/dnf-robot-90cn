@@ -333,6 +333,27 @@ func TestDungeonFollowerQueuesOnlyLeaderTownMovement(t *testing.T) {
 	}
 }
 
+func TestDungeonFollowerCoalescesQueuedTownPositions(t *testing.T) {
+	events := make(chan protocol.Packet, 4)
+	first := protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{1}}
+	events <- protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{2}}
+	events <- protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{3}}
+	control := protocol.Packet{Type: protocol.NotiPartyInfo, Body: []byte{4}}
+	events <- control
+	events <- protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{5}}
+
+	latest, deferred := coalesceFollowerPosition(first, events)
+	if len(latest.Body) != 1 || latest.Body[0] != 3 {
+		t.Fatalf("latest position=%X want=03", latest.Body)
+	}
+	if deferred == nil || deferred.Type != protocol.NotiPartyInfo {
+		t.Fatalf("deferred control=%+v", deferred)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events after control=%d want=1", len(events))
+	}
+}
+
 func TestStaleFollowerEventOverflowKeepsDisabledTownSession(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()

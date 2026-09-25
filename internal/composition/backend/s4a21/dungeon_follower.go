@@ -122,7 +122,31 @@ func (s *Session) followerLoop(ctx context.Context, events <-chan protocol.Packe
 		case <-s.Done():
 			return
 		case packet := <-events:
+			if packet.Type == protocol.NotiUserPosition {
+				var deferred *protocol.Packet
+				packet, deferred = coalesceFollowerPosition(packet, events)
+				s.handleFollowerPacket(ctx, packet)
+				if deferred != nil {
+					s.handleFollowerPacket(ctx, *deferred)
+				}
+				continue
+			}
 			s.handleFollowerPacket(ctx, packet)
+		}
+	}
+}
+
+func coalesceFollowerPosition(latest protocol.Packet, events <-chan protocol.Packet) (protocol.Packet, *protocol.Packet) {
+	for {
+		select {
+		case packet := <-events:
+			if packet.Type == protocol.NotiUserPosition {
+				latest = packet
+				continue
+			}
+			return latest, &packet
+		default:
+			return latest, nil
 		}
 	}
 }
