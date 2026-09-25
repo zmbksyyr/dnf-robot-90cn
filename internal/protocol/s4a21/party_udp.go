@@ -10,6 +10,8 @@ import (
 	"hash/crc32"
 	"math/bits"
 	"net"
+
+	foundationlog "robot/internal/foundation/log"
 )
 
 type partyUDPCodec struct{ key, rotate byte }
@@ -20,6 +22,7 @@ type partyUDPPeer struct {
 	reliableSeq uint32
 	pending     []byte
 	pendingSeq  uint32
+	diagPackets byte
 }
 
 var partyUDPCRCTable = crc32.MakeTable(0x4db89129)
@@ -42,9 +45,22 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 		}
 		selfSlot, slotKnown := c.selfSlot, c.slotKnown
 		replies := partyUDPReplies(buffer[:n], peer, selfSlot, slotKnown)
+		logPacket := peer.diagPackets < 8
+		if logPacket {
+			peer.diagPackets++
+		}
+		selfUID := c.selfUID
 		c.udpMu.Unlock()
+		if logPacket {
+			foundationlog.Robotf("S4A21_PARTY_UDP_RX uid=%d slot=%d known=%t remote=%s bytes=%X replies=%d\n",
+				selfUID, selfSlot, slotKnown, remote, buffer[:n], len(replies))
+		}
 		for _, reply := range replies {
 			_, _ = conn.WriteToUDP(reply, remote)
+			if logPacket {
+				foundationlog.Robotf("S4A21_PARTY_UDP_TX uid=%d slot=%d remote=%s bytes=%X\n",
+					selfUID, selfSlot, remote, reply)
+			}
 		}
 	}
 }
@@ -59,6 +75,7 @@ func (c *Client) applyPartyRealtimeInfo(body []byte) {
 		if binary.LittleEndian.Uint16(body[offset:offset+2]) == c.selfUID {
 			c.selfSlot = body[offset+4]
 			c.slotKnown = c.selfSlot < 4
+			foundationlog.Robotf("S4A21_PARTY_UDP_SLOT uid=%d slot=%d known=%t\n", c.selfUID, c.selfSlot, c.slotKnown)
 			return
 		}
 	}
