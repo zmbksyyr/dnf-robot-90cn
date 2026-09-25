@@ -314,6 +314,25 @@ func TestDungeonFollowerEventOverflowStopsSession(t *testing.T) {
 	}
 }
 
+func TestDungeonFollowerQueuesOnlyLeaderTownMovement(t *testing.T) {
+	events := make(chan protocol.Packet, 2)
+	session := &Session{
+		followerEvents: events,
+		partyActive:    true,
+		partyLeaderUID: 0x1234,
+		selfUID:        0x5678,
+	}
+	session.dispatchPacket(protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{0x99, 0x99}})
+	session.dispatchPacket(protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{0x34, 0x12}})
+	if len(events) != 1 {
+		t.Fatalf("queued movement events=%d want=1", len(events))
+	}
+	packet := <-events
+	if binary.LittleEndian.Uint16(packet.Body[:2]) != 0x1234 {
+		t.Fatalf("queued non-leader movement body=%X", packet.Body)
+	}
+}
+
 func TestStaleFollowerEventOverflowKeepsDisabledTownSession(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()

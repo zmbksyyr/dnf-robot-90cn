@@ -316,10 +316,20 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 	followerEvents := s.followerEvents
 	s.followerGuard.Unlock()
 	if followerEvents != nil {
+		queueFollowerPacket := false
 		switch packet.Type {
 		case protocol.NotiRequestPeer, protocol.NotiPartyInfo,
-			protocol.NotiStartMap, protocol.NotiFinishLoading,
-			protocol.NotiUserPosition, protocol.NotiUserArea:
+			protocol.NotiStartMap, protocol.NotiFinishLoading:
+			queueFollowerPacket = true
+		case protocol.NotiUserPosition, protocol.NotiUserArea:
+			if len(packet.Body) >= 2 {
+				uid := binary.LittleEndian.Uint16(packet.Body[:2])
+				s.followerGuard.Lock()
+				queueFollowerPacket = s.partyActive && s.partyLeaderUID != 0 && uid == s.partyLeaderUID && uid != s.selfUID
+				s.followerGuard.Unlock()
+			}
+		}
+		if queueFollowerPacket {
 			// Never send from drain. The follower worker owns all writes.
 			select {
 			case followerEvents <- packet:

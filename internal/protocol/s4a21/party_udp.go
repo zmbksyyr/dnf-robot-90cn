@@ -96,9 +96,12 @@ func (c *Client) applyPartyRealtimeInfo(body []byte) {
 	defer c.udpMu.Unlock()
 	for offset := 1; offset+5 <= len(body); offset += 5 {
 		if binary.LittleEndian.Uint16(body[offset:offset+2]) == c.selfUID {
+			previousSlot, previousKnown := c.selfSlot, c.slotKnown
 			c.selfSlot = body[offset+4]
 			c.slotKnown = c.selfSlot < 4
-			foundationlog.Robotf("S4A21_PARTY_UDP_SLOT uid=%d slot=%d known=%t\n", c.selfUID, c.selfSlot, c.slotKnown)
+			if previousSlot != c.selfSlot || previousKnown != c.slotKnown {
+				foundationlog.Robotf("S4A21_PARTY_UDP_SLOT uid=%d slot=%d known=%t\n", c.selfUID, c.selfSlot, c.slotKnown)
+			}
 			return
 		}
 	}
