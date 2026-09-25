@@ -22,7 +22,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-var sqliteMutationMu lockhub.Locker
+// s4a21PersistenceMu is the adapter-owned single-writer gate. Protocol
+// operations remain the preferred mutation path; the few required SQLite
+// repairs are serialized here and never compete through per-actor pools.
+var s4a21PersistenceMu lockhub.Locker
+
+const s4a21PersistenceTimeout = 15 * time.Second
 
 const (
 	a21ItemCoreSize      = 99
@@ -210,8 +215,10 @@ func sqliteReadOnlyDSN(path string) string {
 }
 
 func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account string, info robotcap.Info) error {
-	sqliteMutationMu.Lock()
-	defer sqliteMutationMu.Unlock()
+	s4a21PersistenceMu.Lock()
+	defer s4a21PersistenceMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
+	defer cancel()
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return fmt.Errorf("S4A21 loadout database path is required")
 	}
@@ -244,8 +251,10 @@ func (a SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account s
 	if level < 1 || level > math.MaxUint8 {
 		return info, fmt.Errorf("S4A21 character level must be between 1 and %d", math.MaxUint8)
 	}
-	sqliteMutationMu.Lock()
-	defer sqliteMutationMu.Unlock()
+	s4a21PersistenceMu.Lock()
+	defer s4a21PersistenceMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
+	defer cancel()
 	db, closeDB, err := a.database(ctx)
 	if err != nil {
 		return info, fmt.Errorf("open S4A21 character database: %w", err)
@@ -383,8 +392,10 @@ func (a SQLiteLoadoutApplier) ApplyPlannedCharacterLevel(ctx context.Context, ac
 }
 
 func (a SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
-	sqliteMutationMu.Lock()
-	defer sqliteMutationMu.Unlock()
+	s4a21PersistenceMu.Lock()
+	defer s4a21PersistenceMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
+	defer cancel()
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return info, fmt.Errorf("S4A21 profile database path is required")
 	}
@@ -418,8 +429,10 @@ func (a SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Contex
 }
 
 func (a SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
-	sqliteMutationMu.Lock()
-	defer sqliteMutationMu.Unlock()
+	s4a21PersistenceMu.Lock()
+	defer s4a21PersistenceMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
+	defer cancel()
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return info, fmt.Errorf("S4A21 profile database path is required")
 	}

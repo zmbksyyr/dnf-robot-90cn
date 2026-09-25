@@ -63,6 +63,10 @@ type startupSQLiteConn interface {
 // complete, usable one-character robot is removed in the same transaction.
 func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInventory, error) {
 	var result StartupInventory
+	s4a21PersistenceMu.Lock()
+	defer s4a21PersistenceMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
+	defer cancel()
 	if strings.TrimSpace(s.DatabasePath) == "" {
 		return result, fmt.Errorf("S4A21 startup inventory database path is required")
 	}
