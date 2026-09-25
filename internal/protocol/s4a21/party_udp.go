@@ -19,14 +19,15 @@ type partyUDPCodec struct {
 	checksum    [4]byte
 }
 type partyUDPPeer struct {
-	codec       partyUDPCodec
-	codecKnown  bool
-	nextSeq     uint32
-	reliableSeq uint32
-	pending     []byte
-	pendingSeq  uint32
-	diagPackets byte
-	diagDrops   byte
+	codec        partyUDPCodec
+	codecKnown   bool
+	nextSeq      uint32
+	reliableSeq  uint32
+	pending      []byte
+	pendingSeq   uint32
+	diagPackets  byte
+	diagDrops    byte
+	epochStarted bool
 }
 
 var partyUDPCRCTable = crc32.MakeTable(0x4db89129)
@@ -142,8 +143,12 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 	}
 	switch state {
 	case 3:
-		peer.nextSeq, peer.reliableSeq, peer.pending = 0, 0, nil
-		replies = append(replies, buildPartyUDP(0, selfSlot, 0, wireRoute, codec))
+		if !peer.epochStarted {
+			peer.nextSeq, peer.reliableSeq, peer.pending = 0, 0, nil
+			peer.epochStarted = true
+		}
+		replies = append(replies, buildPartyUDP(peer.nextSeq, selfSlot, 0, wireRoute, codec))
+		peer.nextSeq++
 	case 0:
 		replies = append(replies, buildPartyUDP(peer.nextSeq, selfSlot, 1, wireRoute, codec))
 		peer.nextSeq++
