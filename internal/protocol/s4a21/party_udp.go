@@ -5,6 +5,7 @@ package s4a21
 // needs a connected party session and must not know wire details.
 
 import (
+	"bytes"
 	"encoding/binary"
 	"hash/crc32"
 	"math/bits"
@@ -16,7 +17,6 @@ import (
 type partyUDPCodec struct {
 	key, rotate byte
 	extra       [2]byte
-	checksum    [4]byte
 }
 type partyUDPPeer struct {
 	codecRoute       [2]partyUDPCodec
@@ -175,7 +175,6 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 		if peer.pendingRoute[routeIndex] == nil {
 			peer.pendingSeqRoute[routeIndex] = peer.reliableSeqRoute[routeIndex]
 			peer.reliableSeqRoute[routeIndex]++
-			codec.extra[0], codec.extra[1] = codec.extra[1], codec.extra[0]
 			peer.pendingRoute[routeIndex] = buildPartyUDP(peer.pendingSeqRoute[routeIndex], selfSlot, 2, wireRoute, codec)
 			peer.pending, peer.pendingSeq = peer.pendingRoute[routeIndex], peer.pendingSeqRoute[routeIndex]
 		}
@@ -190,7 +189,6 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 // candidates with the same transport sequence; an invalid candidate is ignored
 // before it can advance the receive window.
 func partyUDPReplyCandidates(sequence uint32, sender, state, route byte, codec partyUDPCodec) [][]byte {
-	codec.extra[0], codec.extra[1] = codec.extra[1], codec.extra[0]
 	return [][]byte{buildPartyUDP(sequence, sender, state, route, codec)}
 }
 
@@ -207,8 +205,7 @@ func decodePartyUDPBody(body []byte, sender, route byte, peer *partyUDPPeer) (by
 		if peer.codecKnown[routeIndex] {
 			codec := peer.codecRoute[routeIndex]
 			if state, ok := decodePartyUDPBodyWithCodec(body, sender, expectedRoute, codec); ok {
-				codec.extra = [2]byte{body[10], body[11]}
-				copy(codec.checksum[:], body[3:7])
+				codec.extra = decodePartyUDPExtra(body, codec)
 				return state, codec, expectedRoute, true
 			}
 		}
@@ -217,8 +214,7 @@ func decodePartyUDPBody(body []byte, sender, route byte, peer *partyUDPPeer) (by
 		codec := partyUDPCodec{key: bits.RotateLeft8(body[7], -rotate) ^ sender, rotate: byte(rotate)}
 		for _, expectedRoute := range routes {
 			if state, ok := decodePartyUDPBodyWithCodec(body, sender, expectedRoute, codec); ok {
-				codec.extra = [2]byte{body[10], body[11]}
-				copy(codec.checksum[:], body[3:7])
+				codec.extra = decodePartyUDPExtra(body, codec)
 				return state, codec, expectedRoute, true
 			}
 		}
@@ -233,7 +229,16 @@ func decodePartyUDPBodyWithCodec(body []byte, sender, route byte, codec partyUDP
 	if decoded != sender || state > 3 || gotRoute != route {
 		return 0, false
 	}
-	return state, true
+	extra := decodePartyUDPExtra(body, codec)
+	checksum := partyUDPChecksum(sender, state, route, extra)
+	return state, bytes.Equal(body[3:7], checksum[:])
+}
+
+func decodePartyUDPExtra(body []byte, codec partyUDPCodec) [2]byte {
+	return [2]byte{
+		bits.RotateLeft8(body[10], -int(codec.rotate)) ^ codec.key,
+		bits.RotateLeft8(body[11], -int(codec.rotate)) ^ codec.key,
+	}
 }
 
 func buildPartyUDP(sequence uint32, sender, state, route byte, codec partyUDPCodec) []byte {
@@ -250,11 +255,11 @@ func buildPartyUDP(sequence uint32, sender, state, route byte, codec partyUDPCod
 		binary.LittleEndian.PutUint16(out[9:11], 12)
 	}
 	body := out[offset:]
-	copy(body[3:7], codec.checksum[:])
-	for i, value := range []byte{sender, state, route} {
+	checksum := partyUDPChecksum(sender, state, route, codec.extra)
+	copy(body[3:7], checksum[:])
+	for i, value := range []byte{sender, state, route, codec.extra[0], codec.extra[1]} {
 		body[7+i] = bits.RotateLeft8(value^codec.key, int(codec.rotate))
 	}
-	body[10], body[11] = codec.extra[0], codec.extra[1]
 	return out
 }
 
@@ -265,10 +270,9 @@ func partyUDPAck(sender byte, sequence uint32) []byte {
 	return out
 }
 
-func partyUDPChecksum(sender, state, route byte) [4]byte {
-	value := crc32.Checksum([]byte{sender, state, route}, partyUDPCRCTable)
+func partyUDPChecksum(sender, state, route byte, extra [2]byte) [4]byte {
+	value := crc32.Checksum([]byte{sender, state, route, extra[0], extra[1]}, partyUDPCRCTable)
 	var out [4]byte
 	binary.LittleEndian.PutUint32(out[:], value)
-	out[0] ^= out[1] ^ out[2] ^ out[3] ^ 0x18
 	return out
 }

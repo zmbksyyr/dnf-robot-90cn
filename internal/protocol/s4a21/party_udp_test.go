@@ -64,8 +64,21 @@ func TestPartyUDPA21TwelveByteFrame(t *testing.T) {
 	peer := &partyUDPPeer{}
 	frame := []byte{0x02, 0x01, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3a, 0xcf, 0xe7, 0xef, 0x59, 0x5a, 0x58, 0x58, 0x59}
 	replies := partyUDPReplies(frame, peer, 1, true)
-	if len(replies) < 1 || replies[0][0] != 2 {
+	if len(replies) != 1 || replies[0][0] != 2 {
 		t.Fatalf("A21 12-byte frame replies=%X", replies)
+	}
+	body := replies[0][9:]
+	state, _, _, ok := decodePartyUDPBody(body, 1, 1, &partyUDPPeer{})
+	if !ok || state != 0 {
+		t.Fatalf("A21 response checksum/codec invalid state=%d ok=%t body=%X", state, ok, body)
+	}
+}
+
+func TestPartyUDPA21RouteZeroChecksum(t *testing.T) {
+	peer := &partyUDPPeer{}
+	frame := []byte{0x02, 0x03, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaf, 0x92, 0x1a, 0xb4, 0x59, 0x5a, 0x59, 0x58, 0x59}
+	if replies := partyUDPReplies(frame, peer, 1, true); len(replies) != 1 {
+		t.Fatalf("A21 route-zero frame replies=%X", replies)
 	}
 }
 
