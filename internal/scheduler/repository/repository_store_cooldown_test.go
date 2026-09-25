@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/go-sql-driver/mysql"
 )
 
 func TestStorePermissionCooldownOnlyForCrashedTable(t *testing.T) {
@@ -15,7 +13,7 @@ func TestStorePermissionCooldownOnlyForCrashedTable(t *testing.T) {
 	if err := r.storePermissionCooldownError(now); err != nil {
 		t.Fatalf("ordinary error started cooldown: %v", err)
 	}
-	r.recordStorePermissionFailure(&mysql.MySQLError{Number: 145, Message: "table is marked as crashed"}, now)
+	r.recordStorePermissionFailure(errors.New("duplicate key error 145"), now)
 	if err := r.storePermissionCooldownError(now.Add(time.Second)); err == nil {
 		t.Fatal("crashed-table error did not start cooldown")
 	}

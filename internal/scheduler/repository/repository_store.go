@@ -2,13 +2,10 @@ package repository
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/go-sql-driver/mysql"
 
 	equipcap "robot/internal/capability/equipment"
 	robotcap "robot/internal/capability/robot"
@@ -230,8 +227,7 @@ func (r *SQLRepository) storePermissionCooldownError(now time.Time) error {
 }
 
 func (r *SQLRepository) recordStorePermissionFailure(err error, now time.Time) {
-	var mysqlErr *mysql.MySQLError
-	if !errors.As(err, &mysqlErr) || mysqlErr.Number != 145 {
+	if err == nil || (!strings.Contains(strings.ToLower(err.Error()), "duplicate") && !strings.Contains(err.Error(), "145")) {
 		return
 	}
 	r.storePermissionMu.Lock()
