@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"runtime"
 
-	nativebackend "robot/internal/composition/backend/native"
 	s4a21backend "robot/internal/composition/backend/s4a21"
 	"robot/internal/shared"
 )
 
-// Available contains explicitly selectable backends. It does not detect the
-// environment or start external services.
+// Available returns the only backend implemented by this build. It does not
+// detect the environment or start external services.
 func Available() []shared.BackendInfo {
-	return []shared.BackendInfo{nativebackend.Info(), s4a21backend.Info()}
+	return []shared.BackendInfo{s4a21backend.Info()}
 }
 
 func Select(id shared.BackendID, platform string) (shared.BackendInfo, error) {
