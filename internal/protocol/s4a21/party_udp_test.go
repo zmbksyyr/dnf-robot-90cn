@@ -59,3 +59,12 @@ func TestPartyUDPWaitsForSelfSlot(t *testing.T) {
 		t.Fatalf("unknown self slot produced replies=%X", replies)
 	}
 }
+
+func TestPartyUDPA21TwelveByteFrame(t *testing.T) {
+	peer := &partyUDPPeer{}
+	frame := []byte{0x02, 0x01, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3a, 0xcf, 0xe7, 0xef, 0x59, 0x5a, 0x58, 0x58, 0x59}
+	replies := partyUDPReplies(frame, peer, 1, true)
+	if len(replies) != 1 || replies[0][0] != 2 {
+		t.Fatalf("A21 12-byte frame replies=%X", replies)
+	}
+}

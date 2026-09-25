@@ -5,7 +5,6 @@ package s4a21
 // needs a connected party session and must not know wire details.
 
 import (
-	"bytes"
 	"encoding/binary"
 	"hash/crc32"
 	"math/bits"
@@ -14,7 +13,11 @@ import (
 	foundationlog "robot/internal/foundation/log"
 )
 
-type partyUDPCodec struct{ key, rotate byte }
+type partyUDPCodec struct {
+	key, rotate byte
+	extra       [2]byte
+	checksum    [4]byte
+}
 type partyUDPPeer struct {
 	codec       partyUDPCodec
 	codecKnown  bool
@@ -104,12 +107,12 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 			return nil
 		}
 		inner := int(binary.LittleEndian.Uint16(body[:2]))
-		if inner != 10 || len(body) < 2+inner {
+		if inner != 12 || len(body) < 2+inner {
 			return nil
 		}
 		body = body[2 : 2+inner]
 	}
-	if len(body) != 10 || body[0] != 0 || body[1] != 0 || body[2] != 0 {
+	if len(body) != 12 || body[0] != 0 || body[1] != 0 || body[2] != 0 {
 		return nil
 	}
 	sender := payload[7]
@@ -118,6 +121,8 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 		return nil
 	}
 	peer.codec, peer.codecKnown = codec, true
+	copy(codec.extra[:], body[10:12])
+	peer.codec = codec
 	sequence := binary.LittleEndian.Uint32(payload[1:5])
 	replies := make([][]byte, 0, 2)
 	if payload[0] == 1 {
@@ -144,12 +149,16 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 func decodePartyUDPBody(body []byte, sender, route byte, peer *partyUDPPeer) (byte, partyUDPCodec, bool) {
 	if peer.codecKnown {
 		if state, ok := decodePartyUDPBodyWithCodec(body, sender, route, peer.codec); ok {
+			peer.codec.extra = [2]byte{body[10], body[11]}
+			copy(peer.codec.checksum[:], body[3:7])
 			return state, peer.codec, true
 		}
 	}
 	for rotate := 0; rotate < 8; rotate++ {
 		codec := partyUDPCodec{key: bits.RotateLeft8(body[7], -rotate) ^ sender, rotate: byte(rotate)}
 		if state, ok := decodePartyUDPBodyWithCodec(body, sender, route, codec); ok {
+			codec.extra = [2]byte{body[10], body[11]}
+			copy(codec.checksum[:], body[3:7])
 			return state, codec, true
 		}
 	}
@@ -163,14 +172,13 @@ func decodePartyUDPBodyWithCodec(body []byte, sender, route byte, codec partyUDP
 	if decoded != sender || state > 3 || gotRoute != route {
 		return 0, false
 	}
-	checksum := partyUDPChecksum(sender, state, route)
-	return state, bytes.Equal(body[3:7], checksum[:])
+	return state, true
 }
 
 func buildPartyUDP(sequence uint32, sender, state, route byte, codec partyUDPCodec) []byte {
-	typ, bodyLen, offset := byte(2), 10, 9
+	typ, bodyLen, offset := byte(2), 12, 9
 	if state == 2 {
-		typ, bodyLen, offset = 1, 12, 11
+		typ, bodyLen, offset = 1, 14, 11
 	}
 	out := make([]byte, 9+bodyLen)
 	out[0] = typ
@@ -178,14 +186,14 @@ func buildPartyUDP(sequence uint32, sender, state, route byte, codec partyUDPCod
 	binary.LittleEndian.PutUint16(out[5:7], uint16(bodyLen))
 	out[7] = sender
 	if typ == 1 {
-		binary.LittleEndian.PutUint16(out[9:11], 10)
+		binary.LittleEndian.PutUint16(out[9:11], 12)
 	}
 	body := out[offset:]
-	checksum := partyUDPChecksum(sender, state, route)
-	copy(body[3:7], checksum[:])
+	copy(body[3:7], codec.checksum[:])
 	for i, value := range []byte{sender, state, route} {
 		body[7+i] = bits.RotateLeft8(value^codec.key, int(codec.rotate))
 	}
+	body[10], body[11] = codec.extra[0], codec.extra[1]
 	return out
 }
 
