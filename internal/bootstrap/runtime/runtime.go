@@ -60,9 +60,7 @@ func Init(cfg *config.SysConfig) error {
 // parsing or exporting a backend PVF. Simulated backends use their own PVF
 // adapter and must not inherit native runtime initialization.
 func InitConfigOnly(cfg *config.SysConfig) error {
-	return InitConfigForBackend(cfg, shared.BackendInfo{
-		Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{Enabled: true}),
-	})
+	return InitConfigForBackend(cfg, shared.BackendInfo{ID: shared.DefaultBackendID()})
 }
 
 // InitConfigForBackend releases only common files and files supported by the
@@ -205,8 +203,6 @@ func defaultReleasePath(paths layout.Paths, name string) (string, error) {
 
 func normalizeConfigFileModes(paths layout.Paths) {
 	_ = os.Chmod(paths.MainConfig(), 0600)
-	_ = os.Chmod(paths.PrivateKey(), 0600)
-	_ = os.Chmod(paths.PublicKey(), 0644)
 }
 
 func updateRuntimeManifest(cfg *config.SysConfig) error {

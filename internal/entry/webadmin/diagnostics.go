@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"robot/internal/foundation/config"
-	"robot/internal/foundation/dbstatus"
 	"robot/internal/foundation/layout"
 	"robot/internal/shared"
 	"runtime/debug"
@@ -92,8 +91,6 @@ func (s *Server) buildDiagnostics() diagnosticsReport {
 	}
 	b.addRuntimeSection()
 	b.addFileSection()
-	b.addDatabaseSection()
-	b.addPartySection()
 	b.addSkillSection()
 	b.addLogSection()
 	for _, section := range b.report.Sections {
@@ -168,37 +165,6 @@ func (b *diagnosticsBuilder) addRuntimeSection() {
 	b.addSection("Runtime / Ports", checks...)
 }
 
-func (b *diagnosticsBuilder) addDatabaseSection() {
-	checks := []diagnosticsCheck{}
-	report := dbstatus.CheckStructure(b.cfg, requiredDBSchemas(), requiredDBTables())
-	if !report.Connect.OK {
-		b.addSection("Database", diagnosticsCheck{Name: "connect", Status: diagError, Message: report.Connect.Error, Expected: report.Target, Observed: report.Connect})
-		return
-	}
-	checks = append(checks, diagnosticsCheck{Name: "connect", Status: diagOK, Message: "database connection ok", Observed: report.Connect})
-	for _, schema := range report.Schemas {
-		checks = append(checks, boolCheck("schema "+schema.Schema, schema.Exists, stringErr(schema.Error), "schema exists", "schema is missing", schema))
-	}
-	for _, table := range report.Tables {
-		status := diagOK
-		msg := "required columns exist"
-		if table.Error != "" {
-			status = diagError
-			msg = table.Error
-		} else if !table.Exists {
-			status = diagError
-			msg = "missing columns: " + strings.Join(table.Missing, ",")
-		}
-		checks = append(checks, diagnosticsCheck{
-			Name:     table.Schema + "." + table.Table,
-			Status:   status,
-			Message:  msg,
-			Observed: table,
-		})
-	}
-	b.addSection("Database", checks...)
-}
-
 func (b *diagnosticsBuilder) addFileSection() {
 	configDir := b.cfg.ConfigDir
 	runtimePaths := layout.New(configDir)
@@ -247,36 +213,6 @@ func (b *diagnosticsBuilder) addLogSection() {
 	}
 	checks = append(checks, recentLogPatternCheck("recent fatal log keywords", runtimePaths.RobotLog(), []string{"panic", "fatal", "too many open files", "cannot assign requested address", "message_queue_full", "timer_queue_overflow"}))
 	b.addSection("Logs", checks...)
-}
-
-func requiredDBSchemas() []string {
-	return []string{"d_taiwan", "taiwan_cain", "taiwan_cain_2nd", "taiwan_login", "taiwan_billing", "d_starsky", "taiwan_cain_auction_gold", "taiwan_cain_auction_cera"}
-}
-
-func requiredDBTables() []dbstatus.TableRequirement {
-	return []dbstatus.TableRequirement{
-		{Schema: "d_taiwan", Table: "accounts", Columns: []string{"UID", "accountname"}},
-		{Schema: "taiwan_cain", Table: "charac_info", Columns: []string{"m_id", "charac_no", "charac_name", "job", "grow_type", "lev", "delete_flag"}},
-		{Schema: "taiwan_cain", Table: "charac_stat", Columns: []string{"charac_no", "village"}},
-		{Schema: "taiwan_cain", Table: "charac_view", Columns: []string{"m_id"}},
-		{Schema: "taiwan_cain_2nd", Table: "inventory", Columns: []string{"charac_no", "inventory"}},
-		{Schema: "taiwan_cain_2nd", Table: "skill", Columns: []string{"charac_no", "skill_slot", "skill_slot_2nd", "skill_command", "script_version"}},
-		{Schema: "taiwan_cain_2nd", Table: "user_items", Columns: []string{"charac_no", "slot", "it_id"}},
-		{Schema: "d_starsky", Table: "Dummylist", Columns: []string{"UID", "CID", "curvill", "curarea", "curx", "cury", "ip", "function_type", "discost"}},
-		{Schema: "d_starsky", Table: "v4_ai_user", Columns: []string{"uid", "msg_state", "move_state"}},
-		{Schema: "d_starsky", Table: "robot_registry", Columns: []string{"uid", "cid", "account", "charac_name", "created_at"}},
-		{Schema: "d_starsky", Table: "Robot_stall", Columns: []string{"Trade_item", "price", "item_number", "function_type", "state", "UID"}},
-		{Schema: "d_starsky", Table: "Robot_stall_config", Columns: []string{"cfg_content", "cfg_type", "UID", "function_type", "state"}},
-		{Schema: "taiwan_cain_auction_gold", Table: "auction_main", Columns: []string{"auction_id", "owner_id"}},
-		{Schema: "taiwan_cain_auction_cera", Table: "auction_main", Columns: []string{"auction_id", "owner_id"}},
-	}
-}
-
-func stringErr(message string) error {
-	if message == "" {
-		return nil
-	}
-	return fmt.Errorf("%s", message)
 }
 
 type expectedPort struct {

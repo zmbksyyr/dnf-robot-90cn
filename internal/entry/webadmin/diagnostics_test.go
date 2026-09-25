@@ -1,7 +1,6 @@
 package webadmin
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -182,45 +181,5 @@ func writeSkillDiagnosticCatalogs(t *testing.T, dir, whitelist, pvf string) {
 	}
 	if err := os.WriteFile(paths.PVFSkillStates(), []byte(pvf), 0644); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestPartyAccountRangeCheckUsesRobotListUIDs(t *testing.T) {
-	uids := []uint32{18000000, 18000042, 18001999}
-	tests := []struct {
-		name        string
-		patchStart  uint32
-		patchEnd    uint32
-		wantStatus  string
-		wantOutside int
-	}{
-		{name: "covered", patchStart: 18000000, patchEnd: 18002000, wantStatus: diagOK},
-		{name: "start too high", patchStart: 18000001, patchEnd: 18002000, wantStatus: diagError, wantOutside: 1},
-		{name: "exclusive end excludes uid", patchStart: 18000000, patchEnd: 18001999, wantStatus: diagError, wantOutside: 1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			check := partyAccountRangeCheck(uids, nil, tt.patchStart, tt.patchEnd)
-			if check.Status != tt.wantStatus {
-				t.Fatalf("status = %s message=%s, want %s", check.Status, check.Message, tt.wantStatus)
-			}
-			if tt.wantOutside > 0 && check.Observed.(map[string]interface{})["outside_count"] != tt.wantOutside {
-				t.Fatalf("observed = %#v, want outside_count=%d", check.Observed, tt.wantOutside)
-			}
-		})
-	}
-}
-
-func TestPartyAccountRangeCheckReportsRobotListLoadFailure(t *testing.T) {
-	check := partyAccountRangeCheck(nil, errors.New("database unavailable"), 17000000, 17001000)
-	if check.Status != diagError {
-		t.Fatalf("status = %s message=%s, want error", check.Status, check.Message)
-	}
-}
-
-func TestPartyAccountRangeCheckWarnsForEmptyRobotList(t *testing.T) {
-	check := partyAccountRangeCheck(nil, nil, 17000000, 17001000)
-	if check.Status != diagWarn {
-		t.Fatalf("status = %s message=%s, want warn", check.Status, check.Message)
 	}
 }
