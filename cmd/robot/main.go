@@ -58,10 +58,6 @@ func runMain() int {
 		fmt.Fprintf(os.Stderr, "load backend selection error: %v\n", err)
 		return 1
 	}
-	if backendSelection.BackendID != shared.BackendS4A21 {
-		fmt.Fprintf(os.Stderr, "unsupported backend %q: this build is dedicated to S4A21\n", backendSelection.BackendID)
-		return 1
-	}
 	backendInfo, err := backendregistry.Select(backendSelection.BackendID, runtime.GOOS)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
@@ -93,7 +89,7 @@ func runMain() int {
 	if backendReinitialized {
 		dnf.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
 	}
-	return runS4A21Backend(cfg, paths, backendInfo, backendSelection)
+	return runBackend(cfg, paths, backendInfo, backendSelection)
 }
 
 func loadBackendSelection(path string) (shared.BackendSelection, error) {
