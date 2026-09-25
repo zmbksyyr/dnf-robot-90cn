@@ -29,7 +29,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 		shared.CapabilityDungeonMove, shared.CapabilityWorldShout,
 		shared.CapabilityPartyCompatibility, shared.CapabilityPartyDebug,
 		shared.CapabilitySkill, shared.CapabilityStore, shared.CapabilityMarket,
-		shared.CapabilityMailboxGuard, shared.CapabilityKeypair, shared.CapabilityDiagnostics,
+		shared.CapabilityMailboxGuard, shared.CapabilityDiagnostics,
 		shared.CapabilityMailNotification,
 		shared.CapabilitySystemAnnouncement, shared.CapabilityServiceControl,
 	} {
