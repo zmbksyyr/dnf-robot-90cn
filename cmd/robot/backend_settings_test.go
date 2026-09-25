@@ -37,14 +37,3 @@ func TestApplyS4A21BackendSelectionSettingsDerivesOptionalDatabase(t *testing.T)
 		t.Fatalf("config=%+v", cfg)
 	}
 }
-
-func TestNativeBackendDoesNotApplySimulatorSettings(t *testing.T) {
-	cfg := &config.SysConfig{DFGameR: "native", RobotConnectIP: "native", RobotGamePort: 10010}
-	selection := shared.BackendSelection{BackendID: shared.BackendNative, Settings: map[string]string{"game_port": "10011"}}
-	if err := applyBackendSelectionSettings(cfg, selection); err != nil {
-		t.Fatal(err)
-	}
-	if cfg.DFGameR != "native" || cfg.RobotConnectIP != "native" || cfg.RobotGamePort != 10010 {
-		t.Fatalf("native config was modified: %+v", cfg)
-	}
-}

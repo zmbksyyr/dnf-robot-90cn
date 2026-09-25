@@ -18,23 +18,19 @@ func loadBackendTownMapCatalog(ctx context.Context, info shared.BackendInfo, cfg
 	if cfg == nil {
 		return nil, fmt.Errorf("backend catalog requires config")
 	}
-	switch info.ID {
-	case shared.BackendNative:
-		return nil, nil
-	case shared.BackendS4A21:
-		path, err := s4a21PVFPath(cfg.DFGameR)
-		if err != nil {
-			return nil, err
-		}
-		return (s4a21backend.TownMapCatalogProvider{PVFPath: path}).TownMapCatalog(ctx)
-	default:
-		return nil, fmt.Errorf("backend %s has no town map catalog provider", info.ID)
+	if info.ID != shared.BackendS4A21 {
+		return nil, fmt.Errorf("backend %s is not supported by this build", info.ID)
 	}
+	path, err := s4a21PVFPath(cfg.DFGameR)
+	if err != nil {
+		return nil, err
+	}
+	return (s4a21backend.TownMapCatalogProvider{PVFPath: path}).TownMapCatalog(ctx)
 }
 
 func exportBackendItemCatalogs(info shared.BackendInfo, cfg *config.SysConfig, paths layout.Paths) error {
 	if info.ID != shared.BackendS4A21 {
-		return nil
+		return fmt.Errorf("backend %s is not supported by this build", info.ID)
 	}
 	pvfPath, err := s4a21PVFPath(cfg.DFGameR)
 	if err != nil {

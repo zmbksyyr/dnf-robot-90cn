@@ -10,10 +10,9 @@ import (
 	"robot/internal/shared"
 )
 
-func TestLoadBackendTownMapCatalogNativeUsesRuntimeFallback(t *testing.T) {
-	maps, err := loadBackendTownMapCatalog(context.Background(), shared.BackendInfo{ID: shared.BackendNative}, &config.SysConfig{DFGameR: filepath.Join(t.TempDir(), "missing")})
-	if err != nil || maps != nil {
-		t.Fatalf("native catalog = %v, %v", maps, err)
+func TestLoadBackendTownMapCatalogRejectsNonS4A21Backend(t *testing.T) {
+	if _, err := loadBackendTownMapCatalog(context.Background(), shared.BackendInfo{ID: "other"}, &config.SysConfig{}); err == nil {
+		t.Fatal("non-S4A21 catalog unexpectedly accepted")
 	}
 }
 

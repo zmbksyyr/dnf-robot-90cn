@@ -7,13 +7,9 @@ import (
 	"robot/internal/shared"
 )
 
-func TestComposeNativeTransportsLeavesAdaptersUnset(t *testing.T) {
-	bundle, err := composeBackendTransports(shared.BackendInfo{ID: shared.BackendNative}, &config.SysConfig{})
-	if err != nil || bundle.actions != nil || bundle.sessions != nil {
-		t.Fatalf("bundle=%+v err=%v", bundle, err)
-	}
-	if err := bundle.close(); err != nil {
-		t.Fatal(err)
+func TestComposeRejectsNonS4A21Backend(t *testing.T) {
+	if _, err := composeBackendTransports(shared.BackendInfo{ID: "other"}, &config.SysConfig{}); err == nil {
+		t.Fatal("non-S4A21 backend unexpectedly accepted")
 	}
 }
 
