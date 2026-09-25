@@ -14,6 +14,7 @@ import (
 
 	"robot/internal/foundation/atomicfile"
 	foundationconfig "robot/internal/foundation/config"
+	"robot/internal/foundation/lockhub"
 	foundationlog "robot/internal/foundation/log"
 )
 
@@ -50,6 +51,9 @@ type Notifier struct {
 	sender      Sender
 	statePath   string
 	settleDelay time.Duration
+	stateMu     lockhub.Locker
+	state       cursorState
+	stateLoaded bool
 }
 
 func New(db *sql.DB, sender Sender, configDir string) *Notifier {
@@ -67,26 +71,36 @@ func (n *Notifier) PollOnce(ctx context.Context, now time.Time) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	state, initialized, err := n.loadState()
-	if err != nil {
-		foundationlog.Robotf("[MAIL_NOTIFY] state_error err=%v\n", err)
-		initialized = false
+	n.stateMu.Lock()
+	defer n.stateMu.Unlock()
+	initialized := n.stateLoaded
+	if !initialized {
+		state, loaded, err := n.loadState()
+		if err != nil {
+			foundationlog.Robotf("[MAIL_NOTIFY] state_error err=%v\n", err)
+		} else if loaded {
+			n.state = state
+			n.stateLoaded = true
+			initialized = true
+		}
 	}
 	if !initialized {
-		state, err = n.currentCursor(ctx)
+		state, err := n.currentCursor(ctx)
 		if err != nil {
 			return fmt.Errorf("establish mail notification baseline: %w", err)
 		}
 		if err := n.saveState(state); err != nil {
 			return fmt.Errorf("save mail notification baseline: %w", err)
 		}
+		n.state = state
+		n.stateLoaded = true
 		foundationlog.Robotf("[MAIL_NOTIFY] baseline letter_id=%d postal_id=%d\n", state.LetterID, state.PostalID)
 		return nil
 	}
-	if state.Pending == nil {
-		state.Pending = make(map[string]int64)
+	if n.state.Pending == nil {
+		n.state.Pending = make(map[string]int64)
 	}
-	return n.poll(ctx, &state, now)
+	return n.poll(ctx, &n.state, now)
 }
 
 func (n *Notifier) poll(ctx context.Context, state *cursorState, now time.Time) error {

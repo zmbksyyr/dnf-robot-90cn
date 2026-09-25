@@ -53,6 +53,7 @@ type RobotRemover interface {
 type MemoryStore struct {
 	mu         lockhub.RWLocker
 	robots     map[int]robotcap.Info
+	sortedUIDs []int
 	locations  map[int]shared.MapLocation
 	identities map[string]Identity
 	batches    map[string]CreateBatch
@@ -64,6 +65,11 @@ func NewMemoryStore(robots []robotcap.Info) *MemoryStore {
 		store.robots[robot.UID] = robot
 		store.locations[robot.UID] = shared.MapLocation{Village: robot.Village, Area: robot.Area, X: robot.X, Y: robot.Y}
 	}
+	store.sortedUIDs = make([]int, 0, len(store.robots))
+	for uid := range store.robots {
+		store.sortedUIDs = append(store.sortedUIDs, uid)
+	}
+	sort.Ints(store.sortedUIDs)
 	return store
 }
 
@@ -132,12 +138,7 @@ func (s *MemoryStore) SelectRobots(ctx context.Context, req robotcap.CommandRequ
 	if limit <= 0 {
 		limit = 10
 	}
-	uids := make([]int, 0, len(s.robots))
-	for uid := range s.robots {
-		uids = append(uids, uid)
-	}
-	sort.Ints(uids)
-	for _, uid := range uids {
+	for _, uid := range s.sortedUIDs {
 		if len(selected) >= limit {
 			break
 		}
@@ -161,6 +162,12 @@ func (s *MemoryStore) RegisterRobots(ctx context.Context, robots []robotcap.Info
 		}
 	}
 	for _, robot := range robots {
+		if _, exists := s.robots[robot.UID]; !exists {
+			index := sort.SearchInts(s.sortedUIDs, robot.UID)
+			s.sortedUIDs = append(s.sortedUIDs, 0)
+			copy(s.sortedUIDs[index+1:], s.sortedUIDs[index:])
+			s.sortedUIDs[index] = robot.UID
+		}
 		s.robots[robot.UID] = robot
 		s.locations[robot.UID] = shared.MapLocation{Village: robot.Village, Area: robot.Area, X: robot.X, Y: robot.Y}
 	}
@@ -204,6 +211,13 @@ func (s *MemoryStore) RemoveRobots(ctx context.Context, uids []int) error {
 		delete(s.robots, uid)
 		delete(s.locations, uid)
 	}
+	keptUIDs := s.sortedUIDs[:0]
+	for _, uid := range s.sortedUIDs {
+		if _, exists := s.robots[uid]; exists {
+			keptUIDs = append(keptUIDs, uid)
+		}
+	}
+	s.sortedUIDs = keptUIDs
 	for key, identity := range s.identities {
 		if _, ok := names[identity.CharacterName]; ok {
 			delete(s.identities, key)

@@ -3,6 +3,7 @@ package mailnotify
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -64,6 +65,29 @@ func TestPollCoalescesLetterAndPostalForOneCharacter(t *testing.T) {
 	}
 	if len(state.Pending) != 0 || state.LetterID != 11 || state.PostalID != 21 {
 		t.Fatalf("state = %+v", state)
+	}
+}
+
+func TestPollOnceKeepsCursorInMemoryAfterBaseline(t *testing.T) {
+	source := &fakeEventSource{letterID: 10, postalID: 20}
+	sender := &fakeSender{}
+	n := &Notifier{
+		source: source, sender: sender, statePath: filepath.Join(t.TempDir(), stateFileName), settleDelay: 0,
+	}
+	if err := n.PollOnce(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(n.statePath); err != nil {
+		t.Fatal(err)
+	}
+	source.letterID = 11
+	source.postalID = 21
+	source.characNos = []uint32{100}
+	if err := n.PollOnce(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.chars) != 1 || sender.chars[0] != 100 {
+		t.Fatalf("notifications = %v, want [100]", sender.chars)
 	}
 }
 
