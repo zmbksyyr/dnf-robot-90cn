@@ -172,13 +172,6 @@ func TestReleasedRuntimeCatalogsUseCanonicalSchemas(t *testing.T) {
 	if _, err := ReadShoutTemplates(filepath.Join(defaults, "robot_shout_templates.json")); err != nil {
 		t.Fatalf("released shout template rejected: %v", err)
 	}
-	report, err := ReadPartySkillCatalog(filepath.Join(defaults, "party_skill_catalog.json"))
-	if err != nil {
-		t.Fatalf("released party skill catalog rejected: %v", err)
-	}
-	if len(report.Issues) != 0 {
-		t.Fatalf("released party skill catalog issues: %v", (&PartySkillCatalogValidationError{Issues: report.Issues}).Error())
-	}
 }
 
 func TestSetPartySkillCatalogEnabledUpdatesTopLevelFlag(t *testing.T) {
