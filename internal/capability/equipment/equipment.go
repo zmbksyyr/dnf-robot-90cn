@@ -502,8 +502,28 @@ func SelectAvatarSetItems(candidatesBySlot map[int][]shared.EquipmentCatalogItem
 	if len(eligible) == 0 {
 		return selectBestSetItems(groups, minSlots, randIntn)
 	}
-	sort.Slice(eligible, func(i, j int) bool { return eligible[i].key < eligible[j].key })
-	return selectSetGroup(eligible[safeRandIntn(randIntn, len(eligible))], randIntn)
+	sort.Slice(eligible, func(i, j int) bool {
+		if eligible[i].coverage != eligible[j].coverage {
+			return eligible[i].coverage > eligible[j].coverage
+		}
+		if eligible[i].levelSum != eligible[j].levelSum {
+			return eligible[i].levelSum > eligible[j].levelSum
+		}
+		if eligible[i].raritySum != eligible[j].raritySum {
+			return eligible[i].raritySum > eligible[j].raritySum
+		}
+		return eligible[i].key < eligible[j].key
+	})
+	bestCoverage := eligible[0].coverage
+	bestLevel := eligible[0].levelSum
+	bestRarity := eligible[0].raritySum
+	best := eligible[:0]
+	for _, group := range eligible {
+		if group.coverage == bestCoverage && group.levelSum == bestLevel && group.raritySum == bestRarity {
+			best = append(best, group)
+		}
+	}
+	return selectSetGroup(best[safeRandIntn(randIntn, len(best))], randIntn)
 }
 
 func buildSetGroups(candidatesBySlot map[int][]shared.EquipmentCatalogItem) map[string]*setGroup {

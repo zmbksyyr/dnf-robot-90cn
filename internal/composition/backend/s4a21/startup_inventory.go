@@ -301,6 +301,8 @@ func (s SQLiteStartupInventory) characterCompliant(character startupCharacter, i
 	if len(equipSlots) == 0 {
 		equipSlots = []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
 	}
+	equipmentSetCounts := make(map[string]int)
+	equipmentCount := 0
 	for _, commonSlot := range equipSlots {
 		item, ok := startupCoreItem(cores[commonSlot+11], a21ItemKindEquipment, items)
 		if !ok || item.ItemType != commonSlot || !equipmentcap.UsableByJob(item.UseJob, character.job) {
@@ -309,12 +311,19 @@ func (s SQLiteStartupInventory) characterCompliant(character startupCharacter, i
 		if commonSlot < 11 && item.Level > character.level {
 			return false
 		}
+		equipmentCount++
+		for _, setKey := range strings.Split(item.SetKey, "|") {
+			if setKey = strings.TrimSpace(setKey); setKey != "" {
+				equipmentSetCounts[setKey]++
+			}
+		}
 	}
 	avatarSlots := s.Config.AvatarSlots
 	if len(avatarSlots) == 0 {
 		avatarSlots = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 	}
 	avatarCount := 0
+	avatarSetCounts := make(map[string]int)
 	for _, slot := range avatarSlots {
 		core := cores[slot]
 		item, ok := startupCoreItem(core, a21ItemKindAvatar, items)
@@ -326,8 +335,19 @@ func (s SQLiteStartupInventory) characterCompliant(character startupCharacter, i
 			continue
 		}
 		avatarCount++
+		for _, setKey := range strings.Split(item.SetKey, "|") {
+			if setKey = strings.TrimSpace(setKey); setKey != "" {
+				avatarSetCounts[setKey]++
+			}
+		}
 	}
 	if avatarCount < s.Config.MinAvatarSlots {
+		return false
+	}
+	if s.Config.PreferEquipSets && maxSetCount(equipmentSetCounts) < requiredSetCoverage(equipmentCount, s.Config.EquipSetMinSlots, 5) {
+		return false
+	}
+	if s.Config.PreferAvatarSets && maxSetCount(avatarSetCounts) < requiredSetCoverage(avatarCount, s.Config.AvatarSetMinSlots, 6) {
 		return false
 	}
 	return s.petCompliant(character.id, cores, index.creatureKeys[character.id], items)

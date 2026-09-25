@@ -280,7 +280,7 @@ func (a SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context,
 	if a.Config.MinAvatarSlots > 0 && len(selectedAvatar) < a.Config.MinAvatarSlots {
 		return fmt.Errorf("S4A21 loadout has %d compatible avatar slots, need %d for job=%d", len(selectedAvatar), a.Config.MinAvatarSlots, info.Job)
 	}
-	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, items, len(selectedEquipment), len(selectedAvatar), petSelected, selectedPet, selectedArtifacts)
+	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, items, a.Config, len(selectedEquipment), len(selectedAvatar), petSelected, selectedPet, selectedArtifacts)
 	if err != nil {
 		return err
 	}
@@ -472,7 +472,7 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 	return accountID, characterID, info, nil
 }
 
-func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
+func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
 	rows, err := db.QueryContext(ctx, `SELECT slot_index,item_core FROM character_inventory_items
 WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, characterID, a21ListTypeEquipment)
 	if err != nil {
@@ -480,6 +480,8 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 	}
 	defer rows.Close()
 	equipmentCount, avatarCount := 0, 0
+	equipmentSetCounts := make(map[string]int)
+	avatarSetCounts := make(map[string]int)
 	for rows.Next() {
 		var slot int
 		var core []byte
@@ -496,12 +498,22 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 		switch {
 		case slot >= 12 && slot <= 23:
 			equipmentCount++
+			for _, setKey := range strings.Split(item.SetKey, "|") {
+				if setKey = strings.TrimSpace(setKey); setKey != "" {
+					equipmentSetCounts[setKey]++
+				}
+			}
 			levelIncompatible := slot < 22 && item.Level > info.Level
 			if item.ItemType != slot-11 || levelIncompatible || !equipmentcap.UsableByJob(item.UseJob, info.Job) {
 				return false, nil
 			}
 		case slot >= 0 && slot <= 9:
 			avatarCount++
+			for _, setKey := range strings.Split(item.SetKey, "|") {
+				if setKey = strings.TrimSpace(setKey); setKey != "" {
+					avatarSetCounts[setKey]++
+				}
+			}
 			if item.ItemType != slot+20 || !equipmentcap.AvatarRenderable(item) || !equipmentcap.AvatarUsableByJob(item, s4a21AvatarJob(info.Job)) {
 				return false, nil
 			}
@@ -511,6 +523,12 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 		return false, err
 	}
 	if equipmentCount < wantEquipment || avatarCount < wantAvatar {
+		return false, nil
+	}
+	if rc.PreferEquipSets && maxSetCount(equipmentSetCounts) < requiredSetCoverage(wantEquipment, rc.EquipSetMinSlots, 5) {
+		return false, nil
+	}
+	if rc.PreferAvatarSets && maxSetCount(avatarSetCounts) < requiredSetCoverage(wantAvatar, rc.AvatarSetMinSlots, 6) {
 		return false, nil
 	}
 	if wantPet {
@@ -576,6 +594,32 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 		}
 	}
 	return true, nil
+}
+
+func requiredSetCoverage(want, configured, preferred int) int {
+	if want <= 0 {
+		return 0
+	}
+	if configured < 2 {
+		configured = 2
+	}
+	if preferred > configured {
+		configured = preferred
+	}
+	if configured > want {
+		configured = want
+	}
+	return configured
+}
+
+func maxSetCount(counts map[string]int) int {
+	max := 0
+	for _, count := range counts {
+		if count > max {
+			max = count
+		}
+	}
+	return max
 }
 
 // The shared incompatibility marker protects the native DP2 item-info

@@ -137,15 +137,15 @@ func TestEquipmentSlotsNeedRepairValidatesConfiguredSlots(t *testing.T) {
 	}
 }
 
-func TestAvatarSetSelectionRandomizesAcrossSixSlotSets(t *testing.T) {
+func TestAvatarSetSelectionPrefersFullSetCoverage(t *testing.T) {
 	candidates := testSetCandidates(9, 6)
 	selected := SelectAvatarSetItems(candidates, 2, func(n int) int { return n - 1 })
-	if len(selected) != 6 {
-		t.Fatalf("selected slots got %d want 6", len(selected))
+	if len(selected) != 9 {
+		t.Fatalf("selected slots got %d want full nine-slot set", len(selected))
 	}
 	for _, item := range selected {
-		if item.SetKey != "variety" {
-			t.Fatalf("selected set %q want variety", item.SetKey)
+		if item.SetKey != "quality" {
+			t.Fatalf("selected set %q want quality", item.SetKey)
 		}
 	}
 }
