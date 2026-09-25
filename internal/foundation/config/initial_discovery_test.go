@@ -27,7 +27,7 @@ func TestInitialConfigUsesDiscoveredExternalPorts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RobotGamePort != 20011 || cfg.MonitorPort != 31303 || cfg.AuctionPort != 31803 || cfg.PointPort != 31603 || cfg.RelayPort != 17200 {
+	if cfg.RobotGamePort != 20011 {
 		t.Fatalf("discovered ports not loaded: %+v", cfg)
 	}
 	if cfg.PartyRoute0Port != 5063 {
@@ -38,7 +38,7 @@ func TestInitialConfigUsesDiscoveredExternalPorts(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, want := range []string{"# discovered from /srv/game/cfg/game.cfg", "Game = 20011", "PartyRoute0 = 5063", "RobotConnectIp = auto", "Root = /home/neople", "AuctionHost = 127.0.0.1", "RelayHost = 127.0.0.1"} {
+	for _, want := range []string{"# discovered from /srv/game/cfg/game.cfg", "Game = 20011", "PartyRoute0 = 5063", "RobotConnectIp = auto"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated config missing %q:\n%s", want, text)
 		}
@@ -84,11 +84,8 @@ func TestInitialConfigFallsBackPerExternalPort(t *testing.T) {
 	if cfg.RobotGamePort != 10011 {
 		t.Fatalf("invalid discovered game port did not fall back: %d", cfg.RobotGamePort)
 	}
-	if cfg.MonitorPort != 31303 {
-		t.Fatalf("valid monitor discovery was lost: %d", cfg.MonitorPort)
-	}
-	if cfg.AuctionPort != 30803 || cfg.PointPort != 30603 || cfg.RelayPort != 7200 {
-		t.Fatalf("unresolved fields did not fall back independently: %+v", cfg)
+	if cfg.MonitorPort != 30303 || cfg.AuctionPort != 30803 || cfg.PointPort != 30603 || cfg.RelayPort != 7200 {
+		t.Fatalf("unsupported service fields should remain defaults: %+v", cfg)
 	}
 }
 

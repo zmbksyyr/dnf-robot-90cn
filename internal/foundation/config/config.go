@@ -232,10 +232,6 @@ func generateDefaultConfig(path string) error {
 		"Web = 8112",
 	}
 	portLines = append(portLines, initialPortConfigLine("Game", 10011, discovered.Game, 64535)...)
-	portLines = append(portLines, initialPortConfigLine("Monitor", 30303, discovered.Monitor, 65535)...)
-	portLines = append(portLines, initialPortConfigLine("Auction", 30803, discovered.Auction, 65535)...)
-	portLines = append(portLines, initialPortConfigLine("Point", 30603, discovered.Point, 65535)...)
-	portLines = append(portLines, initialPortConfigLine("Relay", 7200, discovered.Relay, 65535)...)
 	portLines = append(portLines, "# Robot-owned UDP listener; not discovered from /root/run.", "PartyRoute0 = 5063")
 
 	lines := []string{
@@ -252,36 +248,11 @@ func generateDefaultConfig(path string) error {
 		"RobotInnerIp = 10.0.0.1",
 		"# Game connection host. Use auto to resolve the primary local IPv4 at runtime.",
 		"RobotConnectIp = auto",
-		"# Native game server group used when forwarding internal cache invalidation packets.",
+		"# S4A21 game server group used for cache invalidation packets.",
 		"GameServerGroup = 3",
-		"",
-		"[Services]",
-		"# Common root containing game, auction, point, and relay directories.",
-		"Root = /home/neople",
-		"# Script used to discover native service launch commands.",
-		"RunScript = /root/run",
-		"# Native services are local by default; set explicit hosts for split deployments.",
-		"AuctionHost = 127.0.0.1",
-		"PointHost = 127.0.0.1",
-		"RelayHost = 127.0.0.1",
-		"",
 		"[Web]",
 		"# Web login password.",
 		"WebPassword = twadmin",
-		"",
-		"[db]",
-		"# MySQL connection. Robot prepares required robot tables automatically.",
-		"db_host = 127.0.0.1",
-		"db_user_name = game",
-		"db_password = uu5!^%jg",
-		"db_database_name = d_taiwan",
-		"db_port = 3306",
-		"db_init_size = 4",
-		"db_max_size = 64",
-		"db_dial_timeout_sec = 5",
-		"db_read_timeout_sec = 30",
-		"db_write_timeout_sec = 30",
-		"db_conn_max_lifetime_sec = 1800",
 		"",
 		"[system]",
 		"log_max_size_mb = 100",
