@@ -128,7 +128,7 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 		return nil
 	}
 	sender := payload[7]
-	state, codec, ok := decodePartyUDPBody(body, sender, 1, peer)
+	state, codec, wireRoute, ok := decodePartyUDPBody(body, sender, 1, peer)
 	if !ok {
 		return nil
 	}
@@ -143,38 +143,46 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 	switch state {
 	case 3:
 		peer.nextSeq, peer.reliableSeq, peer.pending = 0, 0, nil
-		replies = append(replies, buildPartyUDP(0, selfSlot, 0, 1, codec))
+		replies = append(replies, buildPartyUDP(0, selfSlot, 0, wireRoute, codec))
 	case 0:
-		replies = append(replies, buildPartyUDP(peer.nextSeq, selfSlot, 1, 1, codec))
+		replies = append(replies, buildPartyUDP(peer.nextSeq, selfSlot, 1, wireRoute, codec))
 		peer.nextSeq++
 	case 1:
 		if peer.pending == nil {
 			peer.pendingSeq = peer.reliableSeq
 			peer.reliableSeq++
-			peer.pending = buildPartyUDP(peer.pendingSeq, selfSlot, 2, 1, codec)
+			peer.pending = buildPartyUDP(peer.pendingSeq, selfSlot, 2, wireRoute, codec)
 		}
 		replies = append(replies, peer.pending)
 	}
 	return replies
 }
 
-func decodePartyUDPBody(body []byte, sender, route byte, peer *partyUDPPeer) (byte, partyUDPCodec, bool) {
+func decodePartyUDPBody(body []byte, sender, route byte, peer *partyUDPPeer) (byte, partyUDPCodec, byte, bool) {
+	routes := []byte{route}
+	if route != 0 {
+		routes = append(routes, 0)
+	}
 	if peer.codecKnown {
-		if state, ok := decodePartyUDPBodyWithCodec(body, sender, route, peer.codec); ok {
-			peer.codec.extra = [2]byte{body[10], body[11]}
-			copy(peer.codec.checksum[:], body[3:7])
-			return state, peer.codec, true
+		for _, expectedRoute := range routes {
+			if state, ok := decodePartyUDPBodyWithCodec(body, sender, expectedRoute, peer.codec); ok {
+				peer.codec.extra = [2]byte{body[10], body[11]}
+				copy(peer.codec.checksum[:], body[3:7])
+				return state, peer.codec, expectedRoute, true
+			}
 		}
 	}
 	for rotate := 0; rotate < 8; rotate++ {
 		codec := partyUDPCodec{key: bits.RotateLeft8(body[7], -rotate) ^ sender, rotate: byte(rotate)}
-		if state, ok := decodePartyUDPBodyWithCodec(body, sender, route, codec); ok {
-			codec.extra = [2]byte{body[10], body[11]}
-			copy(codec.checksum[:], body[3:7])
-			return state, codec, true
+		for _, expectedRoute := range routes {
+			if state, ok := decodePartyUDPBodyWithCodec(body, sender, expectedRoute, codec); ok {
+				codec.extra = [2]byte{body[10], body[11]}
+				copy(codec.checksum[:], body[3:7])
+				return state, codec, expectedRoute, true
+			}
 		}
 	}
-	return 0, partyUDPCodec{}, false
+	return 0, partyUDPCodec{}, 0, false
 }
 
 func decodePartyUDPBodyWithCodec(body []byte, sender, route byte, codec partyUDPCodec) (byte, bool) {
