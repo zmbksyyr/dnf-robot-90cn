@@ -175,14 +175,12 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 		if peer.pendingRoute[routeIndex] == nil {
 			peer.pendingSeqRoute[routeIndex] = peer.reliableSeqRoute[routeIndex]
 			peer.reliableSeqRoute[routeIndex]++
+			codec.extra[0], codec.extra[1] = codec.extra[1], codec.extra[0]
 			peer.pendingRoute[routeIndex] = buildPartyUDP(peer.pendingSeqRoute[routeIndex], selfSlot, 2, wireRoute, codec)
 			peer.pending, peer.pendingSeq = peer.pendingRoute[routeIndex], peer.pendingSeqRoute[routeIndex]
 		}
 		replies = append(replies, peer.pendingRoute[routeIndex])
-		candidate := buildPartyUDPWithChecksum(peer.pendingSeqRoute[routeIndex], selfSlot, 2, wireRoute, codec, partyUDPChecksum(selfSlot, 2, wireRoute))
-		if !sameBytes(candidate, peer.pendingRoute[routeIndex]) && codec.checksum != [4]byte{} {
-			replies = append(replies, candidate)
-		}
+		// state2 uses the same directional tail as the unreliable states.
 	}
 	return replies
 }
@@ -192,33 +190,8 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 // candidates with the same transport sequence; an invalid candidate is ignored
 // before it can advance the receive window.
 func partyUDPReplyCandidates(sequence uint32, sender, state, route byte, codec partyUDPCodec) [][]byte {
-	primary := buildPartyUDP(sequence, sender, state, route, codec)
-	if codec.checksum == [4]byte{} {
-		return [][]byte{primary}
-	}
-	candidate := buildPartyUDPWithChecksum(sequence, sender, state, route, codec, partyUDPChecksum(sender, state, route))
-	if sameBytes(candidate, primary) {
-		return [][]byte{primary}
-	}
-	return [][]byte{primary, candidate}
-}
-
-func buildPartyUDPWithChecksum(sequence uint32, sender, state, route byte, codec partyUDPCodec, checksum [4]byte) []byte {
-	copyCodec := codec
-	copyCodec.checksum = checksum
-	return buildPartyUDP(sequence, sender, state, route, copyCodec)
-}
-
-func sameBytes(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	codec.extra[0], codec.extra[1] = codec.extra[1], codec.extra[0]
+	return [][]byte{buildPartyUDP(sequence, sender, state, route, codec)}
 }
 
 func decodePartyUDPBody(body []byte, sender, route byte, peer *partyUDPPeer) (byte, partyUDPCodec, byte, bool) {
