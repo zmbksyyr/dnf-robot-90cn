@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"robot/internal/foundation/lockhub"
+	foundationlog "robot/internal/foundation/log"
 	"robot/internal/foundation/network"
 )
 
@@ -248,6 +249,9 @@ func (c *Client) Read(ctx context.Context) (Packet, error) {
 	}
 	if err == nil && packet.Type == NotiPartyRealtimeInfo {
 		c.applyPartyRealtimeInfo(packet.Body)
+	}
+	if err == nil && (packet.Type == NotiRequestPeer || packet.Type == NotiPartyInfo || packet.Type == NotiPartyRealtimeInfo) {
+		foundationlog.Robotf("S4A21_PARTY_TCP_RX uid=%d type=0x%04X command=%d body=%X\n", c.selfUID, packet.Type, packet.Command, packet.Body)
 	}
 	return packet, err
 }

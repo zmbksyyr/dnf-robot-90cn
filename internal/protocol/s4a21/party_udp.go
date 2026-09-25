@@ -26,6 +26,7 @@ type partyUDPPeer struct {
 	pending     []byte
 	pendingSeq  uint32
 	diagPackets byte
+	diagDrops   byte
 }
 
 var partyUDPCRCTable = crc32.MakeTable(0x4db89129)
@@ -47,16 +48,27 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			c.udpPeers[remote.String()] = peer
 		}
 		selfSlot, slotKnown := c.selfSlot, c.slotKnown
+		beforePending := peer.pending != nil
+		beforeSeq := peer.nextSeq
 		replies := partyUDPReplies(buffer[:n], peer, selfSlot, slotKnown)
-		logPacket := peer.diagPackets < 8
+		afterPending := peer.pending != nil
+		afterSeq := peer.nextSeq
+		logPacket := peer.diagPackets < 32
+		logDrop := len(replies) == 0 && peer.diagDrops < 32
 		if logPacket {
 			peer.diagPackets++
+		}
+		if logDrop {
+			peer.diagDrops++
 		}
 		selfUID := c.selfUID
 		c.udpMu.Unlock()
 		if logPacket {
-			foundationlog.Robotf("S4A21_PARTY_UDP_RX uid=%d slot=%d known=%t remote=%s bytes=%X replies=%d\n",
-				selfUID, selfSlot, slotKnown, remote, buffer[:n], len(replies))
+			foundationlog.Robotf("S4A21_PARTY_UDP_RX uid=%d slot=%d known=%t remote=%s bytes=%X replies=%d pending=%t->%t seq=%d->%d\n",
+				selfUID, selfSlot, slotKnown, remote, buffer[:n], len(replies), beforePending, afterPending, beforeSeq, afterSeq)
+		} else if logDrop {
+			foundationlog.Robotf("S4A21_PARTY_UDP_DROP uid=%d slot=%d known=%t remote=%s bytes=%X pending=%t seq=%d\n",
+				selfUID, selfSlot, slotKnown, remote, buffer[:n], afterPending, afterSeq)
 		}
 		for _, reply := range replies {
 			_, _ = conn.WriteToUDP(reply, remote)
