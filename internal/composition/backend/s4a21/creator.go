@@ -130,7 +130,14 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		if provisioned.ProfileKnown {
 			info.Job, info.Grow, info.Level = provisioned.Job, provisioned.Grow, provisioned.Level
 		}
-		if profiles, ok := c.Profiles.(CharacterProfileAdapter); ok && !provisioned.Reused {
+		loadoutApplied := false
+		if initializer, ok := c.Profiles.(CharacterInitializer); ok && !provisioned.Reused {
+			info, err = initializer.InitializeCharacter(ctx, plan.Request.AccountName, info, plannedLevel)
+			if err != nil {
+				return robots, fmt.Errorf("initialize S4A21 character uid=%d: %w", info.UID, err)
+			}
+			loadoutApplied = true
+		} else if profiles, ok := c.Profiles.(CharacterProfileAdapter); ok && !provisioned.Reused {
 			info, err = profiles.ApplyPlannedCharacterLevel(ctx, plan.Request.AccountName, info, plannedLevel)
 			if err != nil {
 				return robots, fmt.Errorf("apply S4A21 planned level uid=%d: %w", info.UID, err)
@@ -141,7 +148,7 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 				return robots, fmt.Errorf("resolve S4A21 profile uid=%d: %w", info.UID, err)
 			}
 		}
-		if c.Loadouts != nil {
+		if c.Loadouts != nil && !loadoutApplied {
 			if err := c.Loadouts.ApplyCharacterLoadout(ctx, plan.Request.AccountName, info); err != nil {
 				return robots, fmt.Errorf("apply S4A21 loadout uid=%d: %w", info.UID, err)
 			}

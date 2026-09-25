@@ -12,6 +12,28 @@ type TownMapCatalogProvider struct {
 	PVFPath string
 }
 
+type Catalogs struct {
+	TownMaps  []shared.MapCatalogItem
+	Equipment []shared.EquipmentCatalogItem
+	Stackable []shared.EquipmentCatalogItem
+}
+
+func ReadCatalogs(pvfPath string) (Catalogs, error) {
+	archive, err := openA21PVF(pvfPath)
+	if err != nil {
+		return Catalogs{}, err
+	}
+	maps, err := capabilitypvf.ProjectTownMapCatalog(archive)
+	if err != nil {
+		return Catalogs{}, fmt.Errorf("project S4A21 town maps: %w", err)
+	}
+	equipment, stackable, err := capabilitypvf.ProjectItemCatalogs(archive)
+	if err != nil {
+		return Catalogs{}, fmt.Errorf("project S4A21 item catalogs: %w", err)
+	}
+	return Catalogs{TownMaps: maps, Equipment: equipment, Stackable: stackable}, nil
+}
+
 func (p TownMapCatalogProvider) TownMapCatalog(ctx context.Context) ([]shared.MapCatalogItem, error) {
 	if ctx != nil {
 		select {

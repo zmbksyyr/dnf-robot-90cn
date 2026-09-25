@@ -124,10 +124,8 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 			BackendCharacterID: strconv.Itoa(character.id),
 		})
 	}
-	for _, accountID := range invalidAccountIDs {
-		if _, err := conn.ExecContext(ctx, `DELETE FROM accounts WHERE account_id=?`, accountID); err != nil {
-			return result, fmt.Errorf("delete invalid S4A21 robot account id=%d: %w", accountID, err)
-		}
+	if err := deleteStartupAccounts(ctx, conn, invalidAccountIDs); err != nil {
+		return result, err
 	}
 	result.DeletedAccounts = len(invalidAccountIDs)
 	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
@@ -136,6 +134,27 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 	sort.Slice(result.Robots, func(i, j int) bool { return result.Robots[i].UID < result.Robots[j].UID })
 	sort.Slice(result.Identities, func(i, j int) bool { return result.Identities[i].Account < result.Identities[j].Account })
 	return result, nil
+}
+
+func deleteStartupAccounts(ctx context.Context, conn startupSQLiteConn, accountIDs []int) error {
+	const batchSize = 500
+	for start := 0; start < len(accountIDs); start += batchSize {
+		end := start + batchSize
+		if end > len(accountIDs) {
+			end = len(accountIDs)
+		}
+		args := make([]any, end-start)
+		placeholders := make([]string, end-start)
+		for index, accountID := range accountIDs[start:end] {
+			args[index] = accountID
+			placeholders[index] = "?"
+		}
+		query := `DELETE FROM accounts WHERE account_id IN (` + strings.Join(placeholders, ",") + `)`
+		if _, err := conn.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("delete invalid S4A21 robot accounts batch=%d..%d: %w", start, end, err)
+		}
+	}
+	return nil
 }
 
 func (s SQLiteStartupInventory) readOwnedAccounts(ctx context.Context, conn startupSQLiteConn, prefix string) ([]startupAccount, map[int]struct{}, error) {

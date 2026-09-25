@@ -361,13 +361,10 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 
 func (s *Session) drain(ctx context.Context) {
 	defer s.signalTermination()
-	for {
-		packet, err := s.client.Read(ctx)
-		if err != nil {
-			return
-		}
+	_ = s.client.Run(ctx, func(packet protocol.Packet) error {
 		s.dispatchPacket(packet)
-	}
+		return nil
+	})
 }
 
 func (s *Session) keepalive(ctx context.Context) {

@@ -47,12 +47,18 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 		return 1
 	}
 	defer transports.close()
-	townMaps, err := loadBackendTownMapCatalog(context.Background(), info, cfg)
+	pvfPath, err := s4a21PVFPath(cfg.DFGameR)
 	if err != nil {
 		foundationlog.Robotf("SIMULATOR_TOWN_MAP_FAILED err=%v\n", err)
 		return 1
 	}
-	if err := exportBackendItemCatalogs(info, cfg, paths); err != nil {
+	catalogs, err := s4a21backend.ReadCatalogs(pvfPath)
+	if err != nil {
+		foundationlog.Robotf("SIMULATOR_PVF_CATALOG_FAILED err=%v\n", err)
+		return 1
+	}
+	townMaps := catalogs.TownMaps
+	if err := exportItemCatalogs(paths, catalogs.Equipment, catalogs.Stackable); err != nil {
 		foundationlog.Robotf("SIMULATOR_ITEM_CATALOG_FAILED err=%v\n", err)
 		return 1
 	}
@@ -61,7 +67,7 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 		foundationlog.Robotf("SIMULATOR_LOADOUT_DATABASE_FAILED err=%v\n", err)
 		return 1
 	}
-	equipment := catalog.ViewItemCatalogs(paths.PVF).Equipment
+	equipment := catalogs.Equipment
 	inventory, err := (s4a21backend.SQLiteStartupInventory{
 		DatabasePath: loadoutDB, AccountPrefix: "robot", Config: rc, Equipment: equipment,
 	}).ScanAndClean(context.Background())
@@ -91,9 +97,12 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 	manager.SetBackendSessionTransport(transports.sessions)
 	manager.SetTownMapCatalog(townMaps)
 	nameTemplates := catalog.NameTemplates(paths.Templates)
-	loadouts := s4a21backend.SQLiteLoadoutApplier{
-		DatabasePath: loadoutDB, Config: rc, Equipment: equipment, RandIntn: manager.RandIntn,
+	loadouts, err := s4a21backend.NewSQLiteLoadoutApplier(context.Background(), loadoutDB, rc, equipment, manager.RandIntn)
+	if err != nil {
+		foundationlog.Robotf("SIMULATOR_LOADOUT_ADAPTER_FAILED err=%v\n", err)
+		return 1
 	}
+	defer loadouts.Close()
 	manager.SetBackendRobotCreator(info, s4a21backend.RobotCreator{
 		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state, Config: rc, Names: nameTemplates, Maps: townMaps,

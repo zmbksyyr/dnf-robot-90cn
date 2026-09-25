@@ -49,11 +49,66 @@ type CharacterProfileAdapter interface {
 	ReconcileConfiguredCharacterLevel(context.Context, string, robotcap.Info) (robotcap.Info, error)
 }
 
+type CharacterInitializer interface {
+	InitializeCharacter(context.Context, string, robotcap.Info, int) (robotcap.Info, error)
+}
+
 type SQLiteLoadoutApplier struct {
 	DatabasePath string
 	Config       robotconfig.RuntimeConfig
 	Equipment    []shared.EquipmentCatalogItem
 	RandIntn     func(int) int
+	db           *sql.DB
+	items        map[int]shared.EquipmentCatalogItem
+	petSchema    bool
+}
+
+func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config robotconfig.RuntimeConfig, equipment []shared.EquipmentCatalogItem, randIntn func(int) int) (*SQLiteLoadoutApplier, error) {
+	if strings.TrimSpace(databasePath) == "" {
+		return nil, fmt.Errorf("S4A21 loadout database path is required")
+	}
+	db, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		return nil, fmt.Errorf("open S4A21 loadout database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("configure S4A21 loadout database: %w", err)
+	}
+	if err := validateLoadoutSchema(ctx, db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &SQLiteLoadoutApplier{
+		DatabasePath: databasePath, Config: config, Equipment: equipment, RandIntn: randIntn,
+		db: db, items: equipmentByID(equipment), petSchema: petSchemaAvailable(ctx, db),
+	}, nil
+}
+
+func (a *SQLiteLoadoutApplier) Close() error {
+	if a == nil || a.db == nil {
+		return nil
+	}
+	err := a.db.Close()
+	a.db = nil
+	return err
+}
+
+func (a SQLiteLoadoutApplier) database(ctx context.Context) (*sql.DB, func(), error) {
+	if a.db != nil {
+		return a.db, func() {}, nil
+	}
+	db, err := sql.Open("sqlite", a.DatabasePath)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
+		db.Close()
+		return nil, nil, err
+	}
+	return db, func() { _ = db.Close() }, nil
 }
 
 type PersistenceInspector struct {
@@ -148,22 +203,67 @@ func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return fmt.Errorf("S4A21 loadout database path is required")
 	}
-	db, err := sql.Open("sqlite", a.DatabasePath)
+	db, closeDB, err := a.database(ctx)
 	if err != nil {
 		return fmt.Errorf("open S4A21 loadout database: %w", err)
 	}
-	defer db.Close()
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
-		return fmt.Errorf("configure S4A21 loadout database: %w", err)
-	}
-	if err := validateLoadoutSchema(ctx, db); err != nil {
-		return err
+	defer closeDB()
+	if a.db == nil {
+		if err := validateLoadoutSchema(ctx, db); err != nil {
+			return err
+		}
 	}
 	accountID, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
 	if err != nil {
 		return err
 	}
-	return a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, equipmentByID(a.Equipment), petSchemaAvailable(ctx, db))
+	items := a.items
+	if items == nil {
+		items = equipmentByID(a.Equipment)
+	}
+	petSchema := a.petSchema
+	if a.db == nil {
+		petSchema = petSchemaAvailable(ctx, db)
+	}
+	return a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema)
+}
+
+func (a SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
+	if level < 1 || level > math.MaxUint8 {
+		return info, fmt.Errorf("S4A21 character level must be between 1 and %d", math.MaxUint8)
+	}
+	sqliteMutationMu.Lock()
+	defer sqliteMutationMu.Unlock()
+	db, closeDB, err := a.database(ctx)
+	if err != nil {
+		return info, fmt.Errorf("open S4A21 character database: %w", err)
+	}
+	defer closeDB()
+	if a.db == nil {
+		if err := validateLoadoutSchema(ctx, db); err != nil {
+			return info, err
+		}
+	}
+	accountID, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
+	if err != nil {
+		return info, err
+	}
+	actual, err = writeResolvedCharacterLevel(ctx, db, characterID, actual, level)
+	if err != nil {
+		return info, err
+	}
+	items := a.items
+	if items == nil {
+		items = equipmentByID(a.Equipment)
+	}
+	petSchema := a.petSchema
+	if a.db == nil {
+		petSchema = petSchemaAvailable(ctx, db)
+	}
+	if err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema); err != nil {
+		return info, err
+	}
+	return actual, nil
 }
 
 func (a SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) error {
@@ -254,14 +354,11 @@ func (a SQLiteLoadoutApplier) ResolveCharacterProfile(ctx context.Context, accou
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return info, fmt.Errorf("S4A21 profile database path is required")
 	}
-	db, err := sql.Open("sqlite", a.DatabasePath)
+	db, closeDB, err := a.database(ctx)
 	if err != nil {
 		return info, fmt.Errorf("open S4A21 profile database: %w", err)
 	}
-	defer db.Close()
-	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout=5000;`); err != nil {
-		return info, err
-	}
+	defer closeDB()
 	_, _, actual, err := resolveCharacterProfile(ctx, db, account, info)
 	return actual, err
 }
@@ -279,14 +376,11 @@ func (a SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Cont
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return info, fmt.Errorf("S4A21 profile database path is required")
 	}
-	db, err := sql.Open("sqlite", a.DatabasePath)
+	db, closeDB, err := a.database(ctx)
 	if err != nil {
 		return info, fmt.Errorf("open S4A21 profile database: %w", err)
 	}
-	defer db.Close()
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
-		return info, err
-	}
+	defer closeDB()
 	_, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
 	if err != nil {
 		return info, err
@@ -317,14 +411,11 @@ func (a SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account s
 	if strings.TrimSpace(a.DatabasePath) == "" {
 		return info, fmt.Errorf("S4A21 profile database path is required")
 	}
-	db, err := sql.Open("sqlite", a.DatabasePath)
+	db, closeDB, err := a.database(ctx)
 	if err != nil {
 		return info, fmt.Errorf("open S4A21 profile database: %w", err)
 	}
-	defer db.Close()
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
-		return info, err
-	}
+	defer closeDB()
 	_, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
 	if err != nil {
 		return info, err

@@ -241,11 +241,16 @@ func (c *Client) Read(ctx context.Context) (Packet, error) {
 		ctx = context.Background()
 	}
 	resetDeadline := interruptOnCancel(ctx, c.conn.SetReadDeadline)
-	packet, err := ReadFrame(c.conn, c.maxSize)
+	packet, err := c.readFrame()
 	resetDeadline()
 	if err != nil && ctx.Err() != nil {
 		return Packet{}, ctx.Err()
 	}
+	return packet, err
+}
+
+func (c *Client) readFrame() (Packet, error) {
+	packet, err := ReadFrame(c.conn, c.maxSize)
 	if err == nil && packet.Type == NotiPartyRealtimeInfo {
 		c.applyPartyRealtimeInfo(packet.Body)
 	}
@@ -256,9 +261,14 @@ func (c *Client) Run(ctx context.Context, onPacket func(Packet) error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	resetDeadline := interruptOnCancel(ctx, c.conn.SetReadDeadline)
+	defer resetDeadline()
 	for {
-		packet, err := c.Read(ctx)
+		packet, err := c.readFrame()
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return err
 		}
 		if onPacket != nil {
@@ -304,6 +314,9 @@ func (c *Client) send(ctx context.Context, frame []byte) error {
 // cancellation callback before clearing the deadline. Waiting prevents an old
 // operation from installing an expired deadline after the next one begins.
 func interruptOnCancel(ctx context.Context, setDeadline func(time.Time) error) func() {
+	if ctx.Done() == nil {
+		return func() {}
+	}
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		_ = setDeadline(time.Now())

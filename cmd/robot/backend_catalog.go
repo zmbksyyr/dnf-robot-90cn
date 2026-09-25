@@ -44,6 +44,10 @@ func exportBackendItemCatalogs(info shared.BackendInfo, cfg *config.SysConfig, p
 	if err != nil {
 		return err
 	}
+	return exportItemCatalogs(paths, equipment, stackable)
+}
+
+func exportItemCatalogs(paths layout.Paths, equipment, stackable []shared.EquipmentCatalogItem) error {
 	if err := capabilitypvf.WriteJSON(paths.PVFEquipment(), equipment); err != nil {
 		return fmt.Errorf("write S4A21 equipment catalog: %w", err)
 	}
