@@ -75,7 +75,7 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 		return result, fmt.Errorf("open S4A21 startup inventory: %w", err)
 	}
 	defer db.Close()
-	db.SetMaxOpenConns(1)
+	configureSQLitePool(db)
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return result, fmt.Errorf("connect S4A21 startup inventory: %w", err)

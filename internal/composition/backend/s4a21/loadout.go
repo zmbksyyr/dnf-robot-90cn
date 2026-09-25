@@ -71,8 +71,7 @@ func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config ro
 	if err != nil {
 		return nil, fmt.Errorf("open S4A21 loadout database: %w", err)
 	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	configureSQLitePool(db)
 	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure S4A21 loadout database: %w", err)
@@ -104,11 +103,23 @@ func (a SQLiteLoadoutApplier) database(ctx context.Context) (*sql.DB, func(), er
 	if err != nil {
 		return nil, nil, err
 	}
+	configureSQLitePool(db)
 	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
 		db.Close()
 		return nil, nil, err
 	}
 	return db, func() { _ = db.Close() }, nil
+}
+
+// configureSQLitePool keeps every adapter-owned connection bounded to one
+// writer/reader. The S4A21 server may hold the same file open, so creating a
+// pool per actor would only increase lock contention and SQLITE_BUSY retries.
+func configureSQLitePool(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 }
 
 type PersistenceInspector struct {
@@ -168,6 +179,7 @@ func (i PersistenceInspector) checkStatus(ctx context.Context) shared.Persistenc
 	if err != nil {
 		return fail(fmt.Errorf("open S4A21 database: %w", err))
 	}
+	configureSQLitePool(db)
 	defer db.Close()
 	if err := db.PingContext(ctx); err != nil {
 		return fail(fmt.Errorf("ping S4A21 database: %w", err))
