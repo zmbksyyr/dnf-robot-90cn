@@ -142,9 +142,8 @@ func backendPartyFollowerEnabled(info shared.BackendInfo, rc robotconfig.Runtime
 	if !status.Enabled {
 		return false
 	}
-	// Account mode is the native policy: only the configured operator account may
-	// drive followers. Protocol backends can declare auto-accept without
-	// borrowing that native-only setting.
+	// Account mode requires the configured operator account; adapters may instead
+	// declare auto-accept without requiring an account filter.
 	if status.Mode == "account" {
 		return strings.TrimSpace(rc.FollowAccount) != ""
 	}

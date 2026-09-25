@@ -16,7 +16,7 @@ var ErrNotFound = errors.New("robot state not found")
 var ErrDuplicateIdentity = errors.New("robot identity already registered")
 
 // Identity records only robot-owned linkage. Backend-specific IDs are optional
-// because simulator protocols may expose a slot/name but no native UID/CID.
+// because some protocols may expose a slot/name but no persistent UID/CID.
 type Identity struct {
 	Backend            shared.BackendID
 	Account            string

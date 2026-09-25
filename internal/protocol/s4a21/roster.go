@@ -7,8 +7,8 @@ import (
 	"robot/internal/foundation/charset"
 )
 
-// CharacterRosterEntry is the backend-native identity exposed by A21's
-// character-list notification. A21 has no native UID/CID pair in this packet.
+// CharacterRosterEntry is the identity exposed by A21's character-list
+// notification. A21 has no persistent UID/CID pair in this packet.
 type CharacterRosterEntry struct {
 	Slot    uint16
 	Name    string

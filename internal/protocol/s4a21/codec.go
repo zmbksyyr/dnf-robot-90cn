@@ -73,7 +73,7 @@ type AcceptableQuestList struct {
 }
 
 // GuildInvite is the verified A21 invitation notification identity. Unlike
-// the native backend, A21 sends character ID, session UID and inviter name.
+// A21 sends character ID, session UID and inviter name.
 type GuildInvite struct {
 	InviterCharacterID uint32
 	InviterUID         uint16

@@ -27,7 +27,7 @@ func (m *RobotManager) invalidateCharacterCache(uid int) error {
 		if err := m.characterCacheInvalidate(uid); err != nil {
 			return err
 		}
-		robotLogf("[CharacterCache] uid=%d native_nocache_sent=1 elapsed_ms=%d\n", uid, time.Since(started).Milliseconds())
+		robotLogf("[CharacterCache] uid=%d adapter_nocache_sent=1 elapsed_ms=%d\n", uid, time.Since(started).Milliseconds())
 		return nil
 	}
 	return fmt.Errorf("character cache invalidator is not configured")

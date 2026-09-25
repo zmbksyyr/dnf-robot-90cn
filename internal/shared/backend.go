@@ -99,7 +99,7 @@ type ProvisionCharacterResult struct {
 	Reused   bool
 	RobotUID int
 	// BackendSlot is meaningful for backends whose roster is slot-based.
-	// UID/CID remain unset when the backend does not expose native IDs.
+	// UID/CID remain unset when the adapter does not expose persistent IDs.
 	BackendSlot  *uint16
 	ProfileKnown bool
 	Job          int

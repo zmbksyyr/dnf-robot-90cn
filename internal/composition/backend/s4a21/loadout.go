@@ -622,10 +622,10 @@ func maxSetCount(counts map[string]int) int {
 	return max
 }
 
-// The shared incompatibility marker protects the native DP2 item-info
+// The shared incompatibility marker protects the DP2 item-info
 // consumer from extended fields that precede [equipment type]. S4A21 reads
 // its bundled PVF directly and supports those real support/magic-stone items,
-// so the adapter may use them without weakening the native policy.
+// so the adapter may use them without weakening the shared policy.
 func s4a21LoadoutCompatible(item shared.EquipmentCatalogItem) bool {
 	return shared.ClientCompatibleEquipment(item) || item.ItemType == 11 || item.ItemType == 12
 }

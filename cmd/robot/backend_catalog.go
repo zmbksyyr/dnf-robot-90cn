@@ -64,7 +64,7 @@ func s4a21PVFPath(dfGameR string) (string, error) {
 		}
 		return value, nil
 	}
-	// Some simulator bundles configure DfGameR as the server executable,
+	// Some adapter bundles configure DfGameR as the server executable,
 	// while Linux-oriented bundles may configure it as the server directory.
 	// Resolve both forms without making backend selection implicit.
 	base := filepath.Dir(value)

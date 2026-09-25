@@ -5,14 +5,14 @@ package shared
 type RuntimeOnlineUser struct {
 	// IP is the actual df_game_r connection host.
 	IP string
-	// LoginIP is the stable client identity written to the native login tables.
+	// LoginIP is the stable client identity used by the selected adapter.
 	// Empty keeps compatibility with older callers by falling back to IP.
 	LoginIP string
 	Port    int
 	Token   string
 	UID     int
 	// Backend credentials are optional and only consumed by a selected
-	// backend session adapter. Native callers continue using Token.
+	// backend session adapter. Callers that do not need it continue using Token.
 	AccountName  string
 	PasswordHash string
 

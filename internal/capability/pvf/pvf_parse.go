@@ -941,7 +941,7 @@ func equipmentType(v string) int {
 }
 
 func normalizeEquipmentTypeName(v string) string {
-	// Some simulator PVFs append a numeric subtype after the bracketed type,
+	// Some adapter PVFs append a numeric subtype after the bracketed type,
 	// for example "[weapon] 20". The common catalog only needs the type token.
 	v = strings.ToLower(strings.TrimSpace(v))
 	if start := strings.IndexByte(v, '['); start >= 0 {

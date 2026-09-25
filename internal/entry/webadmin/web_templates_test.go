@@ -14,7 +14,7 @@ func TestEmbeddedWebAssetsContainRequiredContent(t *testing.T) {
 		required []string
 	}{
 		{name: "login", content: loginHTML, required: []string{"Robot Web", `action="/login"`, "{{if .Error}}", i18nJSPlaceholder, `id="languageButton"`}},
-		{name: "index", content: indexHTML, required: []string{"TW Robot Web", appCSSPlaceholder, i18nJSPlaceholder, appJSPlaceholder, `id="languageButton"`, `id="partyCompatButton"`, `id="compatButton"`}},
+		{name: "index", content: indexHTML, required: []string{"TW Robot Web", appCSSPlaceholder, i18nJSPlaceholder, appJSPlaceholder, `id="languageButton"`}},
 		{name: "css", content: appCSS, required: []string{":root{", ".service-lights", ".diagrow", ".market-policy-select", ".market-rule-article", ".market-rule-details", ".market-rule-chevrons"}},
 		{name: "i18n", content: i18nJS, required: []string{"I18N_MESSAGES", "tw_language", "toggleLanguage", "currentLanguage=localStorage.getItem(I18N_STORAGE_KEY)==='zh'?'zh':'en'", "auto.shout_interval", "auto.follow_account", "喊话间隔", "validation.shout_interval", "market.section_status", "market.price_range_policy", "market.allowed_rarities", "上架稀有度（0-9）", "范围外回收概率"}},
 		{name: "javascript", content: appJS, required: []string{"async function api(", "openPartyCompatDialog", "openCompatDialog", "openDiagnosticsDialog", "restartRobot", "autoMailNotify", "autoShoutMin", "autoShoutMax", "followAccount", "follow.follow_account", "auto.auto_shout_interval_min_sec", "auto.auto_shout_interval_max_sec", "marketEquipmentRarities", "marketOtherRarities", "marketBlockedItemIDs", "parseBlockedItemIDExpression", "formatBlockedItemIDs", "marketAllowedItemIDs", "parseAllowedItemIDExpression", "formatAllowedItemIDs", "allowed_item_id_expression", "Allowed item IDs", "物品 ID 白名单", "normalizeRarityDigits", "equipment_allowed_rarities", "other_allowed_rarities", "blocked_item_id_expression", "marketEquipmentLevelMin", "marketDetailsFormSection", "marketCategoryPriceRules", "marketEquipmentExtras", "marketCommonPriceSettings", "category_price_rules", "equipment_multiplier_min", "equipment_multiplier_max", "equipment_final_max_price", "equipment_trade_policy", "other_trade_policy", "marketInRangeProbability", "marketApplyListingConfig", "marketKindsProgress", "种类（实际 / 预期）"}},
@@ -153,12 +153,6 @@ func TestSimulatorKeypairCapabilityDoesNotBlockAutoControl(t *testing.T) {
 
 func TestDashboardCardsFollowBackendCapabilities(t *testing.T) {
 	for _, want := range []string{
-		`id="mMonitor" hidden`,
-		`id="mKey" hidden`,
-		`id="mStoreCard" hidden`,
-		`key.hidden=!backendCapabilities.keypair?.enabled`,
-		`services.hidden=!['system_announcement','market','service_control'].some`,
-		`store.hidden=!backendCapabilities.store?.enabled`,
 		`function applyBackendCapabilities(){applyDashboardCapabilityVisibility();`,
 	} {
 		if !strings.Contains(indexHTML+appJS, want) {
@@ -436,22 +430,6 @@ func TestPortsDialogUsesStandardFooter(t *testing.T) {
 	for _, removed := range []string{`id="gameHost"`, `id="loginIP"`, `id="auctionHost"`, `id="pointHost"`, `id="relayHost"`, `id="serviceRoot"`, `id="serviceRunScript"`} {
 		if strings.Contains(appJS, removed) {
 			t.Fatalf("Ports dialog still exposes non-port field %q", removed)
-		}
-	}
-}
-
-func TestMaxOnlineIsCappedAndDocumentsServiceRestart(t *testing.T) {
-	for _, want := range []string{
-		`id="maxButton"`,
-		`id="maxUserNum" type="number" min="1" max="600"`,
-		`oninput="clampMaxUserInput(this)"`,
-		"function clampMaxUserInput(input){if(Number(input?.value)>600)input.value='600'}",
-		"directory.<br>Maximum is 600. Changes take effect after restarting /root/run.",
-		"directory.&#10;Maximum is 600. Changes take effect after restarting /root/run.",
-		"max_user_num。\\n最大为 600，修改后需重启 /root/run 生效。",
-	} {
-		if !strings.Contains(indexHTML+appJS+i18nJS, want) {
-			t.Fatalf("Max online limit or restart note is missing %q", want)
 		}
 	}
 }

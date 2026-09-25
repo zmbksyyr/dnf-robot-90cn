@@ -13,14 +13,14 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
 	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
 	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Reason: "S4A21 supports protected protocol cleanup only"}
-	capabilities[shared.CapabilityPartyCompatibility] = shared.CapabilityStatus{Reason: "native party compatibility patches are not applicable to S4A21"}
-	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "native party diagnostics are not applicable to S4A21"}
-	capabilities[shared.CapabilityMailboxGuard] = shared.CapabilityStatus{Reason: "native mailbox memory patches are not applicable to S4A21"}
-	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "native mailbox notification transport is not applicable to S4A21"}
+	capabilities[shared.CapabilityPartyCompatibility] = shared.CapabilityStatus{Reason: "S4A21 party compatibility patch is not implemented"}
+	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "S4A21 party diagnostics are not implemented"}
+	capabilities[shared.CapabilityMailboxGuard] = shared.CapabilityStatus{Reason: "S4A21 mailbox guard is not implemented"}
+	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "S4A21 mailbox notification is not implemented"}
 	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
-	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "native runtime diagnostics are not available for S4A21"}
+	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "S4A21 diagnostics are not implemented"}
 	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}
-	capabilities[shared.CapabilityServiceControl] = shared.CapabilityStatus{Reason: "native service scripts and process discovery are not applicable to S4A21"}
+	capabilities[shared.CapabilityServiceControl] = shared.CapabilityStatus{Reason: "S4A21 service control is not implemented"}
 	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
 	capabilities[shared.CapabilityMarket] = shared.CapabilityStatus{Reason: "S4A21 exposes auction opcode enums only; no verified auction or gold-consignment handler/service is present"}
 	return shared.BackendInfo{

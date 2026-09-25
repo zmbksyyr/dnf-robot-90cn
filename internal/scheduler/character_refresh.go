@@ -14,7 +14,7 @@ type characterRefreshRuntime interface {
 	ReselectCharacter(uid int) bool
 }
 
-// refreshCharacterForWrite enters the game's native character-selection
+// refreshCharacterForWrite enters the game's character-selection
 // boundary. A successful command-7 response means df_game has completed the
 // outgoing character save and unloaded its live character object, so the
 // caller may safely update character-owned database rows without an arbitrary

@@ -292,6 +292,16 @@ func listeningProcessPorts() (map[int]listeningPort, error) {
 }
 
 var netstatProcessPattern = regexp.MustCompile(`([0-9]+)/([A-Za-z0-9_.-]+)`)
+var ssProcessPattern = regexp.MustCompile(`users:\(\("([^"]+)",(\d+),`)
+
+func parseSSProcess(line string) (string, int, bool) {
+	match := ssProcessPattern.FindStringSubmatch(line)
+	if len(match) != 3 {
+		return "", 0, false
+	}
+	pid, err := strconv.Atoi(match[2])
+	return match[1], pid, err == nil && pid > 0
+}
 
 func parseNetstatProcess(line string) (string, int, bool) {
 	match := netstatProcessPattern.FindStringSubmatch(line)

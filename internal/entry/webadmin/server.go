@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"robot/internal/foundation/config"
@@ -18,33 +17,23 @@ import (
 )
 
 type Server struct {
-	cfg                     *config.SysConfig
-	robotAddr               string
-	webAddr                 string
-	tokenMu                 lockhub.RWLocker
-	tokens                  map[string]time.Time
-	loginFailures           map[string]loginFailure
-	partyCompatMu           lockhub.Locker
-	partyCompatWake         chan struct{}
-	mailboxGuardWake        chan struct{}
-	mailboxGuardSnapshot    atomic.Pointer[mailboxGuardConfig]
-	partyCompatSnapshot     atomic.Pointer[partyCompatConfig]
-	partySkillSnapshot      atomic.Pointer[partySkillFileState]
-	partyCompatFailures     int
-	partyCompatFirstFailure time.Time
-	partyCompatNextRetry    time.Time
-	partyCompatLastError    string
-	serverScriptMu          lockhub.Locker
-	serverScript            serverScriptStatus
-	serverScriptCancel      func()
-	gameMaxUserMu           lockhub.Locker
-	gameMaxUser             gameMaxUserCache
-	backendSelectionMu      lockhub.Locker
-	backend                 shared.BackendID
-	backendInfo             shared.BackendInfo
-	backendCatalog          []shared.BackendInfo
-	recoveryMode            bool
-	recoveryReason          string
+	cfg                *config.SysConfig
+	robotAddr          string
+	webAddr            string
+	tokenMu            lockhub.RWLocker
+	tokens             map[string]time.Time
+	loginFailures      map[string]loginFailure
+	serverScriptMu     lockhub.Locker
+	serverScript       serverScriptStatus
+	serverScriptCancel func()
+	gameMaxUserMu      lockhub.Locker
+	gameMaxUser        gameMaxUserCache
+	backendSelectionMu lockhub.Locker
+	backend            shared.BackendID
+	backendInfo        shared.BackendInfo
+	backendCatalog     []shared.BackendInfo
+	recoveryMode       bool
+	recoveryReason     string
 }
 
 // NewRecovery creates the backend-neutral Web surface used when the persisted
@@ -67,10 +56,6 @@ func NewRecoveryWithCatalog(cfg *config.SysConfig, robotAddr, webAddr string, se
 		server.recoveryReason = strings.TrimSpace(reason[0])
 	}
 	return server
-}
-
-type partySkillFileState struct {
-	enabled bool
 }
 
 func New(cfg *config.SysConfig, robotAddr, webAddr string, backend ...shared.BackendID) *Server {
@@ -110,16 +95,14 @@ func newServer(cfg *config.SysConfig, robotAddr, webAddr string, backend shared.
 		}
 	}
 	return &Server{
-		cfg:              cfg,
-		robotAddr:        robotAddr,
-		webAddr:          webAddr,
-		tokens:           make(map[string]time.Time),
-		loginFailures:    make(map[string]loginFailure),
-		partyCompatWake:  make(chan struct{}, 1),
-		mailboxGuardWake: make(chan struct{}, 1),
-		backend:          selectedBackend,
-		backendInfo:      selectedInfo,
-		backendCatalog:   catalog,
+		cfg:            cfg,
+		robotAddr:      robotAddr,
+		webAddr:        webAddr,
+		tokens:         make(map[string]time.Time),
+		loginFailures:  make(map[string]loginFailure),
+		backend:        selectedBackend,
+		backendInfo:    selectedInfo,
+		backendCatalog: catalog,
 	}
 }
 
@@ -156,16 +139,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	defer s.stopServerScript()
 	stopRuntimeFiles := s.startRuntimeFileWatcher()
 	defer stopRuntimeFiles()
-	stopPartyCompat := func() {}
-	stopMailboxGuard := func() {}
-	if s.supportsBackendCapability(shared.CapabilityPartyCompatibility) {
-		stopPartyCompat = s.startPartyCompatSupervisor()
-		defer stopPartyCompat()
-	}
-	if s.supportsBackendCapability(shared.CapabilityMailboxGuard) {
-		stopMailboxGuard = s.startMailboxGuardSupervisor()
-		defer stopMailboxGuard()
-	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/login", s.handleLogin)
@@ -179,8 +152,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	mux.HandleFunc("/api/server-script", s.requireAuth(s.handleServerScript))
 	mux.HandleFunc("/api/monitor-service", s.requireAuth(s.handleMonitorService))
 	mux.HandleFunc("/api/relay-service", s.requireAuth(s.handleRelayService))
-	mux.HandleFunc("/api/party-compat", s.requireAuth(s.handlePartyCompat))
-	mux.HandleFunc("/api/compat", s.requireAuth(s.handleCompat))
 	mux.HandleFunc("/api/diagnostics", s.requireAuth(s.handleDiagnostics))
 	mux.HandleFunc("/api/backend", s.requireAuth(s.handleBackend))
 	server := &http.Server{

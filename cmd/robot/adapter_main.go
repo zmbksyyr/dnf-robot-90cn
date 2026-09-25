@@ -37,7 +37,7 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 		foundationlog.Robotf("ADAPTER_RUNTIME_CONFIG_FAILED err=%v\n", err)
 		return 1
 	}
-	if err := ensureSimulatorOpenFileLimit(rc); err != nil {
+	if err := ensureAdapterOpenFileLimit(rc); err != nil {
 		foundationlog.Robotf("ADAPTER_OPEN_FILE_CAPACITY_FAILED err=%v\n", err)
 		return 1
 	}
@@ -166,7 +166,7 @@ func backendSetting(selection shared.BackendSelection, key string) string {
 	return selection.Settings[key]
 }
 
-func ensureSimulatorOpenFileLimit(rc robotconfig.RuntimeConfig) error {
+func ensureAdapterOpenFileLimit(rc robotconfig.RuntimeConfig) error {
 	if rc.MaxOnlineRobots < 1 {
 		return fmt.Errorf("max_online_robots must be positive")
 	}

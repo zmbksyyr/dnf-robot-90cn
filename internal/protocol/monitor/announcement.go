@@ -142,7 +142,7 @@ func BuildAnnouncementPacket(kind, msg, name string, senderID uint16) ([]byte, e
 
 // BuildNotifyNewMailPacket matches Packet_Monitor_Notify_New_Mail. Monitor
 // resolves the online character, fills the channel id at +0x0e, and forwards
-// the packet to df_game_r. The game then raises its native mailbox alarm.
+// the packet to df_game_r. The game then raises its mailbox alarm.
 func BuildNotifyNewMailPacket(characNo uint32) []byte {
 	const size = 0x12
 	packet := make([]byte, size)

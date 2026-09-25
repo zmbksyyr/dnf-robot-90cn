@@ -413,7 +413,7 @@ func (w Workflow) startAndWaitDisplay(info robotcap.Info, rc robotconfig.Runtime
 
 		// CMD 88 already succeeded, so account-level store permission is loaded.
 		// If CMD 13 still exposes an old character snapshot, refresh only the
-		// character through the native select screen. Another hard disconnect can
+		// character through the character-select screen. Another hard disconnect can
 		// re-enter df_game's reconnect cache and reproduce the same stale inventory.
 		env.Logf("[AutoStore] uid=%d inventory_refresh mode=character_select try=%d attempt=%d\n", info.UID, try, inventoryAttempt+1)
 		if reason := w.refreshAutoInventorySession(info, rc, shouldStop); reason != "" {
