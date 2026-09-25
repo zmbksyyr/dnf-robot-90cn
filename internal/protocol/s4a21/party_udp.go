@@ -40,7 +40,8 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			peer = &partyUDPPeer{}
 			c.udpPeers[remote.String()] = peer
 		}
-		replies := partyUDPReplies(buffer[:n], peer)
+		selfSlot, slotKnown := c.selfSlot, c.slotKnown
+		replies := partyUDPReplies(buffer[:n], peer, selfSlot, slotKnown)
 		c.udpMu.Unlock()
 		for _, reply := range replies {
 			_, _ = conn.WriteToUDP(reply, remote)
@@ -48,7 +49,25 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 	}
 }
 
-func partyUDPReplies(payload []byte, peer *partyUDPPeer) [][]byte {
+func (c *Client) applyPartyRealtimeInfo(body []byte) {
+	if len(body) < 1 || len(body) != 1+int(body[0])*5 {
+		return
+	}
+	c.udpMu.Lock()
+	defer c.udpMu.Unlock()
+	for offset := 1; offset+5 <= len(body); offset += 5 {
+		if binary.LittleEndian.Uint16(body[offset:offset+2]) == c.selfUID {
+			c.selfSlot = body[offset+4]
+			c.slotKnown = c.selfSlot < 4
+			return
+		}
+	}
+}
+
+func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnown bool) [][]byte {
+	if !slotKnown {
+		return nil
+	}
 	if len(payload) == 8 && payload[0] == 0 {
 		if peer.pending != nil && binary.LittleEndian.Uint32(payload[2:6]) == peer.pendingSeq+1 {
 			peer.pending = nil
@@ -85,20 +104,20 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer) [][]byte {
 	sequence := binary.LittleEndian.Uint32(payload[1:5])
 	replies := make([][]byte, 0, 2)
 	if payload[0] == 1 {
-		replies = append(replies, partyUDPAck(sender, sequence))
+		replies = append(replies, partyUDPAck(selfSlot, sequence))
 	}
 	switch state {
 	case 3:
 		peer.nextSeq, peer.reliableSeq, peer.pending = 0, 0, nil
-		replies = append(replies, buildPartyUDP(0, 0, 0, 1, codec))
+		replies = append(replies, buildPartyUDP(0, selfSlot, 0, 1, codec))
 	case 0:
-		replies = append(replies, buildPartyUDP(peer.nextSeq, 0, 1, 1, codec))
+		replies = append(replies, buildPartyUDP(peer.nextSeq, selfSlot, 1, 1, codec))
 		peer.nextSeq++
 	case 1:
 		if peer.pending == nil {
 			peer.pendingSeq = peer.reliableSeq
 			peer.reliableSeq++
-			peer.pending = buildPartyUDP(peer.pendingSeq, 0, 2, 1, codec)
+			peer.pending = buildPartyUDP(peer.pendingSeq, selfSlot, 2, 1, codec)
 		}
 		replies = append(replies, peer.pending)
 	}

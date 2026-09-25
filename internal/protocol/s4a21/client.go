@@ -13,12 +13,15 @@ import (
 const DefaultMaxPacketLength = 1024 * 1024
 
 type Client struct {
-	conn     net.Conn
-	udpConn  *net.UDPConn
-	sendMu   lockhub.Locker
-	udpMu    lockhub.Locker
-	udpPeers map[string]*partyUDPPeer
-	maxSize  int
+	conn      net.Conn
+	udpConn   *net.UDPConn
+	sendMu    lockhub.Locker
+	udpMu     lockhub.Locker
+	udpPeers  map[string]*partyUDPPeer
+	selfUID   uint16
+	selfSlot  byte
+	slotKnown bool
+	maxSize   int
 }
 
 func Dial(ctx context.Context, address string) (*Client, error) {
@@ -34,6 +37,17 @@ func Dial(ctx context.Context, address string) (*Client, error) {
 
 func NewClient(conn net.Conn) *Client {
 	return &Client{conn: conn, maxSize: DefaultMaxPacketLength, udpPeers: make(map[string]*partyUDPPeer)}
+}
+
+// SetPartyIdentity gives the wire adapter the selected session identity. The
+// member slot itself is learned from PARTY_MEMBER_REALTIME_INFO after joining.
+func (c *Client) SetPartyIdentity(uid uint16) {
+	c.udpMu.Lock()
+	c.selfUID = uid
+	c.selfSlot = 0
+	c.slotKnown = false
+	c.udpPeers = make(map[string]*partyUDPPeer)
+	c.udpMu.Unlock()
 }
 
 func (c *Client) Close() error {
@@ -231,6 +245,9 @@ func (c *Client) Read(ctx context.Context) (Packet, error) {
 	resetDeadline()
 	if err != nil && ctx.Err() != nil {
 		return Packet{}, ctx.Err()
+	}
+	if err == nil && packet.Type == NotiPartyRealtimeInfo {
+		c.applyPartyRealtimeInfo(packet.Body)
 	}
 	return packet, err
 }
