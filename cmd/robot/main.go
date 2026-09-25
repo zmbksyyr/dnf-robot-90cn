@@ -13,7 +13,7 @@ import (
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
 	foundationlog "robot/internal/foundation/log"
-	"robot/internal/protocol/dnf"
+	robotlog "robot/internal/foundation/robotlog"
 	"robot/internal/shared"
 )
 
@@ -35,7 +35,7 @@ func runMain() int {
 		return 0
 	}
 
-	dnf.PrintfGreen("robot starting...\n")
+	robotlog.PrintfGreen("robot starting...\n")
 
 	configPath, configDir, err := runtimeConfigPaths()
 	if err != nil {
@@ -72,22 +72,22 @@ func runMain() int {
 		fmt.Fprintf(os.Stderr, "backend runtime preparation error: %v\n", err)
 		return 1
 	}
-	dnf.ConfigureLogRotation(cfg.LogMaxSizeMB, cfg.LogMaxBackups)
-	if err := dnf.LogInit(paths.RobotLog()); err != nil {
+	robotlog.ConfigureLogRotation(cfg.LogMaxSizeMB, cfg.LogMaxBackups)
+	if err := robotlog.LogInit(paths.RobotLog()); err != nil {
 		fmt.Fprintf(os.Stderr, "init log error: %v\n", err)
 		return 1
 	}
 	foundationlog.SetRobotSink(func(msg string) {
-		dnf.LogString(msg)
+		robotlog.LogString(msg)
 	})
 	defer func() {
 		foundationlog.SetRobotSink(nil)
-		dnf.LogClose()
+		robotlog.LogClose()
 	}()
-	dnf.LogString(fmt.Sprintf("ROBOT_CONFIG path=%s config_dir=%s\n", configPath, cfg.ConfigDir))
-	dnf.LogString(fmt.Sprintf("BACKEND_SELECTED id=%s generation=%d selected_at=%s capabilities=%d\n", backendInfo.ID, backendSelection.ConfigGeneration, backendSelection.SelectedAt.UTC().Format(time.RFC3339), len(backendInfo.Capabilities)))
+	robotlog.LogString(fmt.Sprintf("ROBOT_CONFIG path=%s config_dir=%s\n", configPath, cfg.ConfigDir))
+	robotlog.LogString(fmt.Sprintf("BACKEND_SELECTED id=%s generation=%d selected_at=%s capabilities=%d\n", backendInfo.ID, backendSelection.ConfigGeneration, backendSelection.SelectedAt.UTC().Format(time.RFC3339), len(backendInfo.Capabilities)))
 	if backendReinitialized {
-		dnf.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
+		robotlog.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
 	}
 	return runBackend(cfg, paths, backendInfo, backendSelection)
 }

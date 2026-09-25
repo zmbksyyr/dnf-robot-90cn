@@ -54,8 +54,6 @@ func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
 		`followMode=followCapability.mode||'account'`,
 		`i18nFormat('auto.dungeon_follower')`,
 		`follow.type==='checkbox'`,
-		`cmd.includes("openPartyCompat"))cap='party_compatibility'`,
-		`cmd.includes("openCompatDialog"))cap='mailbox_guard'`,
 		`backendCapabilities.party_debug?.enabled?api('partyDebugStatus')`,
 		`sec.name==='Party'&&backendCapabilities.party_debug?.enabled`,
 	} {
@@ -115,15 +113,11 @@ func TestWebApiSurfacesPerRobotActionFailure(t *testing.T) {
 
 func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
 	for _, want := range []string{
-		`cmd.includes("openKeyDialog")`,
 		`cmd.includes("robotsMove")`,
 		`cmd.includes("robotsShout")`,
 		`backendCapabilities.world_shout?.enabled?'world_shout':'shout'`,
-		`cmd.includes("openDiagnosticsDialog"))cap='diagnostics'`,
 		`cmd.includes("openDangerousDelete"))cap='dangerous_delete'`,
 		`cmd.includes("robotsStore")`,
-		`cmd.includes("openPartyCompat")`,
-		`cmd.includes("openCompatDialog")`,
 		`cmd.includes("openCleanupDialog")`,
 	} {
 		if !strings.Contains(appJS, want) {
@@ -142,12 +136,6 @@ func TestDatabaseCardUsesBackendDashboardStatus(t *testing.T) {
 		if !strings.Contains(appJS, want) {
 			t.Fatalf("backend database dashboard is missing %q", want)
 		}
-	}
-}
-
-func TestSimulatorKeypairCapabilityDoesNotBlockAutoControl(t *testing.T) {
-	if !strings.Contains(appJS, `backendCapabilities.keypair&&!backendCapabilities.keypair.enabled){keyBlocked=false`) {
-		t.Fatal("an unavailable simulator keypair must not disable shared robot controls")
 	}
 }
 
