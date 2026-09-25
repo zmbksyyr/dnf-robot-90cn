@@ -27,7 +27,7 @@ func TestLoadRequiredRobotConfigRejectsMissingOrInvalidFile(t *testing.T) {
 func TestLoadBackendSelectionDefaultsAndRejectsInvalid(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "backend_selection.json")
 	selection, err := loadBackendSelection(missing)
-	if err != nil || selection.BackendID != shared.BackendNative {
+	if err != nil || selection.BackendID != shared.BackendS4A21 {
 		t.Fatalf("missing selection = %+v, %v", selection, err)
 	}
 	invalid := filepath.Join(t.TempDir(), "backend_selection.json")

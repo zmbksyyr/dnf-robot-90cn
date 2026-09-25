@@ -1,36 +1,19 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"runtime"
-	"syscall"
 	"time"
 
 	runtimeinit "robot/internal/bootstrap/runtime"
-	"robot/internal/capability/keypair"
-	"robot/internal/capability/mailnotify"
-	"robot/internal/capability/marketapp"
 	"robot/internal/capability/robotconfig"
-	"robot/internal/composition/auctionapp"
 	backendregistry "robot/internal/composition/backend"
-	nativebackend "robot/internal/composition/backend/native"
-	"robot/internal/entry/tcpapi"
 	"robot/internal/entry/webadmin"
 	"robot/internal/foundation/config"
-	"robot/internal/foundation/filewatch"
 	"robot/internal/foundation/layout"
 	foundationlog "robot/internal/foundation/log"
-	"robot/internal/foundation/network"
-	"robot/internal/foundation/process"
 	"robot/internal/protocol/dnf"
-	"robot/internal/protocol/dnfruntime"
-	"robot/internal/protocol/monitor"
-	"robot/internal/protocol/nocache"
-	"robot/internal/scheduler"
-	schedulerrepo "robot/internal/scheduler/repository"
 	"robot/internal/shared"
 )
 
@@ -75,16 +58,14 @@ func runMain() int {
 		fmt.Fprintf(os.Stderr, "load backend selection error: %v\n", err)
 		return 1
 	}
+	if backendSelection.BackendID != shared.BackendS4A21 {
+		fmt.Fprintf(os.Stderr, "unsupported backend %q: this build is dedicated to S4A21\n", backendSelection.BackendID)
+		return 1
+	}
 	backendInfo, err := backendregistry.Select(backendSelection.BackendID, runtime.GOOS)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
-		fmt.Fprintln(os.Stderr, "starting Web admin recovery mode; select a backend and restart the robot")
-		if webErr := runRecoveryWebAdmin(cfg, backendSelection.BackendID, err.Error()); webErr != nil {
-			fmt.Fprintf(os.Stderr, "backend recovery Web admin failed: %v\n", webErr)
-			fmt.Fprintf(os.Stderr, "If Robot is already running, open its Web admin: %s\n", recoveryWebURL(cfg.WebPort))
-			return 1
-		}
-		return 0
+		return 1
 	}
 	if err := applyBackendSelectionSettings(cfg, backendSelection); err != nil {
 		fmt.Fprintf(os.Stderr, "backend settings error: %v\n", err)
@@ -112,212 +93,18 @@ func runMain() int {
 	if backendReinitialized {
 		dnf.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
 	}
-	dnf.LogString(fmt.Sprintf("NETWORK_CONFIG game=%s:%d setting=%s login_ip=%s relay=%s:%d auction=%s:%d point=%s:%d service_root=%s run_script=%s\n",
-		cfg.RobotConnectIP, cfg.RobotGamePort, cfg.RobotConnectIPSetting, cfg.RobotInnerIP,
-		cfg.RelayHost, cfg.RelayPort, cfg.AuctionHost, cfg.AuctionPort, cfg.PointHost, cfg.PointPort, cfg.ServiceRoot, cfg.ServiceRunScript))
-	switch backendInfo.ID {
-	case shared.BackendS4A21:
-		return runS4A21Backend(cfg, paths, backendInfo, backendSelection)
-	case shared.BackendNative:
-	default:
-		dnf.LogString(fmt.Sprintf("BACKEND_START_UNAVAILABLE id=%s\n", backendInfo.ID))
-		return 1
-	}
-
-	if err := runtimeinit.Init(cfg); err != nil {
-		dnf.LogString(fmt.Sprintf("ROBOT_RUNTIME_INIT_FAILED err=%v\n", err))
-		dnf.PrintfRed("runtime init failed: %v\n", err)
-		return 1
-	}
-	if err := runtimeinit.MarkBackendRuntimeApplied(paths, backendSelection); err != nil {
-		dnf.LogString(fmt.Sprintf("BACKEND_RUNTIME_MARK_FAILED err=%v\n", err))
-		dnf.PrintfRed("backend runtime marker failed: %v\n", err)
-		return 1
-	}
-	robotRuntimeConfig, err := loadRequiredRobotConfig(paths.RobotConfig())
-	if err != nil {
-		dnf.LogString(fmt.Sprintf("ROBOT_RUNTIME_CONFIG_LOAD_FAILED err=%v\n", err))
-		dnf.PrintfRed("load robot runtime config failed: %v\n", err)
-		return 1
-	}
-	if err := process.EnsureOpenFileLimit(robotRuntimeConfig.MaxOnlineRobots, cfg.DBMaxSize); err != nil {
-		dnf.LogString(fmt.Sprintf("OPEN_FILE_CAPACITY_FAILED err=%v\n", err))
-		dnf.PrintfRed("open file capacity check failed: %v\n", err)
-		return 1
-	}
-	dnf.ConfigurePartyRelayHost(cfg.RelayHost)
-	dnf.ConfigurePartyRelayPort(cfg.RelayPort)
-	route0Sink, err := dnf.StartPartyRoute0Sink(cfg.PartyRoute0Port)
-	if err != nil {
-		dnf.LogString(fmt.Sprintf("PARTY_ROUTE0_SINK_FAILED addr=0.0.0.0:%d err=%v\n", cfg.PartyRoute0Port, err))
-		dnf.PrintfRed("party route0 sink failed: %v\n", err)
-		return 1
-	}
-	defer route0Sink.Close()
-	dnf.LogString(fmt.Sprintf("PARTY_ROUTE0_SINK_READY addr=0.0.0.0:%d\n", cfg.PartyRoute0Port))
-	dnf.ConfigurePartyRobotAccountRange(robotRuntimeConfig.RobotUIDStart, robotRuntimeConfig.RobotUIDEnd)
-	dnf.LogString(fmt.Sprintf("PARTY_ACCOUNT_RANGE start=%d end=%d\n", robotRuntimeConfig.RobotUIDStart, robotRuntimeConfig.RobotUIDEnd))
-	keypair.SetRuntimeKeySink(dnf.SetRSAKey)
-
-	initRSA(cfg)
-	defer keypair.ClosePrivateKey()
-
-	db, err := openDatabase(cfg)
-	if err != nil {
-		dnf.PrintfRed("database open failed: %v\n", err)
-		return 1
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			dnf.LogString(fmt.Sprintf("DATABASE_CLOSE_FAILED err=%v\n", err))
-			dnf.PrintfRed("database close error: %v\n", err)
-		}
-	}()
-	dnf.SetDBPool(db)
-	defer dnf.SetDBPool(nil)
-
-	robotSvc := dnfruntime.NewRobotService()
-	defer robotSvc.Shutdown()
-	manager := scheduler.NewRobotManager(schedulerrepo.NewSQLRepository(db), cfg, robotSvc)
-	manager.SetGameCommandGate(nativebackend.GameCommandGate{Config: cfg})
-	defer func() {
-		if err := manager.Shutdown(); err != nil {
-			dnf.LogString(fmt.Sprintf("ROBOT_MANAGER_SHUTDOWN_FAILED err=%v\n", err))
-			dnf.PrintfRed("robot manager shutdown error: %v\n", err)
-		}
-	}()
-	transportBundle, err := composeBackendTransports(backendInfo, cfg)
-	if err != nil {
-		dnf.LogString(fmt.Sprintf("BACKEND_TRANSPORT_COMPOSE_FAILED backend=%s err=%v\n", backendInfo.ID, err))
-		dnf.PrintfRed("backend transport compose failed: %v\n", err)
-		return 1
-	}
-	defer transportBundle.close()
-	manager.SetBackendActionTransport(transportBundle.actions)
-	manager.SetBackendSessionTransport(transportBundle.sessions)
-	townMaps, err := loadBackendTownMapCatalog(context.Background(), backendInfo, cfg)
-	if err != nil {
-		dnf.LogString(fmt.Sprintf("BACKEND_TOWN_MAP_CATALOG_FAILED backend=%s err=%v\n", backendInfo.ID, err))
-		dnf.PrintfRed("backend town map catalog failed: %v\n", err)
-		return 1
-	}
-	manager.SetTownMapCatalog(townMaps)
-	manager.SetPartyAccountRangeSink(dnf.ConfigurePartyRobotAccountRange)
-	cacheInvalidator, err := nocache.NewClient(cfg.RobotConnectIP, cfg.RobotGamePort, cfg.GameServerGroup)
-	if err != nil {
-		dnf.LogString(fmt.Sprintf("CACHE_INVALIDATOR_INIT_FAILED err=%v\n", err))
-		dnf.PrintfRed("cache invalidator init failed: %v\n", err)
-		return 1
-	}
-	manager.SetCharacterCacheInvalidator(cacheInvalidator)
-	monitorClient := &monitor.Client{Address: fmt.Sprintf("127.0.0.1:%d", cfg.MonitorPort)}
-	manager.ConfigureBackendRuntime(backendInfo,
-		nativebackend.PersistenceInspector{Database: db, Config: cfg},
-		nativebackend.SystemAnnouncer{Database: db, Sender: monitorClient},
-	)
-	manager.SetWorldShout(monitorClient)
-	mailNotifier := mailnotify.New(db, monitorClient, paths.State)
-	manager.SetMailNotifier(mailNotifier)
-	marketApp, err := marketapp.New(db, cfg, auctionapp.NewFactory())
-	if err != nil {
-		dnf.LogString(fmt.Sprintf("MARKET_INIT_FAILED err=%v\n", err))
-		dnf.PrintfRed("market init failed: %v\n", err)
-		return 1
-	}
-	tcpapi.SetMarketApp(marketApp)
-	runtimeFiles := filewatch.New(time.Second, append(manager.RuntimeFileEntries(), marketApp.RuntimeFileEntries()...), func(entry filewatch.Entry, err error) {
-		dnf.LogString(fmt.Sprintf("RUNTIME_FILE_REJECTED name=%s path=%s err=%v\n", entry.Name, entry.Path, err))
-	})
-	runtimeFiles.Start()
-	defer func() {
-		runtimeFiles.Close()
-		marketApp.Shutdown()
-	}()
-	if _, err := manager.RepairRobotEquipment(); err != nil {
-		dnf.LogString(fmt.Sprintf("EQUIPMENT_REPAIR_FAILED err=%v\n", err))
-	}
-
-	addr := fmt.Sprintf("0.0.0.0:%d", cfg.RobotPort)
-	tcpServer := network.NewTCPServer(addr)
-	tcpServer.SetLimits(256, 90*time.Second, 15*time.Second)
-	tcpServer.OnMessage(func(clientID string, raw []byte) {
-		response := tcpapi.HandlePacket(clientID, string(raw), manager)
-		if response != "" {
-			if err := tcpServer.SendTo(clientID, []byte(response)); err != nil {
-				dnf.LogString(fmt.Sprintf("TCP_RESPONSE_WRITE_FAILED client=%s err=%v\n", clientID, err))
-			}
-		}
-	})
-	if err := tcpServer.Start(); err != nil {
-		dnf.LogString(fmt.Sprintf("TCP_SERVER_START_FAILED addr=%s err=%v\n", addr, err))
-		dnf.PrintfRed("TCP server failed: %v\n", err)
-		return 1
-	}
-	defer func() {
-		if err := tcpServer.Close(); err != nil {
-			dnf.LogString(fmt.Sprintf("TCP_SERVER_CLOSE_FAILED err=%v\n", err))
-			dnf.PrintfRed("tcp server close error: %v\n", err)
-		}
-	}()
-	logRobotActionf("TCP server listening on %s\n", addr)
-	webCtx, webCancel := context.WithCancel(context.Background())
-	webServer := webadmin.NewWithCatalog(cfg, fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort), fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), backendInfo.ID, backendregistry.Available())
-	webDone := make(chan error, 1)
-	go func() { webDone <- webServer.Serve(webCtx) }()
-	defer func() {
-		webCancel()
-		select {
-		case err := <-webDone:
-			if err != nil {
-				dnf.LogString(fmt.Sprintf("WEB_SERVER_STOP_FAILED err=%v\n", err))
-			}
-		case <-time.After(6 * time.Second):
-			dnf.LogString("WEB_SERVER_STOP_TIMEOUT\n")
-		}
-	}()
-	manager.StartAutoActions()
-	if marketApp.Config().Auto.Enabled {
-		marketApp.StartAuto()
-	}
-	logRobotActionf("robot started\n")
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
-	<-sigCh
-
-	logRobotActionf("robot stopping...\n")
-	return 0
+	return runS4A21Backend(cfg, paths, backendInfo, backendSelection)
 }
 
 func loadBackendSelection(path string) (shared.BackendSelection, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return shared.BackendSelection{BackendID: shared.BackendNative}, nil
+		return shared.BackendSelection{BackendID: shared.BackendS4A21}, nil
 	}
 	if err != nil {
 		return shared.BackendSelection{}, err
 	}
 	return shared.DecodeBackendSelection(data)
-}
-
-func runRecoveryWebAdmin(cfg *config.SysConfig, backend shared.BackendID, reason string) error {
-	if cfg == nil {
-		return fmt.Errorf("recovery Web requires config")
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	catalog := backendregistry.Available()
-	server := webadmin.NewRecoveryWithCatalog(cfg, fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort), fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), backend, catalog, reason)
-	fmt.Fprintf(os.Stderr, "Recovery Web: %s\n", recoveryWebURL(cfg.WebPort))
-	if err := server.Serve(ctx); err != nil {
-		return err
-	}
-	return nil
-}
-
-func recoveryWebURL(port int) string {
-	return fmt.Sprintf("http://127.0.0.1:%d/", port)
 }
 
 func runtimeConfigPaths() (string, string, error) {
@@ -340,22 +127,8 @@ func loadRequiredRobotConfig(path string) (robotconfig.RuntimeConfig, error) {
 	return rc, nil
 }
 
-func initRSA(cfg *config.SysConfig) {
-	st := keypair.BuildKeypairStatus(cfg)
-	if !st.GameValid {
-		dnf.LogString(fmt.Sprintf("KEYPAIR_RSA_LOAD_BLOCKED state=%s reason=%s err=%s\n", st.KeyState, st.KeyReason, st.Error))
-		dnf.PrintfBlue("WARNING: game RSA key is not valid. Robot business commands are blocked until a valid key is configured or default key is released.\n")
-		return
-	}
-	path := layout.New(cfg.ConfigDir).PrivateKey()
-	if err := keypair.InitPrivateKey(path); err == nil {
-		dnf.SetRSAKey(keypair.GetRSAKey())
-		dnf.LogString(fmt.Sprintf("KEYPAIR_RSA_LOADED source=%s state=%s fingerprint=%s\n", path, st.KeyState, st.Fingerprint))
-		dnf.PrintfGreen("loaded RSA private key from %s\n", path)
-		return
-	}
-	dnf.LogString(fmt.Sprintf("KEYPAIR_RSA_LOAD_FAILED source=%s\n", path))
-	dnf.PrintfBlue("WARNING: privatekey.pem not found in config directory. Robot login tokens cannot be generated - ALL robots will fail authentication.\n")
+func recoveryWebURL(port int) string {
+	return fmt.Sprintf("http://127.0.0.1:%d/", port)
 }
 
 func logRobotActionf(format string, args ...interface{}) {
