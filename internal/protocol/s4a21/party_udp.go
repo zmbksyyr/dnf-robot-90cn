@@ -22,12 +22,14 @@ type partyUDPPeer struct {
 	codec        partyUDPCodec
 	codecKnown   bool
 	nextSeq      uint32
+	nextSeqRoute [2]uint32
 	reliableSeq  uint32
 	pending      []byte
 	pendingSeq   uint32
 	diagPackets  byte
 	diagDrops    byte
 	epochStarted bool
+	epochRoute   [2]bool
 }
 
 var partyUDPCRCTable = crc32.MakeTable(0x4db89129)
@@ -50,10 +52,10 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 		}
 		selfSlot, slotKnown := c.selfSlot, c.slotKnown
 		beforePending := peer.pending != nil
-		beforeSeq := peer.nextSeq
+		beforeSeq := peer.nextSeqRoute[0]
 		replies := partyUDPReplies(buffer[:n], peer, selfSlot, slotKnown)
 		afterPending := peer.pending != nil
-		afterSeq := peer.nextSeq
+		afterSeq := peer.nextSeqRoute[0]
 		logPacket := peer.diagPackets < 32
 		logDrop := len(replies) == 0 && peer.diagDrops < 32
 		if logPacket {
@@ -143,15 +145,23 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 	}
 	switch state {
 	case 3:
-		if !peer.epochStarted {
-			peer.nextSeq, peer.reliableSeq, peer.pending = 0, 0, nil
-			peer.epochStarted = true
+		routeIndex := int(wireRoute)
+		if routeIndex > 1 {
+			routeIndex = 1
 		}
-		replies = append(replies, buildPartyUDP(peer.nextSeq, selfSlot, 0, wireRoute, codec))
-		peer.nextSeq++
+		if !peer.epochRoute[routeIndex] {
+			peer.nextSeqRoute[routeIndex] = 0
+			peer.epochRoute[routeIndex] = true
+		}
+		replies = append(replies, buildPartyUDP(peer.nextSeqRoute[routeIndex], selfSlot, 0, wireRoute, codec))
+		peer.nextSeqRoute[routeIndex]++
 	case 0:
-		replies = append(replies, buildPartyUDP(peer.nextSeq, selfSlot, 1, wireRoute, codec))
-		peer.nextSeq++
+		routeIndex := int(wireRoute)
+		if routeIndex > 1 {
+			routeIndex = 1
+		}
+		replies = append(replies, buildPartyUDP(peer.nextSeqRoute[routeIndex], selfSlot, 1, wireRoute, codec))
+		peer.nextSeqRoute[routeIndex]++
 	case 1:
 		if peer.pending == nil {
 			peer.pendingSeq = peer.reliableSeq
