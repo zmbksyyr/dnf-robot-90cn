@@ -98,3 +98,22 @@ func TestPartyUDPKeepsReliableStatePerRoute(t *testing.T) {
 		t.Fatalf("routes should have independent reliable sequences: %X/%X", route0[0], route1[0])
 	}
 }
+
+func TestPartyUDPAcksReliableFramesInCombinedDatagram(t *testing.T) {
+	peer := &partyUDPPeer{}
+	ack := partyUDPAck(0, 7)
+	reliable := make([]byte, 9+5)
+	reliable[0] = 1
+	binary.LittleEndian.PutUint32(reliable[1:5], 12)
+	binary.LittleEndian.PutUint16(reliable[5:7], 5)
+	reliable[7] = 0
+	copy(reliable[9:], []byte{3, 0, 1, 2, 3})
+	payload := append(append([]byte{}, ack...), reliable...)
+	replies := partyUDPReplies(payload, peer, 1, true)
+	if len(replies) != 1 || len(replies[0]) != 8 || replies[0][0] != 0 {
+		t.Fatalf("combined reliable replies=%X", replies)
+	}
+	if got := binary.LittleEndian.Uint32(replies[0][2:6]); got != 13 {
+		t.Fatalf("combined reliable ack=%d want=13", got)
+	}
+}

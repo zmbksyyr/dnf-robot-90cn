@@ -57,8 +57,8 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 		replies := partyUDPReplies(buffer[:n], peer, selfSlot, slotKnown)
 		afterPending := peer.pending != nil || peer.pendingRoute[0] != nil || peer.pendingRoute[1] != nil
 		afterSeq := peer.nextSeqRoute[0]
-		logPacket := peer.diagPackets < 32
-		logDrop := len(replies) == 0 && peer.diagDrops < 32
+		logPacket := peer.diagPackets < 8
+		logDrop := len(replies) == 0 && peer.diagDrops < 8
 		if logPacket {
 			peer.diagPackets++
 		}
@@ -67,12 +67,16 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 		}
 		selfUID := c.selfUID
 		c.udpMu.Unlock()
+		loggedPayload := buffer[:n]
+		if len(loggedPayload) > 96 {
+			loggedPayload = loggedPayload[:96]
+		}
 		if logPacket {
-			foundationlog.Robotf("S4A21_PARTY_UDP_RX uid=%d slot=%d known=%t remote=%s bytes=%X replies=%d pending=%t->%t seq=%d->%d\n",
-				selfUID, selfSlot, slotKnown, remote, buffer[:n], len(replies), beforePending, afterPending, beforeSeq, afterSeq)
+			foundationlog.Robotf("S4A21_PARTY_UDP_RX uid=%d slot=%d known=%t remote=%s size=%d bytes=%X replies=%d pending=%t->%t seq=%d->%d\n",
+				selfUID, selfSlot, slotKnown, remote, n, loggedPayload, len(replies), beforePending, afterPending, beforeSeq, afterSeq)
 		} else if logDrop {
-			foundationlog.Robotf("S4A21_PARTY_UDP_DROP uid=%d slot=%d known=%t remote=%s bytes=%X pending=%t seq=%d\n",
-				selfUID, selfSlot, slotKnown, remote, buffer[:n], afterPending, afterSeq)
+			foundationlog.Robotf("S4A21_PARTY_UDP_DROP uid=%d slot=%d known=%t remote=%s size=%d bytes=%X pending=%t seq=%d\n",
+				selfUID, selfSlot, slotKnown, remote, n, loggedPayload, afterPending, afterSeq)
 		}
 		for _, reply := range replies {
 			_, _ = conn.WriteToUDP(reply, remote)
@@ -104,6 +108,42 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 	if !slotKnown {
 		return nil
 	}
+	frames, ok := splitPartyUDPFrames(payload)
+	if !ok {
+		return nil
+	}
+	replies := make([][]byte, 0, len(frames))
+	for _, frame := range frames {
+		replies = append(replies, partyUDPFrameReplies(frame, peer, selfSlot)...)
+	}
+	return replies
+}
+
+func splitPartyUDPFrames(payload []byte) ([][]byte, bool) {
+	frames := make([][]byte, 0, 2)
+	for len(payload) > 0 {
+		frameSize := 0
+		switch payload[0] {
+		case 0:
+			frameSize = 8
+		case 1, 2:
+			if len(payload) < 9 {
+				return nil, false
+			}
+			frameSize = 9 + int(binary.LittleEndian.Uint16(payload[5:7]))
+		default:
+			return nil, false
+		}
+		if frameSize > len(payload) {
+			return nil, false
+		}
+		frames = append(frames, payload[:frameSize])
+		payload = payload[frameSize:]
+	}
+	return frames, len(frames) > 0
+}
+
+func partyUDPFrameReplies(payload []byte, peer *partyUDPPeer, selfSlot byte) [][]byte {
 	if len(payload) == 8 && payload[0] == 0 {
 		for route := 0; route < 2; route++ {
 			if peer.pendingRoute[route] != nil && binary.LittleEndian.Uint32(payload[2:6]) == peer.pendingSeqRoute[route]+1 {
@@ -123,34 +163,32 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 		return nil
 	}
 	body := payload[9:]
+	sequence := binary.LittleEndian.Uint32(payload[1:5])
+	replies := make([][]byte, 0, 2)
 	if payload[0] == 1 {
+		replies = append(replies, partyUDPAck(selfSlot, sequence))
 		if len(body) < 2 {
-			return nil
+			return replies
 		}
 		inner := int(binary.LittleEndian.Uint16(body[:2]))
 		if inner != 12 || len(body) < 2+inner {
-			return nil
+			return replies
 		}
 		body = body[2 : 2+inner]
 	}
 	if len(body) != 12 || body[0] != 0 || body[1] != 0 || body[2] != 0 {
-		return nil
+		return replies
 	}
 	sender := payload[7]
 	state, codec, wireRoute, ok := decodePartyUDPBody(body, sender, 1, peer)
 	if !ok {
-		return nil
+		return replies
 	}
 	routeIndex := int(wireRoute)
 	if routeIndex > 1 {
 		routeIndex = 1
 	}
 	peer.codecRoute[routeIndex], peer.codecKnown[routeIndex] = codec, true
-	sequence := binary.LittleEndian.Uint32(payload[1:5])
-	replies := make([][]byte, 0, 2)
-	if payload[0] == 1 {
-		replies = append(replies, partyUDPAck(selfSlot, sequence))
-	}
 	switch state {
 	case 3:
 		routeIndex := int(wireRoute)
