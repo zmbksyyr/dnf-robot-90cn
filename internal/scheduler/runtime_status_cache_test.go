@@ -29,11 +29,20 @@ func (r *mapStatusRuntime) RuntimeStatus() []robotcap.RuntimeStatus {
 
 func (r *mapStatusRuntime) RuntimeStatusMap() map[int]robotcap.RuntimeStatus {
 	r.mapCalls.Add(1)
-	out := make(map[int]robotcap.RuntimeStatus, len(r.statuses))
-	for uid, status := range r.statuses {
-		out[uid] = status
+	return r.statuses
+}
+
+func TestRuntimeStateTableOwnsAdapterSnapshot(t *testing.T) {
+	runtime := &mapStatusRuntime{statuses: map[int]robotcap.RuntimeStatus{
+		17000001: {UID: 17000001, StateName: robotcap.RuntimeStateRunning},
+	}}
+	manager := NewRobotManager(nil, nil, runtime)
+	snapshot := manager.runtimeStatusMap()
+	runtime.statuses[17000001] = robotcap.RuntimeStatus{UID: 17000001, StateName: robotcap.RuntimeStateStop}
+	delete(runtime.statuses, 17000001)
+	if status, ok := snapshot[17000001]; !ok || status.StateName != robotcap.RuntimeStateRunning {
+		t.Fatalf("adapter mutation changed runtime state table: status=%+v ok=%t", status, ok)
 	}
-	return out
 }
 
 func (r *countingStatusRuntime) RuntimeStatus() []robotcap.RuntimeStatus {

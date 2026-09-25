@@ -71,12 +71,7 @@ type RobotManager struct {
 	autoBreakerLastShoutLocalFailed int
 	autoBreakerLastShoutWorldFailed int
 	autoBreakerLastStoreFailed      int
-	runtimeStatusMu                 lockhub.RWLocker
-	runtimeStatusCache              map[int]robotcap.RuntimeStatus
-	runtimeStatusCacheAt            time.Time
-	runtimeStatusSummary            robotcap.RuntimeStatusSummary
-	runtimeStatusSummaryAt          time.Time
-	runtimeStatusRefresh            chan struct{}
+	runtimeState                    runtimeStateTable
 	followLookupMu                  lockhub.Locker
 	followLookup                    followAccountLookup
 	followLookupInFlight            string

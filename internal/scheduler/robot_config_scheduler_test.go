@@ -56,12 +56,12 @@ func TestRetryDisjointInCurrentSessionOnlyForTransientPositionState(t *testing.T
 
 func TestBeginAdaptiveStoreTypeBalancesPlannedStores(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.runtimeStatusCache = map[int]robotcap.RuntimeStatus{
+	m.runtimeState.snapshot = map[int]robotcap.RuntimeStatus{
 		1: {UID: 1, StateName: robotcap.RuntimeStateRunning, RobotType: 2, StoreDisplayAck: true},
 		2: {UID: 2, StateName: robotcap.RuntimeStateRunning, RobotType: 2, StoreDisplayAck: true},
 		3: {UID: 3, StateName: robotcap.RuntimeStateRunning, RobotType: 3, DisjointActive: true},
 	}
-	m.runtimeStatusCacheAt = time.Now()
+	m.runtimeState.updatedAt = time.Now()
 
 	disjoint, done := m.beginAdaptiveStoreType()
 	if !disjoint {
@@ -69,7 +69,7 @@ func TestBeginAdaptiveStoreTypeBalancesPlannedStores(t *testing.T) {
 	}
 	done()
 
-	m.runtimeStatusCache = map[int]robotcap.RuntimeStatus{
+	m.runtimeState.snapshot = map[int]robotcap.RuntimeStatus{
 		1: {UID: 1, StateName: robotcap.RuntimeStateRunning, RobotType: 2, StoreDisplayAck: true},
 		2: {UID: 2, StateName: robotcap.RuntimeStateRunning, RobotType: 3, DisjointActive: true},
 	}

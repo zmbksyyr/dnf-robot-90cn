@@ -4,6 +4,7 @@ import (
 	"time"
 
 	robotcap "robot/internal/capability/robot"
+	"robot/internal/foundation/lockhub"
 )
 
 const runtimeStatusCacheTTL = 2000 * time.Millisecond
@@ -12,16 +13,28 @@ type runtimeStatusMapProvider interface {
 	RuntimeStatusMap() map[int]robotcap.RuntimeStatus
 }
 
+// runtimeStateTable is the scheduler's only cached runtime-state source.
+// Adapter transports publish raw protocol state; every scheduler, Web and API
+// projection reads an immutable snapshot from this table.
+type runtimeStateTable struct {
+	mu        lockhub.RWLocker
+	snapshot  map[int]robotcap.RuntimeStatus
+	updatedAt time.Time
+	summary   robotcap.RuntimeStatusSummary
+	summaryAt time.Time
+	refresh   chan struct{}
+}
+
 // runtimeStatusMap returns an immutable snapshot. Callers that need to delete
 // or replace entries must use runtimeStatusMapCopy.
 func (m *RobotManager) runtimeStatusMap() map[int]robotcap.RuntimeStatus {
 	for {
 		now := time.Now()
-		m.runtimeStatusMu.RLock()
-		snapshot := m.runtimeStatusCache
-		cacheAt := m.runtimeStatusCacheAt
-		refreshDone := m.runtimeStatusRefresh
-		m.runtimeStatusMu.RUnlock()
+		m.runtimeState.mu.RLock()
+		snapshot := m.runtimeState.snapshot
+		cacheAt := m.runtimeState.updatedAt
+		refreshDone := m.runtimeState.refresh
+		m.runtimeState.mu.RUnlock()
 		if snapshot != nil && !cacheAt.IsZero() && now.Sub(cacheAt) <= runtimeStatusCacheTTL {
 			return snapshot
 		}
@@ -33,18 +46,18 @@ func (m *RobotManager) runtimeStatusMap() map[int]robotcap.RuntimeStatus {
 		snapshot = nil
 		refreshDone = nil
 		refresh := false
-		m.runtimeStatusMu.Lock()
+		m.runtimeState.mu.Lock()
 		now = time.Now()
-		if m.runtimeStatusCache != nil && !m.runtimeStatusCacheAt.IsZero() && now.Sub(m.runtimeStatusCacheAt) <= runtimeStatusCacheTTL {
-			snapshot = m.runtimeStatusCache
-		} else if m.runtimeStatusRefresh != nil {
-			refreshDone = m.runtimeStatusRefresh
+		if m.runtimeState.snapshot != nil && !m.runtimeState.updatedAt.IsZero() && now.Sub(m.runtimeState.updatedAt) <= runtimeStatusCacheTTL {
+			snapshot = m.runtimeState.snapshot
+		} else if m.runtimeState.refresh != nil {
+			refreshDone = m.runtimeState.refresh
 		} else {
 			refreshDone = make(chan struct{})
-			m.runtimeStatusRefresh = refreshDone
+			m.runtimeState.refresh = refreshDone
 			refresh = true
 		}
-		m.runtimeStatusMu.Unlock()
+		m.runtimeState.mu.Unlock()
 		if snapshot != nil {
 			return snapshot
 		}
@@ -60,19 +73,19 @@ func (m *RobotManager) refreshRuntimeStatusMap(refreshDone chan struct{}) (statu
 	complete := false
 	summary := robotcap.RuntimeStatusSummary{}
 	defer func() {
-		m.runtimeStatusMu.Lock()
+		m.runtimeState.mu.Lock()
 		if complete {
 			cacheAt := time.Now()
-			m.runtimeStatusCache = status
-			m.runtimeStatusCacheAt = cacheAt
-			m.runtimeStatusSummary = summary
-			m.runtimeStatusSummaryAt = cacheAt
+			m.runtimeState.snapshot = status
+			m.runtimeState.updatedAt = cacheAt
+			m.runtimeState.summary = summary
+			m.runtimeState.summaryAt = cacheAt
 		}
-		if m.runtimeStatusRefresh == refreshDone {
-			m.runtimeStatusRefresh = nil
+		if m.runtimeState.refresh == refreshDone {
+			m.runtimeState.refresh = nil
 			close(refreshDone)
 		}
-		m.runtimeStatusMu.Unlock()
+		m.runtimeState.mu.Unlock()
 	}()
 
 	status = m.loadRuntimeStatusMap()
@@ -85,22 +98,22 @@ func (m *RobotManager) refreshRuntimeStatusMap(refreshDone chan struct{}) (statu
 
 func (m *RobotManager) runtimeStatusSummarySnapshot() robotcap.RuntimeStatusSummary {
 	status := m.runtimeStatusMap()
-	m.runtimeStatusMu.RLock()
-	if m.runtimeStatusSummaryAt.Equal(m.runtimeStatusCacheAt) {
-		summary := m.runtimeStatusSummary
-		m.runtimeStatusMu.RUnlock()
+	m.runtimeState.mu.RLock()
+	if m.runtimeState.summaryAt.Equal(m.runtimeState.updatedAt) {
+		summary := m.runtimeState.summary
+		m.runtimeState.mu.RUnlock()
 		return summary
 	}
-	cacheAt := m.runtimeStatusCacheAt
-	m.runtimeStatusMu.RUnlock()
+	cacheAt := m.runtimeState.updatedAt
+	m.runtimeState.mu.RUnlock()
 
 	summary := robotcap.SummarizeRuntimeStatusMap(status)
-	m.runtimeStatusMu.Lock()
-	if m.runtimeStatusCacheAt.Equal(cacheAt) {
-		m.runtimeStatusSummary = summary
-		m.runtimeStatusSummaryAt = cacheAt
+	m.runtimeState.mu.Lock()
+	if m.runtimeState.updatedAt.Equal(cacheAt) {
+		m.runtimeState.summary = summary
+		m.runtimeState.summaryAt = cacheAt
 	}
-	m.runtimeStatusMu.Unlock()
+	m.runtimeState.mu.Unlock()
 	return summary
 }
 
@@ -118,16 +131,16 @@ func (m *RobotManager) loadRuntimeStatusMap() map[int]robotcap.RuntimeStatus {
 		if status == nil {
 			return make(map[int]robotcap.RuntimeStatus)
 		}
-		return status
+		return robotcap.CopyRuntimeStatusMap(status)
 	}
 	return make(map[int]robotcap.RuntimeStatus)
 }
 
 func (m *RobotManager) invalidateRuntimeStatusCache() {
-	m.runtimeStatusMu.Lock()
-	m.runtimeStatusCacheAt = time.Time{}
-	m.runtimeStatusSummaryAt = time.Time{}
-	m.runtimeStatusMu.Unlock()
+	m.runtimeState.mu.Lock()
+	m.runtimeState.updatedAt = time.Time{}
+	m.runtimeState.summaryAt = time.Time{}
+	m.runtimeState.mu.Unlock()
 }
 
 func (m *RobotManager) runtimeStatus(uid int) (robotcap.RuntimeStatus, bool) {

@@ -23,10 +23,10 @@ func TestRobotRuntimeCountsAutomaticTransportFailures(t *testing.T) {
 	wantShout := errors.New("shout send failed")
 	manager := testRobotManagerWithConfig(t, "[move]\nmove_steps = 2\n[shout]\nshout_send_enabled = true\n")
 	manager.doll = failingActionRuntime{moveErr: wantMove, shoutErr: wantShout}
-	manager.runtimeStatusCache = map[int]robotcap.RuntimeStatus{
+	manager.runtimeState.snapshot = map[int]robotcap.RuntimeStatus{
 		17000001: {UID: 17000001, CID: 2001, StateName: robotcap.RuntimeStateRunning},
 	}
-	manager.runtimeStatusCacheAt = time.Now()
+	manager.runtimeState.updatedAt = time.Now()
 	runtime := NewRobotRuntime(manager)
 
 	move := runtime.AutoMove(17000001)

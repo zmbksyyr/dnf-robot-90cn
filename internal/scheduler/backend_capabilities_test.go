@@ -40,10 +40,10 @@ func TestSimulatorAutomaticShoutFallsBackToAreaChannel(t *testing.T) {
 	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	transport := &shoutRecordingTransport{}
 	m.SetBackendActionTransport(transport)
-	m.runtimeStatusCache = map[int]robotcap.RuntimeStatus{
+	m.runtimeState.snapshot = map[int]robotcap.RuntimeStatus{
 		7: {UID: 7, StateName: robotcap.RuntimeStateRunning},
 	}
-	m.runtimeStatusCacheAt = time.Now()
+	m.runtimeState.updatedAt = time.Now()
 	result := NewRobotRuntime(m).AutoShout(7, true, "hello")
 	if !result.OK || len(transport.commands) != 1 || transport.commands[0].Message != "hello" {
 		t.Fatalf("result=%+v commands=%+v", result, transport.commands)
