@@ -19,17 +19,18 @@ type partyUDPCodec struct {
 	checksum    [4]byte
 }
 type partyUDPPeer struct {
-	codec        partyUDPCodec
-	codecKnown   bool
-	nextSeq      uint32
-	nextSeqRoute [2]uint32
-	reliableSeq  uint32
-	pending      []byte
-	pendingSeq   uint32
-	diagPackets  byte
-	diagDrops    byte
-	epochStarted bool
-	epochRoute   [2]bool
+	codecRoute       [2]partyUDPCodec
+	codecKnown       [2]bool
+	nextSeqRoute     [2]uint32
+	reliableSeq      uint32
+	reliableSeqRoute [2]uint32
+	pending          []byte
+	pendingSeq       uint32
+	pendingRoute     [2][]byte
+	pendingSeqRoute  [2]uint32
+	diagPackets      byte
+	diagDrops        byte
+	epochRoute       [2]bool
 }
 
 var partyUDPCRCTable = crc32.MakeTable(0x4db89129)
@@ -51,10 +52,10 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			c.udpPeers[remote.String()] = peer
 		}
 		selfSlot, slotKnown := c.selfSlot, c.slotKnown
-		beforePending := peer.pending != nil
+		beforePending := peer.pending != nil || peer.pendingRoute[0] != nil || peer.pendingRoute[1] != nil
 		beforeSeq := peer.nextSeqRoute[0]
 		replies := partyUDPReplies(buffer[:n], peer, selfSlot, slotKnown)
-		afterPending := peer.pending != nil
+		afterPending := peer.pending != nil || peer.pendingRoute[0] != nil || peer.pendingRoute[1] != nil
 		afterSeq := peer.nextSeqRoute[0]
 		logPacket := peer.diagPackets < 32
 		logDrop := len(replies) == 0 && peer.diagDrops < 32
@@ -104,8 +105,13 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 		return nil
 	}
 	if len(payload) == 8 && payload[0] == 0 {
-		if peer.pending != nil && binary.LittleEndian.Uint32(payload[2:6]) == peer.pendingSeq+1 {
-			peer.pending = nil
+		for route := 0; route < 2; route++ {
+			if peer.pendingRoute[route] != nil && binary.LittleEndian.Uint32(payload[2:6]) == peer.pendingSeqRoute[route]+1 {
+				peer.pendingRoute[route] = nil
+				if route == 0 || peer.pending == nil || peer.pendingSeq == peer.pendingSeqRoute[route] {
+					peer.pending = nil
+				}
+			}
 		}
 		return nil
 	}
@@ -135,9 +141,11 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 	if !ok {
 		return nil
 	}
-	peer.codec, peer.codecKnown = codec, true
-	copy(codec.extra[:], body[10:12])
-	peer.codec = codec
+	routeIndex := int(wireRoute)
+	if routeIndex > 1 {
+		routeIndex = 1
+	}
+	peer.codecRoute[routeIndex], peer.codecKnown[routeIndex] = codec, true
 	sequence := binary.LittleEndian.Uint32(payload[1:5])
 	replies := make([][]byte, 0, 2)
 	if payload[0] == 1 {
@@ -163,12 +171,13 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 		replies = append(replies, buildPartyUDP(peer.nextSeqRoute[routeIndex], selfSlot, 1, wireRoute, codec))
 		peer.nextSeqRoute[routeIndex]++
 	case 1:
-		if peer.pending == nil {
-			peer.pendingSeq = peer.reliableSeq
-			peer.reliableSeq++
-			peer.pending = buildPartyUDP(peer.pendingSeq, selfSlot, 2, wireRoute, codec)
+		if peer.pendingRoute[routeIndex] == nil {
+			peer.pendingSeqRoute[routeIndex] = peer.reliableSeqRoute[routeIndex]
+			peer.reliableSeqRoute[routeIndex]++
+			peer.pendingRoute[routeIndex] = buildPartyUDP(peer.pendingSeqRoute[routeIndex], selfSlot, 2, wireRoute, codec)
+			peer.pending, peer.pendingSeq = peer.pendingRoute[routeIndex], peer.pendingSeqRoute[routeIndex]
 		}
-		replies = append(replies, peer.pending)
+		replies = append(replies, peer.pendingRoute[routeIndex])
 	}
 	return replies
 }
@@ -178,12 +187,17 @@ func decodePartyUDPBody(body []byte, sender, route byte, peer *partyUDPPeer) (by
 	if route != 0 {
 		routes = append(routes, 0)
 	}
-	if peer.codecKnown {
-		for _, expectedRoute := range routes {
-			if state, ok := decodePartyUDPBodyWithCodec(body, sender, expectedRoute, peer.codec); ok {
-				peer.codec.extra = [2]byte{body[10], body[11]}
-				copy(peer.codec.checksum[:], body[3:7])
-				return state, peer.codec, expectedRoute, true
+	for _, expectedRoute := range routes {
+		routeIndex := int(expectedRoute)
+		if routeIndex > 1 {
+			routeIndex = 1
+		}
+		if peer.codecKnown[routeIndex] {
+			codec := peer.codecRoute[routeIndex]
+			if state, ok := decodePartyUDPBodyWithCodec(body, sender, expectedRoute, codec); ok {
+				codec.extra = [2]byte{body[10], body[11]}
+				copy(codec.checksum[:], body[3:7])
+				return state, codec, expectedRoute, true
 			}
 		}
 	}

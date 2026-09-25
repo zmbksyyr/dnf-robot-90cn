@@ -68,3 +68,20 @@ func TestPartyUDPA21TwelveByteFrame(t *testing.T) {
 		t.Fatalf("A21 12-byte frame replies=%X", replies)
 	}
 }
+
+func TestPartyUDPKeepsReliableStatePerRoute(t *testing.T) {
+	peer := &partyUDPPeer{}
+	codec := partyUDPCodec{key: 0x7e}
+	for _, route := range []byte{0, 1} {
+		partyUDPReplies(buildPartyUDP(1, 1, 3, route, codec), peer, 1, true)
+		partyUDPReplies(buildPartyUDP(2, 1, 0, route, codec), peer, 1, true)
+	}
+	route0 := partyUDPReplies(buildPartyUDP(3, 1, 1, 0, codec), peer, 1, true)
+	route1 := partyUDPReplies(buildPartyUDP(3, 1, 1, 1, codec), peer, 1, true)
+	if len(route0) != 1 || len(route1) != 1 || route0[0][0] != 1 || route1[0][0] != 1 {
+		t.Fatalf("route replies=%X/%X", route0, route1)
+	}
+	if binary.LittleEndian.Uint32(route0[0][1:5]) != binary.LittleEndian.Uint32(route1[0][1:5]) {
+		t.Fatalf("routes should have independent reliable sequences: %X/%X", route0[0], route1[0])
+	}
+}
