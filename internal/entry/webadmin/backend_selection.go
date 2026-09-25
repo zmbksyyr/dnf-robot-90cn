@@ -217,7 +217,7 @@ func selectBackendFromCatalog(catalog []shared.BackendInfo, id shared.BackendID,
 }
 
 func (s *Server) readBackendSelectionLocked() (backendSelectionState, bool, error) {
-	defaultState := backendSelectionState{BackendID: shared.BackendNative}
+	defaultState := backendSelectionState{BackendID: shared.DefaultBackendID()}
 	path := layout.New(s.cfg.ConfigDir).BackendSelection()
 	if strings.TrimSpace(path) == "" {
 		return defaultState, false, fmt.Errorf("backend selection path is unavailable")

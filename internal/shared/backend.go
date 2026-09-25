@@ -9,8 +9,10 @@ import (
 
 type BackendID string
 
-const BackendNative BackendID = "native"
 const BackendS4A21 BackendID = "sim_a21"
+
+// DefaultBackendID is the backend compiled into this distribution.
+func DefaultBackendID() BackendID { return BackendS4A21 }
 
 type BackendCapability string
 
@@ -118,7 +120,7 @@ type BatchCharacterProvisioner interface {
 }
 
 func DecodeBackendSelection(data []byte) (BackendSelection, error) {
-	selection := BackendSelection{BackendID: BackendNative}
+	selection := BackendSelection{BackendID: BackendS4A21}
 	if len(data) == 0 {
 		return selection, nil
 	}

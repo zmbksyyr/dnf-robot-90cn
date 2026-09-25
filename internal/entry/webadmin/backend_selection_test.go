@@ -16,7 +16,7 @@ import (
 
 func TestBackendSelectionDefaultsWithoutWriting(t *testing.T) {
 	dir := t.TempDir()
-	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendS4A21, testBackendCatalog())
 	req := httptest.NewRequest(http.MethodGet, "/api/backend", nil)
 	rec := httptest.NewRecorder()
 	s.handleBackend(rec, req)
@@ -27,7 +27,7 @@ func TestBackendSelectionDefaultsWithoutWriting(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.OK || got.Selected != shared.BackendNative || got.Persisted {
+	if !got.OK || got.Selected != shared.BackendS4A21 || got.Persisted {
 		t.Fatalf("payload = %+v", got)
 	}
 	if _, err := os.Stat(layout.New(dir).BackendSelection()); !os.IsNotExist(err) {
@@ -37,7 +37,7 @@ func TestBackendSelectionDefaultsWithoutWriting(t *testing.T) {
 
 func TestRecoveryBackendResponseExplainsStartupFailure(t *testing.T) {
 	dir := t.TempDir()
-	s := NewRecoveryWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog(), "backend native does not support windows")
+	s := NewRecoveryWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendS4A21, testBackendCatalog(), "S4A21 recovery test")
 	req := httptest.NewRequest(http.MethodGet, "/api/backend", nil)
 	rec := httptest.NewRecorder()
 	s.handleBackend(rec, req)
@@ -45,7 +45,7 @@ func TestRecoveryBackendResponseExplainsStartupFailure(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.OK || !got.RecoveryMode || got.RecoveryReason != "backend native does not support windows" {
+	if !got.OK || !got.RecoveryMode || got.RecoveryReason != "S4A21 recovery test" {
 		t.Fatalf("payload = %+v", got)
 	}
 }
@@ -62,20 +62,17 @@ func TestBackendCatalogDisablesPlatformUnsupportedBackends(t *testing.T) {
 		t.Fatalf("backend %s missing", id)
 		return shared.BackendInfo{}
 	}
-	if native := find(windows, shared.BackendNative); native.Selectable || native.Reason == "" {
-		t.Fatalf("native backend must be disabled on Windows: %+v", native)
-	}
 	if simulator := find(windows, shared.BackendS4A21); !simulator.Selectable {
 		t.Fatalf("S4A21 unexpectedly disabled on Windows: %+v", simulator)
 	}
-	if native := find(linux, shared.BackendNative); !native.Selectable {
-		t.Fatalf("native unexpectedly disabled on Linux: %+v", native)
+	if simulator := find(linux, shared.BackendS4A21); !simulator.Selectable {
+		t.Fatalf("S4A21 unexpectedly disabled on Linux: %+v", simulator)
 	}
 }
 
 func TestBackendSelectionRejectsUnsupportedPlatform(t *testing.T) {
 	dir := t.TempDir()
-	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendS4A21, testBackendCatalog())
 	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(`{"backend_id":"missing"}`))
 	rec := httptest.NewRecorder()
 	s.handleBackend(rec, req)
@@ -96,7 +93,7 @@ func TestBackendSelectionRejectsUnsupportedPlatform(t *testing.T) {
 
 func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) {
 	dir := t.TempDir()
-	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendS4A21, testBackendCatalog())
 	serverDir := filepath.Join(dir, "DfoServer")
 	databasePath := filepath.Join(serverDir, "Data", "inventory.db")
 	body, err := json.Marshal(map[string]interface{}{
@@ -163,7 +160,7 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 
 func TestBackendSelectionRejectsIncompleteSimulatorSettings(t *testing.T) {
 	dir := t.TempDir()
-	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendS4A21, testBackendCatalog())
 	req := httptest.NewRequest(http.MethodPost, "/api/backend", strings.NewReader(`{"backend_id":"sim_a21","settings":{"server_host":"127.0.0.1"}}`))
 	rec := httptest.NewRecorder()
 	s.handleBackend(rec, req)
@@ -179,7 +176,7 @@ func TestBackendSelectionRejectsIncompleteSimulatorSettings(t *testing.T) {
 
 func TestBackendSelectionAcceptsDerivedSimulatorDatabase(t *testing.T) {
 	dir := t.TempDir()
-	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendNative, testBackendCatalog())
+	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendS4A21, testBackendCatalog())
 	body, err := json.Marshal(map[string]interface{}{
 		"backend_id": shared.BackendS4A21,
 		"settings": map[string]string{

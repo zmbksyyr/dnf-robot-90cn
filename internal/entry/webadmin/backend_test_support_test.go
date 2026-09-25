@@ -6,7 +6,6 @@ import (
 )
 
 func testBackendCatalog() []shared.BackendInfo {
-	nativeCapabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Enabled: true})
 	simulatorCapabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported in test backend"})
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityProvision, shared.CapabilityTownMove, shared.CapabilityDungeonFollow,
@@ -17,7 +16,6 @@ func testBackendCatalog() []shared.BackendInfo {
 	simulatorCapabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Enabled: true, Mode: "toggle"}
 	simulatorCapabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health"}
 	return []shared.BackendInfo{
-		{ID: shared.BackendNative, DisplayName: "Native", SupportedOS: []string{"linux"}, Selectable: true, Capabilities: nativeCapabilities},
 		{ID: shared.BackendS4A21, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true, Capabilities: simulatorCapabilities, Settings: []shared.BackendSetting{
 			{Key: "server_directory", Label: "Server directory", InputType: "path", Required: true},
 			{Key: "server_host", Label: "Host", InputType: "text", Required: true, Default: "127.0.0.1"},

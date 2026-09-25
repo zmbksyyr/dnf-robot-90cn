@@ -35,7 +35,6 @@ var sqlImportAllowedDirs = []string{
 	"internal/capability/mailnotify",
 	"internal/capability/marketapp",
 	"internal/composition/backend/s4a21",
-	"internal/composition/backend/native",
 	"internal/protocol/dnf",
 }
 
@@ -390,7 +389,7 @@ func TestWebRuntimeDoesNotUseBackendTypeGuards(t *testing.T) {
 	dir := filepath.Join(root, "internal", "entry", "webadmin")
 	forbidden := []string{
 		"isNativeBackend", "nativeBackendOnly",
-		"BackendS4A21", "sim_a21", "composition/backend/s4a21", "protocol/s4a21", "S4A21",
+		"BackendNative", "backend/native",
 	}
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {

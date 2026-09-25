@@ -26,7 +26,7 @@ func TestPrepareBackendRuntimeBacksUpRobotFilesAndPreservesSystemConfig(t *testi
 	if err := os.WriteFile(filepath.Join(paths.Templates, "old.json"), []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	old := shared.BackendSelection{BackendID: shared.BackendNative, ConfigGeneration: 1}
+	old := shared.BackendSelection{BackendID: shared.BackendS4A21, ConfigGeneration: 1}
 	oldData, _ := json.Marshal(old)
 	if err := os.WriteFile(paths.BackendRuntime(), oldData, 0600); err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestPrepareBackendRuntimeDoesNotCarrySimulatorStateIntoNative(t *testing.T)
 		t.Fatal(err)
 	}
 
-	target := shared.BackendSelection{BackendID: shared.BackendNative, ConfigGeneration: 5}
+	target := shared.BackendSelection{BackendID: shared.BackendS4A21, ConfigGeneration: 5}
 	changed, err := PrepareBackendRuntime(paths, target)
 	if err != nil || !changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
@@ -136,7 +136,7 @@ func TestPrepareBackendRuntimeRetriesUntilAppliedMarkerIsWritten(t *testing.T) {
 	if err := os.WriteFile(paths.RobotConfig(), []byte("old-config"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	previous := shared.BackendSelection{BackendID: shared.BackendNative, ConfigGeneration: 1}
+	previous := shared.BackendSelection{BackendID: shared.BackendS4A21, ConfigGeneration: 1}
 	previousData, err := json.Marshal(previous)
 	if err != nil {
 		t.Fatal(err)

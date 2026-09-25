@@ -74,7 +74,7 @@ type partySkillFileState struct {
 }
 
 func New(cfg *config.SysConfig, robotAddr, webAddr string, backend ...shared.BackendID) *Server {
-	selected := shared.BackendNative
+	selected := shared.DefaultBackendID()
 	if len(backend) > 0 && backend[0] != "" {
 		selected = backend[0]
 	}
@@ -95,7 +95,7 @@ func newServer(cfg *config.SysConfig, robotAddr, webAddr string, backend shared.
 	}
 	selectedBackend := backend
 	if selectedBackend == "" {
-		selectedBackend = shared.BackendNative
+		selectedBackend = shared.DefaultBackendID()
 	}
 	if len(catalog) == 0 {
 		catalog = []shared.BackendInfo{{ID: selectedBackend, DisplayName: string(selectedBackend), Selectable: true, Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{Enabled: true})}}

@@ -47,7 +47,7 @@ func TestSimulatorWebRejectsNativeCompatibilityOperations(t *testing.T) {
 }
 
 func TestRecoveryWebRejectsNativeCompatibilityOperations(t *testing.T) {
-	s := NewRecovery(&config.SysConfig{ConfigDir: t.TempDir()}, "", "", shared.BackendNative)
+	s := NewRecovery(&config.SysConfig{ConfigDir: t.TempDir()}, "", "", shared.BackendS4A21)
 	req := httptest.NewRequest(http.MethodGet, "/api/compat", nil)
 	rec := httptest.NewRecorder()
 	s.handleCompat(rec, req)

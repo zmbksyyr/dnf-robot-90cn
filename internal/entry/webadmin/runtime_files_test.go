@@ -16,10 +16,10 @@ func TestRuntimeFileWatcherOnlyTracksNativeBackendFiles(t *testing.T) {
 	if entries := newTestServerForBackend(cfg, shared.BackendS4A21).runtimeFileEntries(); len(entries) != 0 {
 		t.Fatalf("S4A21 runtime entries=%v, want none", entries)
 	}
-	if entries := NewRecovery(cfg, "", "", shared.BackendNative).runtimeFileEntries(); len(entries) != 0 {
+	if entries := NewRecovery(cfg, "", "", shared.BackendS4A21).runtimeFileEntries(); len(entries) != 0 {
 		t.Fatalf("recovery runtime entries=%v, want none", entries)
 	}
-	if entries := New(cfg, "", "", shared.BackendNative).runtimeFileEntries(); len(entries) != 3 {
+	if entries := New(cfg, "", "", shared.BackendS4A21).runtimeFileEntries(); len(entries) != 3 {
 		t.Fatalf("native runtime entry count=%d, want 3", len(entries))
 	}
 }

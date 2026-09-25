@@ -7,7 +7,7 @@ import (
 )
 
 func TestBackendCapabilitiesFailClosed(t *testing.T) {
-	b := BackendInfo{ID: BackendNative, Capabilities: map[BackendCapability]CapabilityStatus{
+	b := BackendInfo{ID: BackendS4A21, Capabilities: map[BackendCapability]CapabilityStatus{
 		CapabilityShout: {Enabled: true},
 		CapabilityParty: {Reason: "party protocol not implemented"},
 	}}
