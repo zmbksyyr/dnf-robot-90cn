@@ -84,7 +84,7 @@ func runS4A21Backend(cfg *config.SysConfig, paths layout.Paths, info shared.Back
 		return 1
 	}
 	manager := scheduler.NewRobotManager(nil, cfg, nil)
-	manager.ConfigureBackendRuntime(info, s4a21backend.PersistenceInspector{DatabasePath: loadoutDB}, nil)
+	manager.ConfigureBackendRuntime(info, s4a21backend.NewPersistenceInspector(loadoutDB), nil)
 	manager.SetBackendRobotCreator(info, nil)
 	manager.SetRobotStateDirectory(state)
 	manager.SetBackendActionTransport(transports.actions)
