@@ -23,11 +23,6 @@ type Server struct {
 	tokenMu            lockhub.RWLocker
 	tokens             map[string]time.Time
 	loginFailures      map[string]loginFailure
-	serverScriptMu     lockhub.Locker
-	serverScript       serverScriptStatus
-	serverScriptCancel func()
-	gameMaxUserMu      lockhub.Locker
-	gameMaxUser        gameMaxUserCache
 	backendSelectionMu lockhub.Locker
 	backend            shared.BackendID
 	backendInfo        shared.BackendInfo
@@ -136,9 +131,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	defer s.stopServerScript()
-	stopRuntimeFiles := s.startRuntimeFileWatcher()
-	defer stopRuntimeFiles()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/login", s.handleLogin)
@@ -146,13 +138,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	mux.HandleFunc("/api/call", s.requireAuth(s.handleCall))
 	mux.HandleFunc("/api/game-port", s.requireAuth(s.handleGamePort))
 	mux.HandleFunc("/api/game-endpoint", s.requireAuth(s.handleGameEndpoint))
-	mux.HandleFunc("/api/service-ports", s.requireAuth(s.handleServicePorts))
 	mux.HandleFunc("/api/restart-robot", s.requireAuth(s.handleRestartRobot))
-	mux.HandleFunc("/api/max-user", s.requireAuth(s.handleMaxUser))
-	mux.HandleFunc("/api/server-script", s.requireAuth(s.handleServerScript))
-	mux.HandleFunc("/api/monitor-service", s.requireAuth(s.handleMonitorService))
-	mux.HandleFunc("/api/relay-service", s.requireAuth(s.handleRelayService))
-	mux.HandleFunc("/api/diagnostics", s.requireAuth(s.handleDiagnostics))
 	mux.HandleFunc("/api/backend", s.requireAuth(s.handleBackend))
 	server := &http.Server{
 		Addr:              s.webAddr,
@@ -173,7 +159,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
-			s.stopServerScript()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := server.Shutdown(shutdownCtx); err != nil {

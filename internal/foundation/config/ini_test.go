@@ -147,10 +147,6 @@ func TestLoadConfigReadsPortsSection(t *testing.T) {
 RobotAPI = 18111
 Web = 18112
 Game = 20011
-Monitor = 30304
-Auction = 30804
-Point = 30604
-Relay = 7201
 PartyRoute0 = 5064
 
 [Robot]
@@ -169,7 +165,7 @@ WebPassword = twadmin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RobotPort != 18111 || cfg.WebPort != 18112 || cfg.RobotGamePort != 20011 || cfg.MonitorPort != 30304 || cfg.AuctionPort != 30804 || cfg.PointPort != 30604 || cfg.RelayPort != 7201 || cfg.PartyRoute0Port != 5064 {
+	if cfg.RobotPort != 18111 || cfg.WebPort != 18112 || cfg.RobotGamePort != 20011 || cfg.PartyRoute0Port != 5064 {
 		t.Fatalf("ports not loaded: %+v", cfg)
 	}
 	if cfg.GameServerGroup != 4 {
@@ -181,7 +177,7 @@ WebPassword = twadmin
 }
 
 func TestLoadConfigResolvesAutoConnectIP(t *testing.T) {
-	text := strings.Replace(defaultConfigForTest(), "RobotConnectIp = 127.0.0.1", "RobotConnectIp = auto", 1)
+	text := strings.Replace("[Ports]\nRobotAPI = 8111\nWeb = 8112\nGame = 10011\nPartyRoute0 = 5063\n\n[Robot]\nDfGameR = /home/neople/game/df_game_r\nRobotInnerIp = 10.0.0.1\nRobotConnectIp = 127.0.0.1\nGameServerGroup = 3\n\n[Web]\nWebPassword = twadmin\n", "RobotConnectIp = 127.0.0.1", "RobotConnectIp = auto", 1)
 	cfg, err := ParseConfig(text)
 	if err != nil {
 		t.Fatal(err)
@@ -201,10 +197,6 @@ func TestLoadConfigRejectsInvalidOrUnknownSettings(t *testing.T) {
 		"[Robot]\nRobotInnerIp = \n",
 		"[Robot]\nGameServerGroup = -1\n",
 		"[Web]\nWebPassword = \n",
-		"[db]\ndb_prot = 3306\n",
-		"[db]\ndb_max_Size = 64\n",
-		"[db]\ndb_init_size = 8\ndb_max_size = 4\n",
-		"[db]\ndb_dial_timeout_sec = 31\n",
 		"[system]\nlog_max_backups = 0\n",
 		"[legacy]\n",
 	} {

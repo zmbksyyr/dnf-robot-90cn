@@ -168,7 +168,7 @@ func TestHeaderActionsStayRightAlignedAndBackendSelectorIsCompact(t *testing.T) 
 	for _, want := range []string{
 		`class="header-actions-spacer"`,
 		`.header-actions-spacer{margin-left:auto}`,
-		`anchor=byId('compatButton')`,
+		`anchor=byId('portsButton')`,
 		`anchor.parentElement.insertBefore(button,anchor)`,
 		`showModal(i18nFormat('backend.title'),body`,
 		`'backend',false`,

@@ -13,8 +13,21 @@ import (
 	"robot/internal/foundation/atomicfile"
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/layout"
-	"robot/internal/shared"
 )
+
+func (s *Server) handleGamePort(w http.ResponseWriter, _ *http.Request) {
+	cfg := s.cfg
+	if cfg == nil {
+		writeJSON(w, map[string]interface{}{"ok": false, "error": "robot configuration is unavailable"})
+		return
+	}
+	writeJSON(w, map[string]interface{}{
+		"ok":           true,
+		"addr":         net.JoinHostPort(cfg.RobotConnectIP, strconv.Itoa(cfg.RobotGamePort)),
+		"game_port":    cfg.RobotGamePort,
+		"max_user_num": 600,
+	})
+}
 
 func (s *Server) handleGameEndpoint(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -27,32 +40,17 @@ func (s *Server) handleGameEndpoint(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.gameEndpointPayload(cfg, ""))
 	case http.MethodPost:
 		var req struct {
-			GamePort    int `json:"game_port"`
-			MonitorPort int `json:"monitor_port"`
-			AuctionPort int `json:"auction_port"`
-			PointPort   int `json:"point_port"`
-			RelayPort   int `json:"relay_port"`
+			GamePort int `json:"game_port"`
 		}
 		if err := config.DecodeJSONLimit(r.Body, 64*1024, &req); err != nil {
 			writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
 			return
 		}
-		if !s.supportsBackendCapability(shared.CapabilityServiceControl) {
-			disk, err := s.loadDiskConfig()
-			if err != nil {
-				writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
-				return
-			}
-			req.MonitorPort = disk.MonitorPort
-			req.AuctionPort = disk.AuctionPort
-			req.PointPort = disk.PointPort
-			req.RelayPort = disk.RelayPort
-		}
-		if err := validateExternalPorts(req.GamePort, req.MonitorPort, req.AuctionPort, req.PointPort, req.RelayPort); err != nil {
+		if err := validateExternalPorts(req.GamePort); err != nil {
 			writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
 			return
 		}
-		cfg, err := s.writeExternalPorts(req.GamePort, req.MonitorPort, req.AuctionPort, req.PointPort, req.RelayPort)
+		cfg, err := s.writeExternalPort(req.GamePort)
 		if err != nil {
 			writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
 			return
@@ -90,49 +88,26 @@ func (s *Server) handleRestartRobot(w http.ResponseWriter, r *http.Request) {
 func (s *Server) gameEndpointPayload(cfg *config.SysConfig, message string) map[string]interface{} {
 	connectIP := ""
 	addr := ""
-	ports := map[string]int{}
-	hosts := map[string]string{}
-	serviceRoot := ""
-	runScript := ""
 	connectSetting := ""
 	innerIP := ""
 	if cfg != nil {
 		connectIP = cfg.RobotConnectIP
 		addr = net.JoinHostPort(connectIP, strconv.Itoa(cfg.RobotGamePort))
-		ports = map[string]int{
-			"game":    cfg.RobotGamePort,
-			"monitor": cfg.MonitorPort,
-			"auction": cfg.AuctionPort,
-			"point":   cfg.PointPort,
-			"relay":   cfg.RelayPort,
-		}
-		hosts = map[string]string{"auction": cfg.AuctionHost, "point": cfg.PointHost, "relay": cfg.RelayHost}
-		serviceRoot = cfg.ServiceRoot
-		runScript = cfg.ServiceRunScript
 		connectSetting = cfg.RobotConnectIPSetting
 		innerIP = cfg.RobotInnerIP
 	}
 	out := map[string]interface{}{
 		"ok":               true,
 		"connect_ip":       connectIP,
-		"game_port":        ports["game"],
-		"ports":            ports,
-		"hosts":            hosts,
-		"service_root":     serviceRoot,
-		"run_script":       runScript,
+		"game_port":        cfg.RobotGamePort,
+		"ports":            map[string]int{"game": cfg.RobotGamePort},
 		"connect_setting":  connectSetting,
 		"connect_resolved": connectIP,
 		"inner_ip":         innerIP,
 		"addr":             addr,
 		"config_path":      s.configPath(),
 	}
-	if !s.supportsBackendCapability(shared.CapabilityServiceControl) {
-		out["ports"] = map[string]int{"game": ports["game"]}
-		delete(out, "hosts")
-		delete(out, "service_root")
-		delete(out, "run_script")
-		delete(out, "inner_ip")
-	}
+	delete(out, "inner_ip")
 	if s != nil && s.cfg != nil && cfg != nil {
 		fields := restartConfigDiff(s.cfg, cfg)
 		out["restart_required"] = len(fields) > 0
@@ -152,21 +127,11 @@ func restartConfigView(cfg *config.SysConfig) map[string]interface{} {
 	}
 	return map[string]interface{}{
 		"robot_port": cfg.RobotPort, "web_port": cfg.WebPort,
-		"game_port": cfg.RobotGamePort, "monitor_port": cfg.MonitorPort,
-		"auction_port": cfg.AuctionPort, "point_port": cfg.PointPort,
-		"relay_port": cfg.RelayPort, "party_route0_port": cfg.PartyRoute0Port,
+		"game_port": cfg.RobotGamePort, "party_route0_port": cfg.PartyRoute0Port,
 		"df_game_r": cfg.DFGameR, "game_server_group": cfg.GameServerGroup,
 		"connect_ip": cfg.RobotConnectIP, "connect_setting": cfg.RobotConnectIPSetting, "inner_ip": cfg.RobotInnerIP,
-		"service_root": cfg.ServiceRoot, "service_run_script": cfg.ServiceRunScript,
-		"auction_host": cfg.AuctionHost, "point_host": cfg.PointHost, "relay_host": cfg.RelayHost,
-		"database_host": cfg.DBHost, "database_port": cfg.DBPort,
-		"database_name": cfg.DBName, "database_user": cfg.DBUser,
-		"database_init_size": cfg.DBInitSize, "database_max_size": cfg.DBMaxSize,
-		"database_dial_timeout_sec": cfg.DBDialTimeoutSec, "database_read_timeout_sec": cfg.DBReadTimeoutSec,
-		"database_write_timeout_sec": cfg.DBWriteTimeoutSec, "database_conn_max_lifetime_sec": cfg.DBConnMaxLifetimeSec,
-		"database_password_set": cfg.DBPassword != "",
-		"web_password_set":      cfg.WebPassword != "",
-		"log_max_size_mb":       cfg.LogMaxSizeMB, "log_max_backups": cfg.LogMaxBackups,
+		"web_password_set": cfg.WebPassword != "",
+		"log_max_size_mb":  cfg.LogMaxSizeMB, "log_max_backups": cfg.LogMaxBackups,
 		"max_response_bytes": cfg.MaxResponseBytes,
 	}
 }
@@ -181,22 +146,11 @@ func restartConfigDiff(running, disk *config.SysConfig) []string {
 		different bool
 	}{
 		{"robot_port", running.RobotPort != disk.RobotPort}, {"web_port", running.WebPort != disk.WebPort},
-		{"game_port", running.RobotGamePort != disk.RobotGamePort}, {"monitor_port", running.MonitorPort != disk.MonitorPort},
-		{"auction_port", running.AuctionPort != disk.AuctionPort}, {"point_port", running.PointPort != disk.PointPort},
-		{"relay_port", running.RelayPort != disk.RelayPort}, {"party_route0_port", running.PartyRoute0Port != disk.PartyRoute0Port},
+		{"game_port", running.RobotGamePort != disk.RobotGamePort}, {"party_route0_port", running.PartyRoute0Port != disk.PartyRoute0Port},
 		{"df_game_r", running.DFGameR != disk.DFGameR}, {"game_server_group", running.GameServerGroup != disk.GameServerGroup},
 		{"robot_connect_ip", running.RobotConnectIP != disk.RobotConnectIP}, {"robot_inner_ip", running.RobotInnerIP != disk.RobotInnerIP},
 		{"robot_connect_setting", running.RobotConnectIPSetting != disk.RobotConnectIPSetting},
-		{"service_root", running.ServiceRoot != disk.ServiceRoot}, {"service_run_script", running.ServiceRunScript != disk.ServiceRunScript},
-		{"auction_host", running.AuctionHost != disk.AuctionHost}, {"point_host", running.PointHost != disk.PointHost}, {"relay_host", running.RelayHost != disk.RelayHost},
-		{"database_host", running.DBHost != disk.DBHost}, {"database_port", running.DBPort != disk.DBPort},
-		{"database_name", running.DBName != disk.DBName}, {"database_user", running.DBUser != disk.DBUser},
-		{"database_password", running.DBPassword != disk.DBPassword}, {"web_password", running.WebPassword != disk.WebPassword},
-		{"database_init_size", running.DBInitSize != disk.DBInitSize}, {"database_max_size", running.DBMaxSize != disk.DBMaxSize},
-		{"database_dial_timeout_sec", running.DBDialTimeoutSec != disk.DBDialTimeoutSec},
-		{"database_read_timeout_sec", running.DBReadTimeoutSec != disk.DBReadTimeoutSec},
-		{"database_write_timeout_sec", running.DBWriteTimeoutSec != disk.DBWriteTimeoutSec},
-		{"database_conn_max_lifetime_sec", running.DBConnMaxLifetimeSec != disk.DBConnMaxLifetimeSec},
+		{"web_password", running.WebPassword != disk.WebPassword},
 		{"log_max_size_mb", running.LogMaxSizeMB != disk.LogMaxSizeMB}, {"log_max_backups", running.LogMaxBackups != disk.LogMaxBackups},
 		{"max_response_bytes", running.MaxResponseBytes != disk.MaxResponseBytes},
 	}
@@ -217,18 +171,14 @@ func (s *Server) loadDiskConfig() (*config.SysConfig, error) {
 	return cfg, nil
 }
 
-func (s *Server) writeExternalPorts(game, monitor, auction, point, relay int) (*config.SysConfig, error) {
+func (s *Server) writeExternalPort(game int) (*config.SysConfig, error) {
 	path := s.configPath()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	text := robotconfig.UpdateINIText(string(data), map[string]string{
-		"Ports.Game":    strconv.Itoa(game),
-		"Ports.Monitor": strconv.Itoa(monitor),
-		"Ports.Auction": strconv.Itoa(auction),
-		"Ports.Point":   strconv.Itoa(point),
-		"Ports.Relay":   strconv.Itoa(relay),
+		"Ports.Game": strconv.Itoa(game),
 	})
 	cfg, err := config.ParseConfig(text)
 	if err != nil {
