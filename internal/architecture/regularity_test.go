@@ -30,8 +30,6 @@ var forbiddenRuntimeArtifactSuffixes = []string{
 var sqlImportAllowedDirs = []string{
 	"cmd/robot",
 	"internal/foundation/sql",
-	"internal/foundation/dbstatus",
-	"internal/scheduler/repository",
 	"internal/composition/backend/s4a21",
 	"internal/protocol/dnf",
 }
@@ -379,7 +377,6 @@ func TestSchedulerLockResourcesUseNamedConstants(t *testing.T) {
 	root := repoRoot(t)
 	targets := []string{
 		filepath.Join(root, "internal", "scheduler"),
-		filepath.Join(root, "internal", "scheduler", "repository"),
 	}
 	for _, dir := range targets {
 		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {

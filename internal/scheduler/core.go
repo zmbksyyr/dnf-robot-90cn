@@ -12,7 +12,6 @@ import (
 	robottemplate "robot/internal/capability/robottemplate"
 	storecap "robot/internal/capability/store"
 	"robot/internal/foundation/config"
-	"robot/internal/foundation/dbstatus"
 	"robot/internal/foundation/lockhub"
 	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
@@ -24,7 +23,7 @@ import (
 type RobotManager struct {
 	mutationMu                      lockhub.RWLocker
 	actorMutationMu                 lockhub.Locker
-	database                        dbstatus.Database
+	database                        any
 	robotState                      robotstate.Directory
 	cfg                             *config.SysConfig
 	doll                            Runtime
@@ -211,7 +210,7 @@ type storeTitlePathValue struct {
 	path string
 }
 
-func NewRobotManager(database dbstatus.Database, cfg *config.SysConfig, doll Runtime) *RobotManager {
+func NewRobotManager(database any, cfg *config.SysConfig, doll Runtime) *RobotManager {
 	if doll == nil {
 		doll = noopRuntime{}
 	}
@@ -239,8 +238,8 @@ type allowGameCommandGate struct{}
 
 func (allowGameCommandGate) Check() error { return nil }
 
-// SetRobotStateDirectory injects backend-independent robot state. Native
-// callers may leave it unset and continue using the legacy repository.
+// SetRobotStateDirectory injects the adapter-owned robot state directory.
+// The S4A21 runtime installs this during adapter initialization.
 func (m *RobotManager) SetRobotStateDirectory(directory robotstate.Directory) {
 	if m == nil {
 		return
