@@ -46,10 +46,6 @@ func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (respon
 	if response, handled := handleSystemCommand(cmd, pkt, manager); handled {
 		return response
 	}
-	if response, handled := handleMarketCommand(cmd, pkt, manager); handled {
-		return response
-	}
-
 	logRobotActionf("unknown command: %s\n", cmd)
 	return wrapResult(map[string]interface{}{"ok": false, "error": "unknown command"})
 }
@@ -84,9 +80,6 @@ func commandCapabilities(cmd string) []shared.BackendCapability {
 	case "dangerousDeleteUnlock", "dangerousDeleteAsync":
 		return []shared.BackendCapability{shared.CapabilityDangerousDelete}
 	default:
-		if isMarketCommand(cmd) {
-			return []shared.BackendCapability{shared.CapabilityMarket}
-		}
 		return nil
 	}
 }
