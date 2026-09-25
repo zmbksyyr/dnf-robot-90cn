@@ -161,14 +161,15 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 			peer.nextSeqRoute[routeIndex] = 0
 			peer.epochRoute[routeIndex] = true
 		}
-		replies = append(replies, buildPartyUDP(peer.nextSeqRoute[routeIndex], selfSlot, 0, wireRoute, codec))
+		sequence := peer.nextSeqRoute[routeIndex]
+		replies = append(replies, partyUDPReplyCandidates(sequence, selfSlot, 0, wireRoute, codec)...)
 		peer.nextSeqRoute[routeIndex]++
 	case 0:
 		routeIndex := int(wireRoute)
 		if routeIndex > 1 {
 			routeIndex = 1
 		}
-		replies = append(replies, buildPartyUDP(peer.nextSeqRoute[routeIndex], selfSlot, 1, wireRoute, codec))
+		replies = append(replies, partyUDPReplyCandidates(peer.nextSeqRoute[routeIndex], selfSlot, 1, wireRoute, codec)...)
 		peer.nextSeqRoute[routeIndex]++
 	case 1:
 		if peer.pendingRoute[routeIndex] == nil {
@@ -178,8 +179,46 @@ func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnow
 			peer.pending, peer.pendingSeq = peer.pendingRoute[routeIndex], peer.pendingSeqRoute[routeIndex]
 		}
 		replies = append(replies, peer.pendingRoute[routeIndex])
+		candidate := buildPartyUDPWithChecksum(peer.pendingSeqRoute[routeIndex], selfSlot, 2, wireRoute, codec, partyUDPChecksum(selfSlot, 2, wireRoute))
+		if !sameBytes(candidate, peer.pendingRoute[routeIndex]) && codec.checksum != [4]byte{} {
+			replies = append(replies, candidate)
+		}
 	}
 	return replies
+}
+
+// A21 keeps a 4-byte session value in the request. Some clients expect that
+// value echoed, while patched clients validate the state checksum. Emit both
+// candidates with the same transport sequence; an invalid candidate is ignored
+// before it can advance the receive window.
+func partyUDPReplyCandidates(sequence uint32, sender, state, route byte, codec partyUDPCodec) [][]byte {
+	primary := buildPartyUDP(sequence, sender, state, route, codec)
+	if codec.checksum == [4]byte{} {
+		return [][]byte{primary}
+	}
+	candidate := buildPartyUDPWithChecksum(sequence, sender, state, route, codec, partyUDPChecksum(sender, state, route))
+	if sameBytes(candidate, primary) {
+		return [][]byte{primary}
+	}
+	return [][]byte{primary, candidate}
+}
+
+func buildPartyUDPWithChecksum(sequence uint32, sender, state, route byte, codec partyUDPCodec, checksum [4]byte) []byte {
+	copyCodec := codec
+	copyCodec.checksum = checksum
+	return buildPartyUDP(sequence, sender, state, route, copyCodec)
+}
+
+func sameBytes(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func decodePartyUDPBody(body []byte, sender, route byte, peer *partyUDPPeer) (byte, partyUDPCodec, byte, bool) {
