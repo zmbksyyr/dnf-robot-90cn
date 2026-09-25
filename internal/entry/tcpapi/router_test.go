@@ -110,7 +110,6 @@ func TestCommandCapabilitiesCoverBackendSpecificActions(t *testing.T) {
 		"partyDebugStop":        {shared.CapabilityPartyDebug},
 		"partyDebugStatus":      {shared.CapabilityPartyDebug},
 		"systemAnnouncement":    {shared.CapabilitySystemAnnouncement},
-		"keypairReleaseDefault": {shared.CapabilityKeypair},
 		"dangerousDeleteUnlock": {shared.CapabilityDangerousDelete},
 		"dangerousDeleteAsync":  {shared.CapabilityDangerousDelete},
 	}

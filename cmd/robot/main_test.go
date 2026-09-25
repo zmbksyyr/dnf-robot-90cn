@@ -89,8 +89,6 @@ func TestRequiresGameRuntime(t *testing.T) {
 		"systemStatus",
 		"systemAnnouncement",
 		"goroutineDump",
-		"keypairStatus",
-		"keypairReleaseDefault",
 		"autoStop",
 		"robotConfigGet",
 		"robotConfigUpdate",

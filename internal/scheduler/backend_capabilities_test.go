@@ -183,19 +183,6 @@ func TestSimulatorCleanupNeverFallsBackToNativeRepository(t *testing.T) {
 	}
 }
 
-func TestSimulatorKeypairOperationsAreRejectedWithStableCapabilityError(t *testing.T) {
-	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
-	if status := m.KeypairStatus(); !strings.Contains(status.Error, shared.CodeBackendCapabilityUnsupported) {
-		t.Fatalf("status = %+v, want stable unsupported keypair error", status)
-	}
-	_, err := m.ReleaseDefaultKeypair()
-	var unsupported shared.UnsupportedCapabilityError
-	if !errors.As(err, &unsupported) || unsupported.Operation != shared.CapabilityKeypair {
-		t.Fatalf("error = %v, want keypair unsupported", err)
-	}
-}
-
 type persistenceInspectorStub struct {
 	status shared.PersistenceStatus
 }

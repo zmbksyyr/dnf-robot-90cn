@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"robot/internal/capability/catalog"
-	"robot/internal/capability/keypair"
 	"robot/internal/capability/pvf"
 	"robot/internal/foundation/atomicfile"
 	"robot/internal/foundation/config"
@@ -40,7 +39,6 @@ func Init(cfg *config.SysConfig) error {
 	if err := ensureConfigRuntimeFiles(paths); err != nil {
 		return err
 	}
-	keypair.EnsureRuntimeKeypair(cfg)
 	if err := pvf.EnsureExports(cfg.DFGameR, paths.PVF, paths.Temp); err != nil {
 		return err
 	}
@@ -95,9 +93,6 @@ func releaseBackendDefaults(paths layout.Paths, backend shared.BackendInfo) erro
 		configName = "robot_config_s4a21.ini"
 	}
 	names = append(names, configName)
-	if backend.Supports(shared.CapabilityKeypair) {
-		names = append(names, "privatekey.pem", "publickey.pem")
-	}
 	if backend.Supports(shared.CapabilitySkill) {
 		names = append(names, "party_skill_catalog.json")
 	}
@@ -124,9 +119,6 @@ func releaseBackendDefaults(paths layout.Paths, backend shared.BackendInfo) erro
 			return err
 		}
 		mode := fs.FileMode(0644)
-		if releaseName == "privatekey.pem" {
-			mode = 0600
-		}
 		if _, err := atomicfile.WriteFileIfMissing(dst, data, mode); err != nil {
 			return err
 		}
@@ -181,9 +173,6 @@ func releaseDefaults(paths layout.Paths) error {
 			return err
 		}
 		mode := fs.FileMode(0644)
-		if name == "privatekey.pem" {
-			mode = 0600
-		}
 		_, err = atomicfile.WriteFileIfMissing(dst, data, mode)
 		return err
 	})

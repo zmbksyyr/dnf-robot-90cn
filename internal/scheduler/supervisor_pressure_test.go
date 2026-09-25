@@ -113,11 +113,6 @@ func TestSupervisorBreakerPreservesHealthyActorCapacity(t *testing.T) {
 	manager.cfg.DFGameR = filepath.Join(t.TempDir(), "df_game_r")
 	manager.cfg.RobotConnectIP = "127.0.0.1"
 	manager.cfg.RobotGamePort = listener.Addr().(*net.TCPAddr).Port
-	status, err := manager.ReleaseDefaultKeypair()
-	if err != nil || !status.GameValid {
-		t.Fatalf("prepare keypair: status=%+v err=%v", status, err)
-	}
-
 	now := time.Now()
 	manager.autoMu.Lock()
 	manager.autoEnabled = true
@@ -164,11 +159,6 @@ func TestSupervisorBreakerStillConvergesDownToTarget(t *testing.T) {
 	manager.cfg.DFGameR = filepath.Join(t.TempDir(), "df_game_r")
 	manager.cfg.RobotConnectIP = "127.0.0.1"
 	manager.cfg.RobotGamePort = listener.Addr().(*net.TCPAddr).Port
-	status, err := manager.ReleaseDefaultKeypair()
-	if err != nil || !status.GameValid {
-		t.Fatalf("prepare keypair: status=%+v err=%v", status, err)
-	}
-
 	now := time.Now()
 	manager.autoMu.Lock()
 	manager.autoEnabled = true

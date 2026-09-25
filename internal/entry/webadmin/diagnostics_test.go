@@ -27,30 +27,6 @@ func TestDiagnosticsSectionStatusUsesWorstCheck(t *testing.T) {
 	}
 }
 
-func TestAuctionGuardCheckSkipsLaunchersWithoutDP2(t *testing.T) {
-	dir := t.TempDir()
-	launcher := filepath.Join(dir, "run")
-	if err := os.WriteFile(launcher, []byte("./df_game_r cain01 start &\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	check := auctionGuardCheck(filepath.Join(dir, "df_game_r.js"), launcher)
-	if check.Status != diagOK || check.Message != "auction guard is not applicable to this launcher" {
-		t.Fatalf("check=%+v", check)
-	}
-}
-
-func TestAuctionGuardCheckWarnsWhenDP2ScriptIsMissing(t *testing.T) {
-	dir := t.TempDir()
-	launcher := filepath.Join(dir, "run")
-	if err := os.WriteFile(launcher, []byte("LD_PRELOAD=/dp2/libdp2pre.so ./df_game_r cain01 start &\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	check := auctionGuardCheck(filepath.Join(dir, "df_game_r.js"), launcher)
-	if check.Status != diagWarn {
-		t.Fatalf("check=%+v", check)
-	}
-}
-
 func TestCompareFileHashCheckDetectsMismatch(t *testing.T) {
 	dir := t.TempDir()
 	a := filepath.Join(dir, "a.dat")

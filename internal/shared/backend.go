@@ -34,7 +34,6 @@ const (
 	CapabilityDangerousDelete    BackendCapability = "dangerous_delete"
 	CapabilityMailboxGuard       BackendCapability = "mailbox_guard"
 	CapabilityMailNotification   BackendCapability = "mail_notification"
-	CapabilityKeypair            BackendCapability = "keypair"
 	CapabilityDatabase           BackendCapability = "database"
 	CapabilityDiagnostics        BackendCapability = "diagnostics"
 	CapabilitySystemAnnouncement BackendCapability = "system_announcement"
@@ -141,7 +140,7 @@ func CapabilityMatrix(status CapabilityStatus) map[BackendCapability]CapabilityS
 		CapabilityPartyCompatibility, CapabilityPartyDebug, CapabilitySkill,
 		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityMailboxGuard,
 		CapabilityMailNotification,
-		CapabilityKeypair, CapabilityDatabase, CapabilityDiagnostics,
+		CapabilityDatabase, CapabilityDiagnostics,
 		CapabilitySystemAnnouncement, CapabilityServiceControl,
 	} {
 		capabilities[capability] = status

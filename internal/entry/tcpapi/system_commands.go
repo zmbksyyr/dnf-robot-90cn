@@ -36,7 +36,7 @@ func handleSystemCommand(cmd, pkt string, manager *scheduler.RobotManager) (stri
 	case "dashboardStatus":
 		return wrapResult(map[string]interface{}{"ok": true, "result": map[string]interface{}{
 			"auto": manager.AutoStatus(), "system": manager.SystemStatus(), "scheduler": manager.SchedulerStatus(),
-			"database": manager.DatabaseStatus(), "keypair": manager.KeypairStatus(),
+			"database": manager.DatabaseStatus(),
 		}}), true
 	case "autoStatus":
 		return wrapResult(map[string]interface{}{"ok": true, "result": manager.AutoStatus()}), true
@@ -53,17 +53,6 @@ func handleSystemCommand(cmd, pkt string, manager *scheduler.RobotManager) (stri
 	case "databaseStatus":
 		status := manager.DatabaseStatus()
 		return wrapResult(map[string]interface{}{"ok": status.Error == "", "error": status.Error, "result": status}), true
-	case "keypairStatus":
-		status := manager.KeypairStatus()
-		return wrapResult(map[string]interface{}{"ok": status.Error == "", "error": func() string {
-			if status.Error != "" {
-				return status.Error
-			}
-			return ""
-		}(), "result": status}), true
-	case "keypairReleaseDefault":
-		res, err := manager.ReleaseDefaultKeypair()
-		return wrapResult(map[string]interface{}{"ok": err == nil, "error": errString(err), "result": res}), true
 	default:
 		return "", false
 	}

@@ -15,8 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"robot/internal/capability/keypair"
-	"robot/internal/capability/marketapp"
 	"robot/internal/foundation/config"
 	"robot/internal/foundation/dbstatus"
 	"robot/internal/foundation/layout"
@@ -66,11 +64,6 @@ const (
 	diagOK    = "ok"
 	diagWarn  = "warn"
 	diagError = "error"
-
-	diagnosticsDFGameRJSPath     = "/dp2/df_game_r.js"
-	diagnosticsServerRunPath     = "/root/run"
-	diagnosticsAuctionGuardBegin = "// DP2_AUCTION_SEARCH_HOOK_GUARD_BEGIN"
-	diagnosticsAuctionGuardEnd   = "// DP2_AUCTION_SEARCH_HOOK_GUARD_END"
 )
 
 func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +93,6 @@ func (s *Server) buildDiagnostics() diagnosticsReport {
 	b.addRuntimeSection()
 	b.addFileSection()
 	b.addDatabaseSection()
-	b.addMarketSection()
 	b.addPartySection()
 	b.addSkillSection()
 	b.addLogSection()
@@ -173,17 +165,6 @@ func (b *diagnosticsBuilder) addRuntimeSection() {
 	} else {
 		checks = append(checks, diagnosticsCheck{Name: "robot api systemStatus", Status: diagError, Message: err.Error(), Expected: b.server.robotAddr})
 	}
-	st := keypair.BuildKeypairStatus(cfg)
-	keyStatus := diagOK
-	keyMsg := "game keypair is valid"
-	if !st.GameValid {
-		keyStatus = diagError
-		keyMsg = st.Error
-		if strings.TrimSpace(keyMsg) == "" {
-			keyMsg = st.KeyReason
-		}
-	}
-	checks = append(checks, diagnosticsCheck{Name: "RSA keypair", Status: keyStatus, Message: keyMsg, Observed: st})
 	b.addSection("Runtime / Ports", checks...)
 }
 
@@ -251,24 +232,6 @@ func (b *diagnosticsBuilder) addFileSection() {
 	checks = append(checks, compareFileHashCheck("auction iteminfo matches pvf export", runtimePaths.PVFItemInfo(), auctionItemInfo))
 	checks = append(checks, compareFileHashCheck("point iteminfo matches pvf export", runtimePaths.PVFItemInfo(), pointItemInfo))
 	b.addSection("Files / PVF / ItemInfo", checks...)
-}
-
-func (b *diagnosticsBuilder) addMarketSection() {
-	checks := []diagnosticsCheck{}
-	if raw, err := callRobot(b.server.robotAddr, "marketStatus", nil, 8*time.Second, b.cfg.MaxResponseBytes); err == nil {
-		status := parseRobotResult(raw)
-		checks = append(checks, diagnosticsCheck{Name: "marketStatus", Status: diagOK, Message: "market API responded", Observed: status})
-		checks = append(checks, marketStatusChecks(status)...)
-	} else {
-		checks = append(checks, diagnosticsCheck{Name: "marketStatus", Status: diagWarn, Message: err.Error()})
-	}
-	runScript := strings.TrimSpace(b.cfg.ServiceRunScript)
-	if runScript == "" {
-		runScript = diagnosticsServerRunPath
-	}
-	checks = append(checks, auctionGuardCheck(diagnosticsDFGameRJSPath, runScript))
-	checks = append(checks, auctionMemoryPatchReadOnlyCheck())
-	b.addSection("Market", checks...)
 }
 
 func (b *diagnosticsBuilder) addLogSection() {
@@ -595,113 +558,6 @@ func md5File(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
-func marketStatusChecks(status interface{}) []diagnosticsCheck {
-	root, _ := status.(map[string]interface{})
-	result, _ := root["result"].(map[string]interface{})
-	if result == nil {
-		result = root
-	}
-	checks := []diagnosticsCheck{}
-	if ready, _ := result["ready"].(bool); !ready {
-		checks = append(checks, diagnosticsCheck{Name: "market ready", Status: diagWarn, Message: "market app did not report ready", Observed: result["ready"]})
-	} else {
-		checks = append(checks, diagnosticsCheck{Name: "market ready", Status: diagOK, Message: "market app ready"})
-	}
-	if item, _ := result["iteminfo"].(map[string]interface{}); item != nil {
-		status := diagOK
-		msg := "iteminfo status has no error"
-		if errText, _ := item["error"].(string); errText != "" {
-			status = diagError
-			msg = errText
-		}
-		checks = append(checks, diagnosticsCheck{Name: "market iteminfo status", Status: status, Message: msg, Observed: item})
-	}
-	if services, _ := result["services"].(map[string]interface{}); services != nil {
-		names := make([]string, 0, len(services))
-		for name := range services {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			svc, _ := services[name].(map[string]interface{})
-			ready := svc["status"] == "ready" && svc["listening"] == true
-			status := diagOK
-			msg := "service ready"
-			if !ready {
-				status = diagError
-				msg = "service is not ready"
-			}
-			checks = append(checks, diagnosticsCheck{Name: "market service " + name, Status: status, Message: msg, Observed: svc})
-		}
-	}
-	if policies, _ := result["policy"].(map[string]interface{}); policies != nil {
-		names := make([]string, 0, len(policies))
-		for name := range policies {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			policy, _ := policies[name].(map[string]interface{})
-			health, _ := policy["health"].(string)
-			status := diagOK
-			msg := "policy healthy"
-			if health != "" && health != "ok" && health != "healthy" {
-				status = diagWarn
-				msg = "policy reports " + health
-			}
-			checks = append(checks, diagnosticsCheck{Name: "market policy " + name, Status: status, Message: msg, Observed: policy})
-		}
-	}
-	return checks
-}
-
-func auctionGuardCheck(path, launcherPath string) diagnosticsCheck {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			launcher, launcherErr := os.ReadFile(launcherPath)
-			if launcherErr == nil && !bytes.Contains(launcher, []byte("libdp2pre.so")) && !bytes.Contains(launcher, []byte(path)) {
-				return diagnosticsCheck{
-					Name:     "auction guard",
-					Status:   diagOK,
-					Message:  "auction guard is not applicable to this launcher",
-					Observed: map[string]interface{}{"path": path, "launcher": launcherPath},
-				}
-			}
-		}
-		return diagnosticsCheck{Name: "auction guard", Status: diagWarn, Message: err.Error(), Expected: path}
-	}
-	status := diagWarn
-	msg := "auction guard is not installed"
-	if bytes.Contains(data, []byte(diagnosticsAuctionGuardBegin)) && bytes.Contains(data, []byte(diagnosticsAuctionGuardEnd)) {
-		status = diagOK
-		msg = "auction guard is installed"
-	}
-	return diagnosticsCheck{Name: "auction guard", Status: status, Message: msg, Observed: map[string]interface{}{"path": path, "size": len(data)}}
-}
-
-func auctionMemoryPatchReadOnlyCheck() diagnosticsCheck {
-	result, err := marketapp.InspectAuctionMemoryPatch()
-	if err != nil {
-		return diagnosticsCheck{Name: "auction memory patch", Status: diagWarn, Message: err.Error()}
-	}
-	ok := 0
-	entries := map[string]interface{}{}
-	for _, entry := range result.Entries {
-		entries[entry.Name] = map[string]interface{}{"address": entry.Address, "byte": fmt.Sprintf("0x%02x", entry.After), "message": entry.Message}
-		if entry.OK {
-			ok++
-		}
-	}
-	status := diagOK
-	msg := "auction memory patch appears active"
-	if ok != len(result.Entries) || len(result.Entries) == 0 {
-		status = diagWarn
-		msg = fmt.Sprintf("patched bytes %d/%d", ok, len(result.Entries))
-	}
-	return diagnosticsCheck{Name: "auction memory patch", Status: status, Message: msg, Observed: map[string]interface{}{"pid": result.PID, "entries": entries}}
 }
 
 func portDialCheck(name, host string, port int) diagnosticsCheck {

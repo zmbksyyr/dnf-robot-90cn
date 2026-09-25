@@ -17,7 +17,6 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "native party diagnostics are not applicable to S4A21"}
 	capabilities[shared.CapabilityMailboxGuard] = shared.CapabilityStatus{Reason: "native mailbox memory patches are not applicable to S4A21"}
 	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "native mailbox notification transport is not applicable to S4A21"}
-	capabilities[shared.CapabilityKeypair] = shared.CapabilityStatus{Reason: "native RSA keypair is not applicable to S4A21"}
 	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "native runtime diagnostics are not available for S4A21"}
 	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}

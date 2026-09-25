@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"robot/internal/capability/catalog"
-	"robot/internal/capability/keypair"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	robottemplate "robot/internal/capability/robottemplate"
@@ -41,20 +40,6 @@ func (m *RobotManager) RuntimeFileEntries() []filewatch.Entry {
 		}})
 	}
 	return entries
-}
-
-func (m *RobotManager) ReleaseDefaultKeypair() (keypair.KeypairStatus, error) {
-	if err := m.requireBackendCapability(shared.CapabilityKeypair); err != nil {
-		return keypair.KeypairStatus{}, err
-	}
-	return keypair.ReleaseDefault(m.cfg)
-}
-
-func (m *RobotManager) KeypairStatus() keypair.KeypairStatus {
-	if err := m.requireBackendCapability(shared.CapabilityKeypair); err != nil {
-		return keypair.KeypairStatus{Error: err.Error()}
-	}
-	return keypair.CurrentStatus(m.cfg)
 }
 
 func (m *RobotManager) RobotConfig() (robotcap.ConfigResult, error) {

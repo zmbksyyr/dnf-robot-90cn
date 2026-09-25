@@ -75,8 +75,6 @@ func commandCapabilities(cmd string) []shared.BackendCapability {
 		return []shared.BackendCapability{shared.CapabilityPartyDebug}
 	case "systemAnnouncement":
 		return []shared.BackendCapability{shared.CapabilitySystemAnnouncement}
-	case "keypairReleaseDefault":
-		return []shared.BackendCapability{shared.CapabilityKeypair}
 	case "dangerousDeleteUnlock", "dangerousDeleteAsync":
 		return []shared.BackendCapability{shared.CapabilityDangerousDelete}
 	default:
