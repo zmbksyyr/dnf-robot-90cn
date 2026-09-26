@@ -373,6 +373,76 @@ func TestWebRuntimeDoesNotUseBackendTypeGuards(t *testing.T) {
 	}
 }
 
+func TestSchedulerHasOneRuntimeStatusCacheOwner(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "internal", "scheduler")
+	owners := 0
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			structType, ok := node.(*ast.StructType)
+			if !ok {
+				return true
+			}
+			for _, field := range structType.Fields.List {
+				if !isRuntimeStatusMap(field.Type) {
+					continue
+				}
+				allowed := filepath.Base(path) == "runtime_status.go" && len(field.Names) == 1 && field.Names[0].Name == "snapshot"
+				if !allowed {
+					t.Errorf("%s declares a parallel runtime-status cache field; runtimeStateTable.snapshot is the sole owner", path)
+					continue
+				}
+				owners++
+			}
+			return false
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk scheduler: %v", err)
+	}
+	if owners != 1 {
+		t.Fatalf("runtime-status cache owners = %d, want exactly 1", owners)
+	}
+	runtimeSource, err := os.ReadFile(filepath.Join(dir, "runtime_status.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(runtimeSource), "robotcap.CopyRuntimeStatusMap(status)") {
+		t.Fatal("adapter runtime state must be copied at runtimeStateTable ingress")
+	}
+}
+
+func TestWebConsumesSchedulerRuntimeProjections(t *testing.T) {
+	root := repoRoot(t)
+	appPath := filepath.Join(root, "internal", "entry", "webadmin", "assets", "app.js")
+	data, err := os.ReadFile(appPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	for _, required := range []string{"api('dashboardStatus')", "api('robotsStatus'"} {
+		if !strings.Contains(content, required) {
+			t.Errorf("Web runtime projection is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{"RuntimeStatusMap", "/api/runtime-status", "actorRuntime", "runtimeStatusCache"} {
+		if strings.Contains(content, forbidden) {
+			t.Errorf("Web builds an alternate runtime-state source with token %q", forbidden)
+		}
+	}
+}
+
 func TestSchedulerLockResourcesUseNamedConstants(t *testing.T) {
 	root := repoRoot(t)
 	targets := []string{
@@ -460,6 +530,25 @@ func selectorNamed(expr ast.Expr, name string) bool {
 func isStringLiteral(expr ast.Expr) bool {
 	lit, ok := expr.(*ast.BasicLit)
 	return ok && lit.Kind == token.STRING
+}
+
+func isRuntimeStatusMap(expr ast.Expr) bool {
+	mapType, ok := expr.(*ast.MapType)
+	if !ok {
+		return false
+	}
+	key, ok := mapType.Key.(*ast.Ident)
+	if !ok || key.Name != "int" {
+		return false
+	}
+	switch value := mapType.Value.(type) {
+	case *ast.SelectorExpr:
+		return value.Sel.Name == "RuntimeStatus"
+	case *ast.Ident:
+		return value.Name == "RuntimeStatus"
+	default:
+		return false
+	}
 }
 
 func pathUnderAny(root string, path string, dirs []string) bool {
