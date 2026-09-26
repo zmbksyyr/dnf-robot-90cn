@@ -1,8 +1,6 @@
 package pvf
 
 import (
-	"encoding/json"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -22,19 +20,6 @@ var (
 
 func setSkillStateCatalog(entries []SkillState) {
 	shared.SetSkillStates(entries)
-}
-
-func loadSkillStateCatalog(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	var entries []SkillState
-	if err := json.Unmarshal(data, &entries); err != nil {
-		return err
-	}
-	setSkillStateCatalog(entries)
-	return nil
 }
 
 func extractSkillStateCatalog(archive *pvfArchive) []SkillState {

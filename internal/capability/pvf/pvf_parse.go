@@ -3,7 +3,6 @@ package pvf
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -345,49 +344,6 @@ func explicitPVFSetKey(body string) string {
 	return ""
 }
 
-func pathSetKey(path string, itemType int) string {
-	p := strings.TrimSuffix(normalizePVFPath(path), filepath.Ext(path))
-	parts := strings.Split(p, "/")
-	if len(parts) <= 2 {
-		return ""
-	}
-	parts = parts[:len(parts)-1]
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part == "" || itemTypePathSegment(part) {
-			continue
-		}
-		out = append(out, part)
-	}
-	if len(out) < 2 {
-		return ""
-	}
-	return strings.Join(out, "/")
-}
-
-func nameSetKey(body string, itemType int) string {
-	lines := splitPVFLines(body)
-	for i, line := range lines {
-		if line != "[name]" {
-			continue
-		}
-		name := cleanPVFString(nextLine(lines, i))
-		if name == "" || strings.EqualFold(name, "ErrorString") {
-			return ""
-		}
-		name = strings.ToLower(name)
-		for _, word := range itemTypeWords(itemType) {
-			name = strings.ReplaceAll(name, word, "")
-		}
-		name = strings.Join(strings.Fields(name), "")
-		if len([]rune(name)) < 2 {
-			return ""
-		}
-		return name
-	}
-	return ""
-}
-
 // Some simulator PVFs do not expose avatar set-master records. Their item names
 // still carry a shared theme while color and slot words differ per slot.
 func attachAvatarNameFamilies(items []shared.EquipmentCatalogItem) {
@@ -530,67 +486,6 @@ func avatarNameFamily(value string) string {
 		return ""
 	}
 	return value
-}
-
-func itemTypePathSegment(part string) bool {
-	switch strings.ToLower(part) {
-	case "weapon", "titlename", "title", "coat", "shoulder", "pants", "shoes", "waist", "belt",
-		"amulet", "necklace", "wrist", "bracelet", "ring", "support", "magicstone", "magic stone", "magic_stone",
-		"cap", "hat", "hair", "face", "neck", "skin", "aura",
-		"artifact", "redartifact", "blueartifact", "greenartifact", "red_artifact", "blue_artifact", "green_artifact":
-		return true
-	default:
-		return false
-	}
-}
-
-func itemTypeWords(itemType int) []string {
-	switch itemType {
-	case 1:
-		return []string{"weapon"}
-	case 2:
-		return []string{"title", "titlename", "title name"}
-	case 3, 23:
-		return []string{"coat"}
-	case 4:
-		return []string{"shoulder"}
-	case 5, 24:
-		return []string{"pants"}
-	case 6, 25:
-		return []string{"shoes"}
-	case 7, 27:
-		return []string{"waist", "belt"}
-	case 8:
-		return []string{"amulet", "necklace"}
-	case 9:
-		return []string{"wrist", "bracelet"}
-	case 10:
-		return []string{"ring"}
-	case 11:
-		return []string{"support"}
-	case 12:
-		return []string{"magicstone", "magic stone", "magic_stone"}
-	case 20:
-		return []string{"cap", "hat"}
-	case 21:
-		return []string{"hair"}
-	case 22:
-		return []string{"face"}
-	case 26:
-		return []string{"neck", "breast"}
-	case 28:
-		return []string{"skin"}
-	case 29:
-		return []string{"aura"}
-	case 31:
-		return []string{"artifact red", "redartifact", "red_artifact"}
-	case 32:
-		return []string{"artifact blue", "blueartifact", "blue_artifact"}
-	case 33:
-		return []string{"artifact green", "greenartifact", "green_artifact"}
-	default:
-		return nil
-	}
 }
 
 func shortHash(value string) string {
@@ -872,31 +767,6 @@ func pvfTagLine(line string) (name string, closing, ok bool) {
 		return "", false, false
 	}
 	return strings.ToLower(name), closing, true
-}
-
-func pvfTagInts(body, tag string) []int {
-	lines := splitPVFLines(body)
-	want := strings.ToLower(strings.TrimSpace(tag))
-	for i, line := range lines {
-		if strings.ToLower(cleanPVFString(line)) != want {
-			continue
-		}
-		var out []int
-		for _, valueLine := range lines[i+1:] {
-			trimmed := strings.Trim(strings.TrimSpace(valueLine), "`")
-			if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-				break
-			}
-			for _, field := range strings.Fields(trimmed) {
-				value, err := strconv.Atoi(field)
-				if err == nil {
-					out = append(out, value)
-				}
-			}
-		}
-		return out
-	}
-	return nil
 }
 
 func parseJobs(text string) []int {

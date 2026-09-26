@@ -127,48 +127,6 @@ func (a *pvfArchive) loadStringTable() {
 	}
 }
 
-func extractPVFData(a *pvfArchive) ([]shared.EquipmentCatalogItem, []shared.EquipmentCatalogItem, []shared.MapCatalogItem) {
-	equipment := extractItemList(a, "equipment/equipment.lst", "equipment/", false)
-	equipment = appendItemInfoCreatureArtifacts(equipment, a.text("etc/iteminfo.dat"))
-	stackable := extractItemList(a, "stackable/stackable.lst", "stackable/", true)
-	maps := extractMapList(a, "town/town.lst", "town/")
-	return equipment, stackable, maps
-}
-
-func extractPVFLevelExp(a *pvfArchive) ([]int, error) {
-	if a == nil {
-		return nil, fmt.Errorf("PVF archive is nil")
-	}
-	text := a.text("character/exptable.tbl")
-	if strings.TrimSpace(text) == "" {
-		return nil, fmt.Errorf("PVF character experience table is missing")
-	}
-	// The PVF table starts at level 2. Keep indexes equal to character levels so
-	// callers cannot accidentally shift the curve by one level.
-	values := []int{0, 0}
-	for _, field := range strings.Fields(text) {
-		value, err := strconv.Atoi(field)
-		if err != nil {
-			continue
-		}
-		values = append(values, value)
-	}
-	if len(values) < 3 {
-		return nil, fmt.Errorf("PVF character experience table has no level values")
-	}
-	for level := 2; level < len(values); level++ {
-		if values[level] < values[level-1] {
-			// Some PVFs append a reset or unsupported-level segment after
-			// the usable accumulated-experience curve. Keep the verified monotonic
-			// prefix; character creation still fails explicitly if configured above
-			// the last exported level.
-			values = values[:level]
-			break
-		}
-	}
-	return values, nil
-}
-
 func appendItemInfoCreatureArtifacts(equipment []shared.EquipmentCatalogItem, rawItemInfo string) []shared.EquipmentCatalogItem {
 	rows := parseItemInfoRows(normalizeItemInfoRows(rawItemInfo))
 	if len(rows) == 0 {
@@ -453,33 +411,6 @@ func (a *pvfArchive) text(path string) string {
 		return a.decodeScript(f.Data)
 	}
 	return cleanPVFString(charset.DecodePVFBytes(f.Data))
-}
-
-func (a *pvfArchive) townMapText(path string) string {
-	path = normalizePVFPath(path)
-	if _, ok := a.files[path]; ok {
-		return a.text(path)
-	}
-	slash := strings.LastIndex(path, "/")
-	regionalPath := path[:slash+1] + "(r)" + path[slash+1:]
-	return a.text(regionalPath)
-}
-
-func (a *pvfArchive) textWithExt(path string, exts ...string) (string, string) {
-	path = normalizePVFPath(path)
-	if text := a.text(path); text != "" {
-		return path, text
-	}
-	for _, ext := range exts {
-		if strings.HasSuffix(path, ext) {
-			continue
-		}
-		candidate := path + ext
-		if text := a.text(candidate); text != "" {
-			return candidate, text
-		}
-	}
-	return path, ""
 }
 
 func (a *pvfArchive) decodeScript(data []byte) string {
