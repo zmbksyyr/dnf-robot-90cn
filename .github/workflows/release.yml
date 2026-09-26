@@ -34,14 +34,11 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path dist/package | Out-Null
 
-      - name: Build Linux and Windows robots
+      - name: Build Windows robot
         shell: pwsh
         run: |
           $env:CGO_ENABLED = "0"
           $env:GOARCH = "amd64"
-
-          $env:GOOS = "linux"
-          go build -trimpath -buildvcs=false -ldflags="-s -w" -o dist/package/robot ./cmd/robot
 
           $env:GOOS = "windows"
           go build -trimpath -buildvcs=false -ldflags="-s -w" -o dist/package/robot.exe ./cmd/robot
