@@ -162,7 +162,7 @@ func createLiveSessionParty(t *testing.T, ctx context.Context, leader *Session, 
 		}
 	})
 	defer cleanup()
-	settings := []byte{0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
+	settings := protocol.OrdinaryPartySettings()
 	if err := leader.client.SetPartyInfo(ctx, settings); err != nil {
 		t.Fatal(err)
 	}

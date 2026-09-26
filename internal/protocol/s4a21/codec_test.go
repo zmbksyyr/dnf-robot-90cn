@@ -275,3 +275,21 @@ func TestParseGuildInviteRejectsMalformedIdentityAndLength(t *testing.T) {
 		}
 	}
 }
+
+func TestOrdinaryPartySettingsUsesServiceCapacity(t *testing.T) {
+	settings := OrdinaryPartySettings()
+	if len(settings) != 12 {
+		t.Fatalf("party settings length = %d, want 12", len(settings))
+	}
+	// The service parses UserMax from index 2 of the create form.
+	if settings[2] != 4 {
+		t.Fatalf("party UserMax byte = %d, want 4", settings[2])
+	}
+	settings[2] = 9
+	if OrdinaryPartySettings()[2] != 4 {
+		t.Fatal("OrdinaryPartySettings returned shared state")
+	}
+	if _, err := SetPartyInfoBody(OrdinaryPartySettings()); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -427,6 +427,14 @@ func SendMessageBody(mode byte, targetUID uint16, targetCharacterID uint32, mess
 	return out, nil
 }
 
+// OrdinaryPartySettings returns the server-verified 12-byte SET_PARTY_INFO
+// block for a standard four-member party. The service parses UserMax from
+// index 2 and rejects invites once a party reaches that capacity, so a wrong
+// capacity silently turns every invite into "party_full".
+func OrdinaryPartySettings() []byte {
+	return []byte{0x00, 0x02, 0x04, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0xFF, 0xFF}
+}
+
 // SetPartyInfoBody returns the captured 12-byte A21 party-settings form.
 // The edit form contains an additional title dstring and is deliberately not
 // synthesized here until a complete client request path is verified.

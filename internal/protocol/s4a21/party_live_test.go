@@ -26,7 +26,7 @@ func TestLivePartyProbe(t *testing.T) {
 	defer right.Close()
 	t.Logf("party probe sessions: leftCID=%d rightCID=%d", leftCID, rightCID)
 
-	settings := []byte{0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
+	settings := OrdinaryPartySettings()
 	if err := left.SetPartyInfo(ctx, settings); err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func establishLivePreparedFollowerParty(t *testing.T, ctx context.Context, addre
 	prepareLiveDungeonFollower(t, ctx, leader, prefix+"-a")
 	prepareLiveDungeonFollower(t, ctx, member, prefix+"-b")
 
-	settings := []byte{0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
+	settings := OrdinaryPartySettings()
 	if err := leader.SetPartyInfo(ctx, settings); err != nil {
 		leader.Close()
 		member.Close()
@@ -286,7 +286,7 @@ func establishLiveParty(t *testing.T, ctx context.Context, address, prefix strin
 	t.Helper()
 	leader, leaderCID := livePartyProbeSession(t, ctx, address, prefix+"-a")
 	member, memberCID := livePartyProbeSession(t, ctx, address, prefix+"-b")
-	settings := []byte{0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
+	settings := OrdinaryPartySettings()
 	if err := leader.SetPartyInfo(ctx, settings); err != nil {
 		leader.Close()
 		member.Close()
