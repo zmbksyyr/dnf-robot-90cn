@@ -16,7 +16,6 @@ func (s *Server) handleGamePort(w http.ResponseWriter, _ *http.Request) {
 		"ok":           true,
 		"addr":         net.JoinHostPort(cfg.RobotConnectIP, strconv.Itoa(cfg.RobotGamePort)),
 		"game_port":    cfg.RobotGamePort,
-		"max_user_num": 600,
 	})
 }
 
