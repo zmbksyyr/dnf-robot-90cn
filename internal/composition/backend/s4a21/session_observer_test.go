@@ -44,26 +44,41 @@ func TestSessionPacketObserverReceivesDrainPackets(t *testing.T) {
 	}
 }
 
-func TestSessionStalePacketObserverCleanupDoesNotClearReplacement(t *testing.T) {
+func TestSessionPacketObserversCoexist(t *testing.T) {
 	session := &Session{}
 	first := make(chan protocol.Packet, 1)
 	second := make(chan protocol.Packet, 1)
 	cleanupFirst := session.setPacketObserver(func(packet protocol.Packet) { first <- packet })
 	cleanupSecond := session.setPacketObserver(func(packet protocol.Packet) { second <- packet })
-	cleanupFirst()
+
 	session.dispatchPacket(protocol.Packet{Type: 0x001E})
-	select {
-	case <-first:
-		t.Fatal("stale observer received packet")
-	default:
+	for name, channel := range map[string]chan protocol.Packet{"first": first, "second": second} {
+		select {
+		case packet := <-channel:
+			if packet.Type != 0x001E {
+				t.Fatalf("%s observer packet = %+v", name, packet)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s observer did not receive the packet", name)
+		}
 	}
+
+	// Removing one registration must leave the other active.
+	cleanupFirst()
+	session.dispatchPacket(protocol.Packet{Type: 0x001F})
 	select {
 	case packet := <-second:
-		if packet.Type != 0x001E {
-			t.Fatalf("replacement observer packet = %+v", packet)
+		if packet.Type != 0x001F {
+			t.Fatalf("second observer packet = %+v", packet)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("replacement observer was cleared by stale cleanup")
+		t.Fatal("second observer was removed by another registration's cleanup")
 	}
 	cleanupSecond()
+	session.dispatchPacket(protocol.Packet{Type: 0x0020})
+	select {
+	case packet := <-second:
+		t.Fatalf("cleaned observer still received %+v", packet)
+	default:
+	}
 }

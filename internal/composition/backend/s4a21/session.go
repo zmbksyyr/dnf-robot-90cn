@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"robot/internal/foundation/charset"
@@ -31,7 +32,7 @@ type Session struct {
 	keepaliveDone      chan struct{}
 	guildInviteEvents  chan protocol.GuildInvite
 	packetObserverLock lockhub.RWLocker
-	packetObserver     *packetObserverRegistration
+	packetObservers    []*packetObserverRegistration
 	terminationGuard   lockhub.Locker
 	termination        func()
 	dungeonStateGuard  lockhub.Locker
@@ -300,20 +301,28 @@ func (s *Session) signalTermination() {
 // setPacketObserver is intentionally private to the S4A21 adapter. It gives a
 // future verified dungeon workflow a narrow way to consume packets already
 // owned by the session drain, without exposing raw packets to shared layers.
+// Registrations are additive: overlapping waiters (move, follower preparation,
+// dungeon workflow) must not steal each other's confirmation packets.
 func (s *Session) setPacketObserver(observer func(protocol.Packet)) func() {
 	if s == nil {
 		return func() {}
 	}
 	registration := &packetObserverRegistration{fn: observer}
 	s.packetObserverLock.Lock()
-	s.packetObserver = registration
+	s.packetObservers = append(s.packetObservers, registration)
 	s.packetObserverLock.Unlock()
+	var once sync.Once
 	return func() {
-		s.packetObserverLock.Lock()
-		if s.packetObserver == registration {
-			s.packetObserver = nil
-		}
-		s.packetObserverLock.Unlock()
+		once.Do(func() {
+			s.packetObserverLock.Lock()
+			for index, candidate := range s.packetObservers {
+				if candidate == registration {
+					s.packetObservers = append(s.packetObservers[:index], s.packetObservers[index+1:]...)
+					break
+				}
+			}
+			s.packetObserverLock.Unlock()
+		})
 	}
 }
 
@@ -361,10 +370,12 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 		}
 	}
 	s.packetObserverLock.RLock()
-	observer := s.packetObserver
+	observers := append([]*packetObserverRegistration(nil), s.packetObservers...)
 	s.packetObserverLock.RUnlock()
-	if observer != nil && observer.fn != nil {
-		observer.fn(packet)
+	for _, observer := range observers {
+		if observer != nil && observer.fn != nil {
+			observer.fn(packet)
+		}
 	}
 }
 
