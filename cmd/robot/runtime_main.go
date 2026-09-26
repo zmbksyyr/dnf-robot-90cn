@@ -20,6 +20,7 @@ import (
 	"robot/internal/foundation/layout"
 	foundationlog "robot/internal/foundation/log"
 	"robot/internal/foundation/network"
+	"robot/internal/foundation/process"
 	"robot/internal/scheduler"
 	"robot/internal/shared"
 )
@@ -190,6 +191,11 @@ func backendSetting(selection shared.BackendSelection, key string) string {
 func ensureAdapterOpenFileLimit(rc robotconfig.RuntimeConfig) error {
 	if rc.MaxOnlineRobots < 1 {
 		return fmt.Errorf("max_online_robots must be positive")
+	}
+	// Linux raises the descriptor soft limit here; other platforms only
+	// validate the configured capacity.
+	if err := process.EnsureOpenFileLimit(rc.MaxOnlineRobots, 64); err != nil {
+		return err
 	}
 	return nil
 }

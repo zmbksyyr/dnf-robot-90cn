@@ -13,6 +13,7 @@ import (
 	robottemplate "robot/internal/capability/robottemplate"
 	storecap "robot/internal/capability/store"
 	"robot/internal/foundation/config"
+	"robot/internal/foundation/filewatch"
 	"robot/internal/foundation/lockhub"
 	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
@@ -94,6 +95,8 @@ type RobotManager struct {
 	configApplyMu                   lockhub.Locker
 	configSnapshot                  atomic.Pointer[robotConfigSnapshot]
 	runtimeFilesWatched             atomic.Bool
+	runtimeFileWatchMu              lockhub.Locker
+	runtimeFilePoller               *filewatch.Poller
 	shoutTemplateSnapshot           atomic.Pointer[robottemplate.ShoutTemplates]
 	nameTemplateSnapshot            atomic.Pointer[robottemplate.NameTemplates]
 	supervisor                      *RobotSupervisor

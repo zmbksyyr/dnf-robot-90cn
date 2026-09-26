@@ -28,6 +28,7 @@ func (m *RobotManager) StartAutoActions() {
 	m.autoPortLog = time.Time{}
 	m.autoEnabled = true
 	m.autoMu.Unlock()
+	m.StartRuntimeFileWatcher()
 	supervisor.Start()
 }
 
@@ -63,6 +64,7 @@ func (m *RobotManager) Shutdown() error {
 	m.shutdownOnce.Do(func() {
 		m.stopAndWaitBackgroundWork()
 		autoErr := m.stopAutoActions()
+		m.stopRuntimeFileWatcher()
 		m.waitMailNotifications()
 		m.flushStorePointCache()
 		batcher := m.positionWrites.Swap(nil)

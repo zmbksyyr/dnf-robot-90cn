@@ -39,8 +39,10 @@ type trackedEntry struct {
 	statError   string
 }
 
-// Poller checks only file metadata until an entry changes. File contents are
-// read exclusively by the entry's Apply callback after a metadata change.
+// Poller scans file metadata and a content fingerprint every interval. The
+// fingerprint is intentional: filesystems with coarse timestamps can rewrite a
+// file without changing size or mtime, and the watcher must still notice. The
+// entry's Apply callback remains the only reader of parsed content.
 type Poller struct {
 	interval time.Duration
 	onError  ErrorHandler

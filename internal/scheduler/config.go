@@ -42,6 +42,42 @@ func (m *RobotManager) RuntimeFileEntries() []filewatch.Entry {
 	return entries
 }
 
+// StartRuntimeFileWatcher polls the manager's runtime files and applies
+// validated changes without a restart. It is idempotent and is started by
+// StartAutoActions; Shutdown closes it.
+func (m *RobotManager) StartRuntimeFileWatcher() {
+	if m == nil {
+		return
+	}
+	m.runtimeFileWatchMu.Lock()
+	defer m.runtimeFileWatchMu.Unlock()
+	if m.runtimeFilePoller != nil {
+		return
+	}
+	entries := m.RuntimeFileEntries()
+	if len(entries) == 0 {
+		return
+	}
+	poller := filewatch.New(filewatch.DefaultInterval, entries, func(entry filewatch.Entry, err error) {
+		robotLogf("RUNTIME_FILE_APPLY_FAILED name=%s path=%s err=%v\n", entry.Name, entry.Path, err)
+	})
+	poller.Start()
+	m.runtimeFilePoller = poller
+}
+
+func (m *RobotManager) stopRuntimeFileWatcher() {
+	if m == nil {
+		return
+	}
+	m.runtimeFileWatchMu.Lock()
+	poller := m.runtimeFilePoller
+	m.runtimeFilePoller = nil
+	m.runtimeFileWatchMu.Unlock()
+	if poller != nil {
+		poller.Close()
+	}
+}
+
 func (m *RobotManager) RobotConfig() (robotcap.ConfigResult, error) {
 	path := layout.New(m.cfg.ConfigDir).RobotConfig()
 	data, err := os.ReadFile(path)
