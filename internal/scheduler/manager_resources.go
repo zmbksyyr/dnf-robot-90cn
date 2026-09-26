@@ -73,8 +73,8 @@ func (m *RobotManager) beginStoreBusy(uid int) bool {
 	}
 	m.autoStoreBusy[uid] = true
 	m.autoMu.Unlock()
-	if m.positionWrites != nil {
-		m.positionWrites.Discard(uid)
+	if batcher := m.positionWrites.Load(); batcher != nil {
+		batcher.Discard(uid)
 	}
 	return true
 }

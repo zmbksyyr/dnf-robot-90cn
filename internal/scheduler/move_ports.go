@@ -32,8 +32,12 @@ func (e moveActionEnv) DispatchMoveStep(info robotcap.Info, targetVillage, targe
 	if err != nil {
 		return err
 	}
-	if step == steps && e.manager.positionWrites != nil {
-		_ = e.manager.positionWrites.Queue(info, targetVillage, targetArea, targetX, targetY)
+	if step == steps {
+		if batcher := e.manager.positionWrites.Load(); batcher != nil {
+			if err := batcher.Queue(info, targetVillage, targetArea, targetX, targetY); err != nil {
+				robotLogf("POSITION_BATCH_QUEUE_FAILED uid=%d err=%v\n", info.UID, err)
+			}
+		}
 	}
 	return nil
 }

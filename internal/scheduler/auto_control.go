@@ -65,11 +65,12 @@ func (m *RobotManager) Shutdown() error {
 		autoErr := m.stopAutoActions()
 		m.waitMailNotifications()
 		m.flushStorePointCache()
-		if m.positionWrites == nil {
+		batcher := m.positionWrites.Swap(nil)
+		if batcher == nil {
 			m.shutdownErr = autoErr
 			return
 		}
-		m.shutdownErr = errors.Join(autoErr, m.positionWrites.Close())
+		m.shutdownErr = errors.Join(autoErr, batcher.Close())
 	})
 	return m.shutdownErr
 }

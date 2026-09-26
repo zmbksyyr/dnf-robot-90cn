@@ -109,7 +109,7 @@ type RobotManager struct {
 	storeTitlesLoaded               bool
 	townMapCatalogMu                lockhub.RWLocker
 	townMapCatalog                  []shared.MapCatalogItem
-	positionWrites                  *positionBatcher
+	positionWrites                  atomic.Pointer[positionBatcher]
 	characterCacheInvalidate        func(uid int) error
 	mailNotifier                    MailNotifier
 	mailNotifyNext                  time.Time
@@ -265,7 +265,7 @@ func NewRobotManager(database any, cfg *config.SysConfig, doll Runtime) *RobotMa
 	}
 	manager.actions = runtimeActionTransport{manager: manager}
 	manager.sessions = runtimeSessionDriver{manager: manager}
-	manager.positionWrites = newPositionBatcher(manager.positionRepo(), defaultPositionBatchOptions())
+	manager.positionWrites.Store(newPositionBatcher(manager.positionRepo(), defaultPositionBatchOptions()))
 	return manager
 }
 
@@ -280,10 +280,11 @@ func (m *RobotManager) SetRobotStateDirectory(directory robotstate.Directory) {
 		return
 	}
 	m.robotState = directory
-	if m.positionWrites != nil {
-		_ = m.positionWrites.Close()
+	if batcher := m.positionWrites.Swap(newPositionBatcher(m.positionRepo(), defaultPositionBatchOptions())); batcher != nil {
+		if err := batcher.Close(); err != nil {
+			robotLogf("POSITION_BATCH_CLOSE_FAILED err=%v\n", err)
+		}
 	}
-	m.positionWrites = newPositionBatcher(m.positionRepo(), defaultPositionBatchOptions())
 }
 
 func (m *RobotManager) repo() SchedulerRepository {

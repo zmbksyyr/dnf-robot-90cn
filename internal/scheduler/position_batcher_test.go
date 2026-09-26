@@ -440,11 +440,13 @@ func TestRobotManagerShutdownFlushesPendingPositions(t *testing.T) {
 	clock := &fakePositionClock{}
 	var calls [][]robotcap.PositionUpdate
 	manager := testRobotManagerWithConfig(t, "")
-	manager.positionWrites = newTestPositionBatcher(positionWriterFunc(func(_ context.Context, batch []robotcap.PositionUpdate) error {
+	manager.positionWrites.Store(newTestPositionBatcher(positionWriterFunc(func(_ context.Context, batch []robotcap.PositionUpdate) error {
 		calls = append(calls, copyPositionBatch(batch))
 		return nil
-	}), clock)
-	_ = manager.positionWrites.Queue(robotcap.Info{UID: 101}, 0, 0, 10, 20)
+	}), clock))
+	if batcher := manager.positionWrites.Load(); batcher != nil {
+		_ = batcher.Queue(robotcap.Info{UID: 101}, 0, 0, 10, 20)
+	}
 
 	if err := manager.Shutdown(); err != nil {
 		t.Fatalf("manager shutdown: %v", err)
