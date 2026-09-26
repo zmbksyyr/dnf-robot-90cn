@@ -3,14 +3,18 @@ name: Build and Release
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
-jobs:
-  release:
-    runs-on: windows-latest
-    permissions:
-      contents: write
+# Only one release run may mutate the latest tag/release at a time. PR and
+# branch pushes still run the verify jobs.
+concurrency:
+  group: release-latest
+  cancel-in-progress: false
 
+jobs:
+  verify:
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,12 +22,61 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: stable
+          # Track the latest 1.26 patch: the 1.26.x line carries the standard
+          # library fixes reported by govulncheck (fixed in 1.26.6).
+          go-version: '1.26'
           cache-dependency-path: |
             go.sum
 
-      - name: Test main project
-        run: go test ./...
+      - name: Vet and test
+        run: |
+          go vet ./...
+          go test ./... -count=1
+
+  verify-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: |
+            go.sum
+
+      - name: Vet and test on Linux
+        run: |
+          go vet ./...
+          go test ./... -count=1
+
+      - name: Cross-build Linux binary
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w" -o dist/robot-linux-amd64 ./cmd/robot
+
+  release:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    needs: [verify, verify-linux]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: |
+            go.sum
 
       - name: Prepare package
         shell: pwsh
@@ -35,69 +88,72 @@ jobs:
           $env:CGO_ENABLED = "0"
           $env:GOARCH = "amd64"
 
+          $commit = (git rev-parse --short HEAD).Trim()
+          $version = (git describe --tags --always).Trim()
           $env:GOOS = "windows"
-          go build -trimpath -buildvcs=false -ldflags="-s -w" -o dist/package/robot.exe ./cmd/robot
+          go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=$version+$commit" -o dist/package/robot.exe ./cmd/robot
 
       - name: Package release archive
         shell: pwsh
         run: |
           $date = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow, "China Standard Time").ToString("yyyyMMdd")
-          $archive = "dofrobot-main_$date.zip"
+          $commit = (git rev-parse --short HEAD).Trim()
+          $archive = "dofrobot-main_${date}_$commit.zip"
           Compress-Archive -Path dist/package/* -DestinationPath "dist/$archive" -Force
           Remove-Item -LiteralPath dist/package -Recurse -Force
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/$archive").Hash.ToLowerInvariant()
+          "$hash  $archive" | Out-File -FilePath "dist/SHA256SUMS.txt" -Encoding ascii
           "RELEASE_ZIP=$archive" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_COMMIT=$commit" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Delete previous latest release
+      - name: Publish latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
           $tag = "latest"
-          $release = gh release view $tag --json id --jq .id 2>$null
-          if ($LASTEXITCODE -eq 0 -and $release) {
-            gh release delete $tag -y
-            git push --delete origin $tag 2>$null
-          }
-          $global:LASTEXITCODE = 0
+          $notes = "Auto-built from main branch commit $env:RELEASE_COMMIT"
 
-      - name: Create latest release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-        run: |
-          $tag = "latest"
+          # Point the tag at this build first; the release itself is only
+          # touched after the archive exists.
           git tag -f $tag
           git push -f origin $tag
 
-          $releaseReady = $false
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            gh release create $tag `
-              --verify-tag `
-              --title "Latest Build" `
-              --notes "Auto-built from main branch"
-            if ($LASTEXITCODE -eq 0) {
-              $releaseReady = $true
-              break
-            }
+          $releaseExists = $false
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            $releaseExists = $true
+          }
 
+          if (-not $releaseExists) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              gh release create $tag --verify-tag --title "Latest Build" --notes $notes
+              if ($LASTEXITCODE -eq 0) {
+                break
+              }
+              gh release view $tag *> $null
+              if ($LASTEXITCODE -eq 0) {
+                break
+              }
+              if ($attempt -lt 3) {
+                Start-Sleep -Seconds (5 * $attempt)
+              }
+            }
             gh release view $tag *> $null
-            if ($LASTEXITCODE -eq 0) {
-              $releaseReady = $true
-              break
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create release $tag after 3 attempts"
             }
-            if ($attempt -lt 3) {
-              Start-Sleep -Seconds (5 * $attempt)
-            }
-          }
-          if (-not $releaseReady) {
-            throw "Failed to create release $tag after 3 attempts"
           }
 
+          # Uploading with --clobber replaces the single asset in place; the
+          # previous release is never deleted, so a failed upload cannot leave
+          # the latest release empty.
           $assetsUploaded = $false
           for ($attempt = 1; $attempt -le 3; $attempt++) {
             gh release upload $tag `
               --clobber `
-              "dist/$env:RELEASE_ZIP"
+              "dist/$env:RELEASE_ZIP" `
+              "dist/SHA256SUMS.txt"
             if ($LASTEXITCODE -eq 0) {
               $assetsUploaded = $true
               break
@@ -109,3 +165,5 @@ jobs:
           if (-not $assetsUploaded) {
             throw "Failed to upload release assets after 3 attempts"
           }
+
+          gh release edit $tag --notes $notes
