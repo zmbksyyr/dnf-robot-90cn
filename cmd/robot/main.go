@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	runtimeinit "robot/internal/bootstrap/runtime"
@@ -55,17 +58,14 @@ func runMain() int {
 	}
 	backendSelection, err := loadBackendSelection(paths.BackendSelection())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "load backend selection error: %v\n", err)
-		return 1
+		return runRecoveryWeb(cfg, shared.BackendID(""), fmt.Sprintf("load backend selection: %v", err))
 	}
 	backendInfo, err := backendregistry.Select(backendSelection.BackendID, runtime.GOOS)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "backend selection error: %v\n", err)
-		return 1
+		return runRecoveryWeb(cfg, backendSelection.BackendID, fmt.Sprintf("backend selection: %v", err))
 	}
 	if err := applyBackendSelectionSettings(cfg, backendSelection); err != nil {
-		fmt.Fprintf(os.Stderr, "backend settings error: %v\n", err)
-		return 1
+		return runRecoveryWeb(cfg, backendSelection.BackendID, fmt.Sprintf("backend settings: %v", err))
 	}
 	backendReinitialized, err := runtimeinit.PrepareBackendRuntime(paths, backendSelection)
 	if err != nil {
@@ -125,6 +125,31 @@ func loadRequiredRobotConfig(path string) (robotconfig.RuntimeConfig, error) {
 
 func recoveryWebURL(port int) string {
 	return fmt.Sprintf("http://127.0.0.1:%d/", port)
+}
+
+func runRecoveryWeb(cfg *config.SysConfig, selected shared.BackendID, reason string) int {
+	if cfg == nil {
+		fmt.Fprintln(os.Stderr, "recovery web requires config")
+		return 1
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	server := webadmin.NewRecoveryWithCatalog(
+		cfg, "", fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), selected, backendregistry.Available(), reason,
+	)
+	errCh := make(chan error, 1)
+	go func() { errCh <- server.Serve(ctx) }()
+	fmt.Printf("Robot setup is available at %s\n", recoveryWebURL(cfg.WebPort))
+	select {
+	case <-ctx.Done():
+		return 0
+	case err := <-errCh:
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "recovery web error: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 }
 
 func logRobotActionf(format string, args ...interface{}) {

@@ -37,3 +37,9 @@ func TestApplyS4A21BackendSelectionSettingsDerivesOptionalDatabase(t *testing.T)
 		t.Fatalf("config=%+v", cfg)
 	}
 }
+
+func TestApplyBackendSelectionSettingsRequiresInitialization(t *testing.T) {
+	if err := applyBackendSelectionSettings(&config.SysConfig{}, shared.BackendSelection{}); err == nil {
+		t.Fatal("missing backend settings unexpectedly accepted")
+	}
+}

@@ -10,8 +10,11 @@ import (
 )
 
 func applyBackendSelectionSettings(cfg *config.SysConfig, selection shared.BackendSelection) error {
-	if cfg == nil || len(selection.Settings) == 0 {
-		return nil
+	if cfg == nil {
+		return fmt.Errorf("backend settings require config")
+	}
+	if len(selection.Settings) == 0 {
+		return fmt.Errorf("backend settings are not configured")
 	}
 	serverDir := strings.TrimSpace(selection.Settings["server_directory"])
 	host := strings.TrimSpace(selection.Settings["server_host"])
