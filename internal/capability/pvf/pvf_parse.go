@@ -22,23 +22,18 @@ func deriveItemSetKey(path, body string, item shared.EquipmentCatalogItem) strin
 	// Equipment paths are storage layout, not set metadata. In simulator PVFs a
 	// shared directory is commonly reused by titles, jewelry, special slots,
 	// and unrelated armor pieces. Never expose that path as a set key.
-	if equipmentArmorSetSlot(item.ItemType) {
-		if family := equipmentNameFamily(item.Name + " " + item.Name2); family != "" {
-			return "equipment_" + shortHash(pvfItemJobsKey(item)+":"+family)
-		}
-		return ""
+	if partSetIndex := pvfPartSetIndex(body); partSetIndex > 0 {
+		return pvfPartSetKey(partSetIndex)
 	}
-	if item.ItemType >= 1 && item.ItemType <= 12 {
-		return ""
-	}
-	if key := pathSetKey(path, item.ItemType); key != "" {
-		return "path_" + shortHash(key)
-	}
-	if key := nameSetKey(body, item.ItemType); key != "" {
-		return "name_" + shortHash(key)
-	}
+	// Equipment paths and names are presentation/storage data, not set
+	// metadata. A missing PVF set field means the item is standalone.
+	_ = path
 	return ""
 }
+
+func pvfPartSetIndex(body string) int { return atoi(pvfTagValue(body, "part set index")) }
+
+func pvfPartSetKey(index int) string { return "pvf_part_" + strconv.Itoa(index) }
 
 type pvfItemSetInfo struct {
 	masterID    int
@@ -472,9 +467,8 @@ func attachEquipmentNameFamilies(items []shared.EquipmentCatalogItem) {
 }
 
 // NormalizeEquipmentSetKeys repairs catalogs produced by older Robot builds.
-// Those builds treated an equipment directory as a set, which merged titles,
-// jewelry, special slots, and unrelated armor. Only explicit PVF keys and
-// five-slot armor name families are retained for equipment.
+// Only explicit PVF set keys are retained. Paths and display names cannot
+// prove a set relationship and are deliberately discarded.
 func NormalizeEquipmentSetKeys(items []shared.EquipmentCatalogItem) {
 	for i := range items {
 		if items[i].ItemType >= 1 && items[i].ItemType <= 12 && !strings.HasPrefix(items[i].SetKey, "pvf_") {

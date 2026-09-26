@@ -9,6 +9,7 @@ type EquipmentCatalogItem struct {
 	ItemType      int    `json:"item_type"`
 	Slot          string `json:"slot,omitempty"`
 	SetKey        string `json:"set_key,omitempty"`
+	PartSetIndex  int    `json:"part_set_index,omitempty"`
 	Rarity        int    `json:"rarity,omitempty"`
 	Price         int    `json:"price,omitempty"`
 	Value         int    `json:"value,omitempty"`

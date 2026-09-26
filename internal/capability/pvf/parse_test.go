@@ -2,7 +2,6 @@ package pvf
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"robot/internal/shared"
@@ -120,14 +119,24 @@ func TestExplicitPVFSetKeyIgnoresPartSetIndex(t *testing.T) {
 	}
 }
 
+func TestPartSetIndexIsThePVFSetKey(t *testing.T) {
+	item := shared.EquipmentCatalogItem{ItemType: 3}
+	if got := deriveItemSetKey("equipment/character/common/jacket/coat.equ", "[part set index]\n11397", item); got != "pvf_part_11397" {
+		t.Fatalf("part set key got %q", got)
+	}
+	if got := deriveItemSetKey("equipment/character/common/jacket/coat.equ", "[part set index]\n2", shared.EquipmentCatalogItem{ItemType: 23}); got != "pvf_part_2" {
+		t.Fatalf("avatar part set key got %q", got)
+	}
+}
+
 func TestDeriveEquipmentSetKeyNeverUsesSharedPath(t *testing.T) {
 	item := shared.EquipmentCatalogItem{ItemType: 8, Name: "灵魂猎者", Name2: "灵魂猎者"}
 	if got := deriveItemSetKey("equipment/necklace/20110.equ", "", item); got != "" {
 		t.Fatalf("jewelry path became a set key %q", got)
 	}
 	item = shared.EquipmentCatalogItem{ItemType: 3, Name: "远古尘封术士上衣", UseJob: []int{3}}
-	if got := deriveItemSetKey("equipment/coat/100.equ", "", item); got == "" || strings.HasPrefix(got, "path_") {
-		t.Fatalf("armor set key is not a reliable family key: %q", got)
+	if got := deriveItemSetKey("equipment/coat/100.equ", "", item); got != "" {
+		t.Fatalf("armor without PVF metadata became a guessed set key: %q", got)
 	}
 }
 
