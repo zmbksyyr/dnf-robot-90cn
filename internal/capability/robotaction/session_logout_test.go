@@ -107,7 +107,7 @@ func TestLogoutUIDKeepsClosedSessionUnconfirmedWhenInvalidationFails(t *testing.
 
 func TestLogoutUIDDoesNotInvalidateWhileRuntimeStillExists(t *testing.T) {
 	env := &directLogoutEnv{
-		freshStatus: map[int]robotcap.RuntimeStatus{17000001: {UID: 17000001}},
+		freshStatus: map[int]robotcap.RuntimeStatus{17000001: {UID: 17000001, StateName: shared.RuntimeStateRunning}},
 	}
 	result, err := (SessionService{Env: env}).LogoutUID(17000001)
 	if err != nil {
@@ -123,6 +123,24 @@ func TestLogoutUIDDoesNotInvalidateWhileRuntimeStillExists(t *testing.T) {
 		t.Fatalf("logout result = %+v", result)
 	}
 	if result.Robots[0].State != robotcap.ActionStatePending {
+		t.Fatalf("logout item = %+v", result.Robots[0])
+	}
+}
+
+func TestLogoutUIDConfirmsStoppedRuntimeEntry(t *testing.T) {
+	// S4A21 keeps a "stop" entry after Close instead of deleting the UID. A
+	// stopped runtime is not a live connection, so logout must be confirmed.
+	env := &directLogoutEnv{
+		freshStatus: map[int]robotcap.RuntimeStatus{17000001: {UID: 17000001, StateName: shared.RuntimeStateStop}},
+	}
+	result, err := (SessionService{Env: env}).LogoutUID(17000001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Accepted != 1 || result.Confirmed != 1 || result.Failed != 0 {
+		t.Fatalf("logout result = %+v", result)
+	}
+	if !result.Robots[0].OK || result.Robots[0].State != robotcap.ActionStateClosed {
 		t.Fatalf("logout item = %+v", result.Robots[0])
 	}
 }

@@ -178,7 +178,7 @@ func (s SessionService) logoutRobots(robots []robotcap.Info) robotcap.CommandRes
 			continue
 		}
 		uid := result.Robots[i].UID
-		if _, ok := status[uid]; ok {
+		if st, ok := status[uid]; ok && robotcap.ActiveRuntimeStatus(st) {
 			result.Robots[i].State = robotcap.ActionStatePending
 			result.Robots[i].Message = "runtime connection still exists"
 			continue
