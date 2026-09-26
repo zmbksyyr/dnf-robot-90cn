@@ -374,9 +374,9 @@ func (m *RobotManager) stopAndWaitBackgroundWork() {
 }
 
 // SchemaRepository is the legacy embedded-database surface used by lifecycle,
-// store and status paths. It is not wired in production (the S4A21 adapter
-// supplies robotstate.Directory and a backend creator instead); tests use it as
-// a seam. Migrating these calls to adapter capability ports is tracked as
+// store and status paths. It is not wired in production (the selected adapter
+// supplies a robot state directory and a backend creator instead); tests use it
+// as a seam. Migrating these calls to adapter capability ports is tracked as
 // ARC-003.
 type SchemaRepository interface {
 	InsertIgnore(table string, values map[string]interface{}) error

@@ -20,18 +20,3 @@ func AbsInt(v int) int {
 	}
 	return v
 }
-
-func IntersectRange(aMin, aMax, bMin, bMax int) (int, int, bool) {
-	if aMax < aMin {
-		aMin, aMax = aMax, aMin
-	}
-	if bMax < bMin {
-		bMin, bMax = bMax, bMin
-	}
-	minV := MaxInt(aMin, bMin)
-	maxV := MinInt(aMax, bMax)
-	if maxV < minV {
-		return 0, 0, false
-	}
-	return minV, maxV, true
-}

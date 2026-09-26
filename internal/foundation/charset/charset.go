@@ -11,14 +11,6 @@ import (
 	"golang.org/x/text/transform"
 )
 
-func EncodeBig5String(s string) ([]byte, error) {
-	encoded, _, err := transform.Bytes(traditionalchinese.Big5.NewEncoder(), []byte(s))
-	if err != nil {
-		return nil, fmt.Errorf("encode Big5: %w", err)
-	}
-	return encoded, nil
-}
-
 func EncodeGBKString(s string) ([]byte, error) {
 	encoded, _, err := transform.Bytes(simplifiedchinese.GBK.NewEncoder(), []byte(s))
 	if err != nil {

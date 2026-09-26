@@ -29,7 +29,6 @@ var forbiddenRuntimeArtifactSuffixes = []string{
 
 var sqlImportAllowedDirs = []string{
 	"cmd/robot",
-	"internal/foundation/sql",
 	"internal/composition/backend/s4a21",
 }
 
