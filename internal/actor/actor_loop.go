@@ -54,11 +54,21 @@ func (a *Actor) releaseAndWait(timeout time.Duration) int {
 
 func (a *Actor) controlAndWait(ctrl control, timeout time.Duration) controlResult {
 	ctrl.done = make(chan controlResult, 1)
+	var timer *time.Timer
+	var deadline <-chan time.Time
+	if timeout > 0 {
+		timer = time.NewTimer(timeout)
+		defer timer.Stop()
+		deadline = timer.C
+	}
+	// The control queue is intentionally small. Waiting here (bounded by the
+	// caller's timeout) replaces the old silent drop, which could lose a
+	// release request and leave the actor holding a UID forever.
 	select {
 	case a.ctrls <- ctrl:
 	case <-a.done:
 		return controlResult{}
-	default:
+	case <-deadline:
 		return controlResult{}
 	}
 	if timeout <= 0 {
@@ -69,8 +79,6 @@ func (a *Actor) controlAndWait(ctrl control, timeout time.Duration) controlResul
 			return controlResult{}
 		}
 	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
 	select {
 	case res := <-ctrl.done:
 		return res
@@ -216,6 +224,12 @@ func (a *Actor) tickSafely(now time.Time) {
 		}
 	}()
 	if a.stateValue() == StateReleasing {
+		a.releaseCurrentUID()
+		return
+	}
+	if a.releaseRequestedValue() {
+		// A release control message can be lost when the control queue is
+		// full; recover in the tick loop instead of idling forever.
 		a.releaseCurrentUID()
 		return
 	}
