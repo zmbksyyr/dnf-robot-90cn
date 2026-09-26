@@ -110,6 +110,40 @@ func TestContainsAnyTailIsCaseInsensitiveAndBounded(t *testing.T) {
 	}
 }
 
+func TestTruncateToTailWorksWhileFileIsHeldOpen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "robot.log")
+	mustWriteFile(t, path, "0123456789ABC")
+
+	hold, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold.Close()
+
+	if err := TruncateToTail(path, 8); err != nil {
+		t.Fatalf("truncate while held: %v", err)
+	}
+	assertFileText(t, path, "56789ABC")
+
+	if err := TruncateToTail(path, 8); err != nil {
+		t.Fatalf("second truncate: %v", err)
+	}
+	assertFileText(t, path, "56789ABC")
+
+	appender, err := OpenAppender(path, 64, 1)
+	if err != nil {
+		t.Fatalf("append after truncate: %v", err)
+	}
+	if err := appender.Append([]byte("!")); err != nil {
+		t.Fatalf("write after truncate: %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertFileText(t, path, "56789ABC!")
+}
+
 func mustWriteFile(t *testing.T, path, text string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(text), 0644); err != nil {

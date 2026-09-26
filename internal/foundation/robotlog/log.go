@@ -28,7 +28,12 @@ var (
 	logFlushStop     chan struct{}
 	logFlushDone     chan struct{}
 	logClosing       bool
+	logTrimNext      time.Time
 )
+
+// logTrimRetryInterval throttles the in-place truncation fallback so a locked
+// log file does not trigger a rewrite attempt for every record.
+const logTrimRetryInterval = 30 * time.Second
 
 func ConfigureLogRotation(maxSizeMB, backups int) {
 	logMu.Lock()
@@ -50,7 +55,9 @@ func LogInit(path string) error {
 		return fmt.Errorf("log already initialized: %s", logName)
 	}
 	if err := logfile.Prepare(path, logMaxSize, logBackups); err != nil {
-		return err
+		// A log file held open by another process must not prevent startup;
+		// runtime rotation falls back to in-place truncation.
+		_, _ = fmt.Fprintf(os.Stderr, "[Log] prepare failed path=%s err=%v\n", path, err)
 	}
 	var err error
 	logFile, err = os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -113,6 +120,15 @@ func rotateLogIfNeededLocked(nextBytes int) {
 	logWriter = nil
 	if err := logfile.Rotate(logName, logBackups); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "[Log] rotate failed path=%s err=%v\n", logName, err)
+		// Windows blocks renaming a file that another process holds open, but
+		// in-place truncation still works. Fall back to keeping the newest
+		// half of the limit so the size bound holds and growth stays bounded.
+		if time.Now().After(logTrimNext) {
+			logTrimNext = time.Now().Add(logTrimRetryInterval)
+			if trimErr := logfile.TruncateToTail(logName, logMaxSize/2); trimErr != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "[Log] trim failed path=%s err=%v\n", logName, trimErr)
+			}
+		}
 	}
 	var openErr error
 	logFile, openErr = os.OpenFile(logName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)

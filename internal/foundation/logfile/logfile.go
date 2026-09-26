@@ -366,6 +366,54 @@ func (w *rotatingWriter) rotate() error {
 	return w.open()
 }
 
+// TruncateToTail keeps the newest maxBytes of path using in-place truncation.
+// Unlike trimToTail it never renames the file, so it also works on Windows
+// when another process holds the log open (rename is blocked there, but
+// truncation is not).
+func TruncateToTail(path string, maxBytes int64) error {
+	if maxBytes <= 0 {
+		return errors.New("log max bytes must be positive")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() <= maxBytes {
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	size := info.Size()
+	start := size - maxBytes
+	buffer := make([]byte, 128*1024)
+	var offset int64
+	for start+offset < size {
+		n, readErr := f.ReadAt(buffer, start+offset)
+		if n > 0 {
+			if _, writeErr := f.WriteAt(buffer[:n], offset); writeErr != nil {
+				return writeErr
+			}
+			offset += int64(n)
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			return readErr
+		}
+	}
+	if err := f.Truncate(offset); err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
 func trimToTail(path string, maxBytes int64) error {
 	f, err := os.Open(path)
 	if err != nil {
