@@ -32,3 +32,13 @@ func TestCallRobotEscapesPayloadBeforeDial(t *testing.T) {
 		t.Fatalf("expected connection error, got %v", err)
 	}
 }
+
+func TestWebWriteTimeoutCoversLongestRobotCall(t *testing.T) {
+	longest := robotCallTimeout("robotsOnline")
+	if webWriteTimeout <= longest {
+		t.Fatalf("webWriteTimeout=%s must exceed the longest robot call %s", webWriteTimeout, longest)
+	}
+	if webWriteTimeout <= robotCallTimeout("robotsStore") {
+		t.Fatalf("webWriteTimeout=%s must exceed the store robot call", webWriteTimeout)
+	}
+}

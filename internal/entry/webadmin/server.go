@@ -147,6 +147,15 @@ func (s *Server) supportsBackendCapability(operation shared.BackendCapability) b
 	return s.backendInfo.Supports(operation)
 }
 
+const (
+	webReadHeaderTimeout = 5 * time.Second
+	webReadTimeout       = 15 * time.Second
+	// webWriteTimeout must cover the longest synchronous robot call
+	// (robotsOnline waits up to 120s) plus response-encoding margin.
+	webWriteTimeout = 180 * time.Second
+	webIdleTimeout  = 60 * time.Second
+)
+
 func (s *Server) Serve(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -162,10 +171,10 @@ func (s *Server) Serve(ctx context.Context) error {
 	server := &http.Server{
 		Addr:              s.webAddr,
 		Handler:           s.withSecurityHeaders(s.withDiagnostics(mux)),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: webReadHeaderTimeout,
+		ReadTimeout:       webReadTimeout,
+		WriteTimeout:      webWriteTimeout,
+		IdleTimeout:       webIdleTimeout,
 	}
 	foundationlog.Robotf("WEB_SERVER_LISTENING addr=%s robot_addr=%s pid=%d sessions=%d\n", s.webAddr, s.robotAddr, os.Getpid(), s.sessionCount())
 	if strings.TrimSpace(s.cfg.WebPassword) == "twadmin" {
