@@ -178,3 +178,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to update release notes for $tag"
           }
+
+          $release = gh release view $tag --json assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to list release assets for $tag"
+          }
+          $keep = @($env:RELEASE_ZIP, $env:RELEASE_CHECKSUM)
+          $assetNames = @($release.assets | ForEach-Object { $_.name })
+          foreach ($name in $keep) {
+            if ($assetNames -notcontains $name) {
+              throw "Expected release asset missing: $name"
+            }
+          }
+          foreach ($name in $assetNames) {
+            if ($keep -contains $name) {
+              continue
+            }
+            gh release delete-asset $tag $name --yes
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to remove old release asset: $name"
+            }
+          }
