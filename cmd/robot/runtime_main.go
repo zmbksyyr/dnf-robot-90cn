@@ -9,9 +9,7 @@ import (
 	"time"
 
 	runtimeinit "robot/internal/bootstrap/runtime"
-	"robot/internal/capability/catalog"
 	"robot/internal/capability/robotconfig"
-	robotstate "robot/internal/capability/robotstate"
 	backendregistry "robot/internal/composition/backend"
 	s4a21backend "robot/internal/composition/backend/s4a21"
 	"robot/internal/entry/tcpapi"
@@ -27,6 +25,9 @@ import (
 
 // runBackend owns the selected adapter's complete initialization, dispatch,
 // and shutdown lifecycle. Shared scheduling remains below the composition
+// robotAccountPrefix is the account-name prefix owned by Robot identities.
+const robotAccountPrefix = "robot"
+
 // boundary; version-specific work stays in the selected adapter.
 func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendInfo, selection shared.BackendSelection) int {
 	if err := runtimeinit.InitConfigForBackend(cfg, info); err != nil {
@@ -42,47 +43,31 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 		foundationlog.Robotf("ADAPTER_OPEN_FILE_CAPACITY_FAILED err=%v\n", err)
 		return 1
 	}
-	transports, err := composeBackendTransports(info, cfg)
+	manager := scheduler.NewRobotManager(nil, cfg, nil)
+	// The adapter owns PVF, database, protocol and path rules; the composition
+	// root only wires the returned components onto the scheduler ports.
+	bundle, err := s4a21backend.ComposeRuntime(context.Background(), s4a21backend.RuntimeComposeOptions{
+		ServerDirectory: cfg.ServerDirectory,
+		DatabasePath:    backendSetting(selection, "database_path"),
+		AccountPrefix:   robotAccountPrefix,
+		ConnectIP:       cfg.RobotConnectIP,
+		GamePort:        cfg.RobotGamePort,
+		Paths:           paths,
+		Config:          rc,
+		RandIntn:        manager.RandIntn,
+		RandBetween:     manager.RandBetween,
+	})
 	if err != nil {
-		foundationlog.Robotf("ADAPTER_TRANSPORT_FAILED err=%v\n", err)
+		foundationlog.Robotf("ADAPTER_RUNTIME_FAILED err=%v\n", err)
 		return 1
 	}
-	defer transports.close()
-	pvfPath, err := s4a21PVFPath(cfg.ServerDirectory)
-	if err != nil {
-		foundationlog.Robotf("ADAPTER_TOWN_MAP_FAILED err=%v\n", err)
-		return 1
-	}
-	catalogs, err := s4a21backend.ReadCatalogs(pvfPath)
-	if err != nil {
-		foundationlog.Robotf("ADAPTER_PVF_CATALOG_FAILED err=%v\n", err)
-		return 1
-	}
-	townMaps := catalogs.TownMaps
-	if err := exportItemCatalogs(paths, catalogs.Equipment, catalogs.Stackable); err != nil {
-		foundationlog.Robotf("ADAPTER_ITEM_CATALOG_FAILED err=%v\n", err)
-		return 1
-	}
-	loadoutDB, err := s4a21DatabasePath(cfg.ServerDirectory, backendSetting(selection, "database_path"))
-	if err != nil {
-		foundationlog.Robotf("ADAPTER_LOADOUT_DATABASE_FAILED err=%v\n", err)
-		return 1
-	}
-	equipment := catalogs.Equipment
-	inventory, err := (s4a21backend.SQLiteStartupInventory{
-		DatabasePath: loadoutDB, AccountPrefix: "robot", Config: rc, Equipment: equipment,
-	}).ScanAndClean(context.Background())
-	if err != nil {
-		foundationlog.Robotf("ADAPTER_STARTUP_INVENTORY_FAILED err=%v\n", err)
-		return 1
-	}
-	state := robotstate.NewMemoryStore(inventory.Robots)
-	if err := state.RegisterIdentities(context.Background(), inventory.Identities); err != nil {
-		foundationlog.Robotf("ADAPTER_STARTUP_IDENTITIES_FAILED err=%v\n", err)
-		return 1
-	}
+	defer func() {
+		if err := bundle.Close(); err != nil {
+			foundationlog.Robotf("ADAPTER_RUNTIME_CLOSE_FAILED err=%v\n", err)
+		}
+	}()
 	foundationlog.Robotf("ADAPTER_STARTUP_INVENTORY scanned=%d adopted=%d deleted_accounts=%d deleted_characters=%d\n",
-		inventory.ScannedAccounts, len(inventory.Robots), inventory.DeletedAccounts, inventory.DeletedCharacters)
+		bundle.Inventory.ScannedAccounts, len(bundle.Inventory.Robots), bundle.Inventory.DeletedAccounts, bundle.Inventory.DeletedCharacters)
 	// Do not mark the generation as applied until adapter-specific
 	// initialization (including transport composition and PVF projection) has
 	// succeeded. A failed startup must retry the reinitialization next time.
@@ -90,38 +75,16 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 		foundationlog.Robotf("ADAPTER_RUNTIME_MARK_FAILED err=%v\n", err)
 		return 1
 	}
-	manager := scheduler.NewRobotManager(nil, cfg, nil)
-	manager.ConfigureBackendRuntime(info, s4a21backend.NewPersistenceInspector(loadoutDB), nil)
+	manager.ConfigureBackendRuntime(info, s4a21backend.NewPersistenceInspector(bundle.DatabasePath), nil)
 	manager.SetBackendStorePolicy(s4a21backend.StorePolicy{})
-	manager.SetBackendRobotCreator(info, nil)
-	manager.SetRobotStateDirectory(state)
-	manager.SetBackendActionTransport(transports.actions)
-	manager.SetBackendSessionTransport(transports.sessions)
-	manager.SetTownMapCatalog(townMaps)
-	nameTemplates := catalog.NameTemplates(paths.Templates)
-	loadouts, err := s4a21backend.NewSQLiteLoadoutApplier(context.Background(), loadoutDB, rc, equipment, manager.RandIntn)
-	if err != nil {
-		foundationlog.Robotf("ADAPTER_LOADOUT_FAILED err=%v\n", err)
-		return 1
-	}
-	defer loadouts.Close()
-	manager.SetBackendRobotCreator(info, s4a21backend.RobotCreator{
-		Provisioner: s4a21backend.Provisioner{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
-		BatchStore:  state, IdentityStore: state, RobotCatalog: state, Config: rc, Names: nameTemplates, Maps: townMaps,
-		AccountPrefix: "robot", IDStart: rc.RobotUIDStart,
-		RandIntn: manager.RandIntn, RandBetween: manager.RandBetween,
-		Loadouts: loadouts, Profiles: loadouts,
-	})
-	manager.SetBackendRobotCleaner(s4a21backend.RobotCleaner{
-		Protocol: s4a21backend.CharacterDeleter{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
-		State:    state, Sessions: transports.sessions,
-	})
-	manager.SetBackendRobotPurger(s4a21backend.SQLiteRobotPurger{
-		DatabasePath: loadoutDB, AccountPrefix: "robot", State: state, Sessions: transports.sessions,
-	})
-	manager.SetBackendPopulationInspector(s4a21backend.SQLitePopulationInspector{
-		DatabasePath: loadoutDB, AccountPrefix: "robot", Config: rc, Equipment: equipment, Maps: townMaps,
-	})
+	manager.SetBackendRobotCreator(info, bundle.Creator)
+	manager.SetRobotStateDirectory(bundle.State)
+	manager.SetBackendActionTransport(bundle.Transport)
+	manager.SetBackendSessionTransport(bundle.Transport)
+	manager.SetTownMapCatalog(bundle.TownMaps)
+	manager.SetBackendRobotCleaner(bundle.Cleaner)
+	manager.SetBackendRobotPurger(bundle.Purger)
+	manager.SetBackendPopulationInspector(bundle.Inspector)
 	defer func() {
 		if err := manager.Shutdown(); err != nil {
 			foundationlog.Robotf("ADAPTER_MANAGER_SHUTDOWN_FAILED err=%v\n", err)

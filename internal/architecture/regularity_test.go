@@ -221,6 +221,39 @@ func TestGoFileNamesDoNotUseTemporaryStructureNames(t *testing.T) {
 	}
 }
 
+// backendAssemblyCommandFiles lists the composition-root files allowed to
+// reference the concrete adapter. Everything else under cmd/ must stay
+// backend-neutral and only touch shared ports.
+var backendAssemblyCommandFiles = map[string]bool{
+	"runtime_main.go": true,
+}
+
+func TestCommandEntryStaysBackendNeutralOutsideAssembly(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "cmd", "robot")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read cmd/robot: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		if backendAssemblyCommandFiles[entry.Name()] {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name(), err)
+		}
+		for _, token := range []string{"composition/backend/s4a21", "protocol/s4a21", "S4A21"} {
+			if strings.Contains(string(data), token) {
+				t.Errorf("cmd/robot/%s references concrete adapter token %q; move adapter assembly to runtime_main.go or the adapter package", entry.Name(), token)
+			}
+		}
+	}
+}
+
 func TestReadmeFilesDoNotFragmentDocumentation(t *testing.T) {
 	root := repoRoot(t)
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {

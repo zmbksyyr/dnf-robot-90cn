@@ -9,26 +9,56 @@ import (
 	"robot/internal/shared"
 )
 
-func applyBackendSelectionSettings(cfg *config.SysConfig, selection shared.BackendSelection) error {
+// applyBackendSelectionSettings maps the adapter-declared settings onto the
+// process configuration using each field's runtime source. Adapter key names
+// stay in the descriptor; the composition root only knows the runtime sources.
+func applyBackendSelectionSettings(cfg *config.SysConfig, info shared.BackendInfo, selection shared.BackendSelection) error {
 	if cfg == nil {
 		return fmt.Errorf("backend settings require config")
 	}
 	if len(selection.Settings) == 0 {
 		return fmt.Errorf("backend settings are not configured")
 	}
-	serverDir := strings.TrimSpace(selection.Settings["server_directory"])
-	host := strings.TrimSpace(selection.Settings["server_host"])
-	portText := strings.TrimSpace(selection.Settings["game_port"])
-	if serverDir == "" || host == "" || portText == "" {
-		return fmt.Errorf("S4A21 backend settings are incomplete")
+	if len(info.Settings) == 0 {
+		return fmt.Errorf("backend %s declares no runtime settings", info.ID)
 	}
-	port, err := strconv.Atoi(portText)
-	if err != nil || port < 1 || port > 65535 {
-		return fmt.Errorf("S4A21 game port must be between 1 and 65535")
+	applied := make(map[string]bool, len(info.Settings))
+	for _, field := range info.Settings {
+		source := strings.TrimSpace(field.RuntimeSource)
+		if source == "" {
+			continue
+		}
+		value := strings.TrimSpace(selection.Settings[field.Key])
+		if value == "" {
+			value = strings.TrimSpace(field.Default)
+		}
+		if value == "" {
+			if field.Required {
+				return fmt.Errorf("%s is required", field.Label)
+			}
+			continue
+		}
+		switch source {
+		case "server_directory":
+			cfg.ServerDirectory = value
+		case "game_host":
+			cfg.RobotConnectIPSetting = value
+			cfg.RobotConnectIP = value
+		case "game_port":
+			port, err := strconv.Atoi(value)
+			if err != nil || port < 1 || port > 65535 {
+				return fmt.Errorf("%s must be between 1 and 65535", field.Label)
+			}
+			cfg.RobotGamePort = port
+		default:
+			continue
+		}
+		applied[source] = true
 	}
-	cfg.ServerDirectory = serverDir
-	cfg.RobotConnectIPSetting = host
-	cfg.RobotConnectIP = host
-	cfg.RobotGamePort = port
+	for _, required := range []string{"server_directory", "game_host", "game_port"} {
+		if !applied[required] {
+			return fmt.Errorf("backend %s runtime settings are incomplete", info.ID)
+		}
+	}
 	return nil
 }
