@@ -129,7 +129,7 @@ func (a *SQLiteLoadoutApplier) persistenceDo(ctx context.Context, run func(conte
 	})
 }
 
-func (a SQLiteLoadoutApplier) database(ctx context.Context) (*sql.DB, func(), error) {
+func (a *SQLiteLoadoutApplier) database(ctx context.Context) (*sql.DB, func(), error) {
 	if a.db != nil {
 		return a.db, func() {}, nil
 	}
@@ -315,7 +315,7 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 	return actual, err
 }
 
-func (a SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) error {
+func (a *SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) error {
 	selectedEquipment := selectS4A21Equipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
 	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
 	selectedPet, selectedArtifacts, petSelected := equipmentcap.SelectPet(a.Equipment, a.Config, a.RandIntn)
@@ -445,7 +445,7 @@ func (a *SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Con
 	return actual, err
 }
 
-func (a SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info) (robotcap.Info, error) {
+func (a *SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info) (robotcap.Info, error) {
 	minLevel, maxLevel := a.Config.LevelMin, a.Config.LevelMax
 	if minLevel < 1 {
 		minLevel = 1
