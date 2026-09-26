@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	robotcap "robot/internal/capability/robot"
@@ -85,6 +86,41 @@ func TestSQLiteRobotPurgerCIDDeletesOneCharacterAndRetainsNonemptyAccount(t *tes
 	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id='robot17000002'`, 1)
 	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id=102`, 0)
 	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id=103`, 1)
+}
+
+func TestSQLiteRobotPurgerRejectsChangedDeletePlan(t *testing.T) {
+	path := newPurgeTestDatabase(t)
+	purger := SQLiteRobotPurger{DatabasePath: path, AccountPrefix: "robot"}
+	plan, err := purger.PlanDangerousDelete(context.Background(), robotcap.DangerousDeleteRequest{
+		Mode: robotcap.DangerousDeleteModeRange, MinUID: 17000001, MaxUID: 17000009,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.AccountCount != 3 || plan.CharacterCount != 3 {
+		t.Fatalf("plan=%+v", plan)
+	}
+
+	// A new matching robot appears after the preview: the execution must abort
+	// rather than delete a set the operator never confirmed.
+	db := openPurgeTestDatabase(t, path)
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES (7,'robot17000007');
+INSERT INTO characters(character_id,account_id,name) VALUES (107,7,'late');`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+
+	if _, err := purger.ExecuteDangerousDelete(context.Background(), plan); err == nil {
+		t.Fatal("execute accepted a changed delete plan")
+	} else if !strings.Contains(err.Error(), "plan changed since preview") {
+		t.Fatalf("error = %v, want a plan drift error", err)
+	}
+
+	db = openPurgeTestDatabase(t, path)
+	defer db.Close()
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id IN ('robot17000001','robot17000002','robot17000005','robot17000007')`, 4)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id IN (101,102,103,107)`, 4)
 }
 
 func TestSQLiteRobotPurgerCIDNeverDeletesPlayerCharacter(t *testing.T) {

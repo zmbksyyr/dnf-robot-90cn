@@ -87,6 +87,14 @@ func (p SQLiteRobotPurger) ExecuteDangerousDelete(ctx context.Context, requested
 	if err != nil {
 		return purgeResult(requested, false), err
 	}
+	// The database may have changed between the preview and this transaction
+	// (new logins, registrations or character changes). Deleting a different
+	// set than the operator confirmed is never acceptable.
+	if !purgePlanMatches(requested, actual) {
+		return purgeResult(requested, false), fmt.Errorf(
+			"S4A21 delete plan changed since preview: previewed accounts=%d characters=%d, current accounts=%d characters=%d; re-run the preview",
+			requested.AccountCount, requested.CharacterCount, actual.AccountCount, actual.CharacterCount)
+	}
 	if err := executePurge(ctx, conn, request.Mode, accounts); err != nil {
 		return purgeResult(actual, false), err
 	}
@@ -225,6 +233,35 @@ WHERE a.m_id LIKE ? ORDER BY a.account_id,c.character_id`, p.AccountPrefix+"%")
 		accounts = append(accounts, *account)
 	}
 	return accounts, nil
+}
+
+// purgePlanMatches reports whether the transaction re-read selects exactly the
+// accounts, characters and registry identities the operator previewed. The
+// comparison is order-independent because both plans come from the same
+// deterministic query but could be assembled in different orders.
+func purgePlanMatches(requested, actual robotcap.DangerousDeletePlan) bool {
+	if requested.AccountCount != actual.AccountCount || requested.CharacterCount != actual.CharacterCount {
+		return false
+	}
+	return equalIntSets(requested.UIDs, actual.UIDs) &&
+		equalIntSets(requested.CIDs, actual.CIDs) &&
+		equalIntSets(requested.RegistryUIDs, actual.RegistryUIDs)
+}
+
+func equalIntSets(left, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	leftCopy := append([]int(nil), left...)
+	rightCopy := append([]int(nil), right...)
+	sort.Ints(leftCopy)
+	sort.Ints(rightCopy)
+	for index := range leftCopy {
+		if leftCopy[index] != rightCopy[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func purgeRequestMatches(request robotcap.DangerousDeleteRequest, uid int, cid sql.NullInt64) bool {
