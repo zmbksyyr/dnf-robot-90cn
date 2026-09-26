@@ -344,82 +344,63 @@ func explicitPVFSetKey(body string) string {
 	return ""
 }
 
-// Some simulator PVFs do not expose avatar set-master records. Their item names
-// still carry a shared theme while color and slot words differ per slot.
-func attachAvatarNameFamilies(items []shared.EquipmentCatalogItem) {
-	type familyGroup struct {
-		key   string
-		slots map[int]bool
-	}
-	groups := make(map[string]*familyGroup)
+type nameFamilyGroup struct {
+	key   string
+	slots map[int]bool
+}
+
+// attachNameFamilySets assigns a shared set key to items whose names share a
+// family within the same job group, provided the family covers at least
+// minSlots distinct item types. Both the avatar and the equipment family
+// detection use the same two-pass grouping.
+func attachNameFamilySets(items []shared.EquipmentCatalogItem, prefix string, inFamily func(shared.EquipmentCatalogItem) bool, familyOf func(string) string, minSlots int) {
+	groups := make(map[string]*nameFamilyGroup)
 	for index := range items {
 		item := items[index]
-		if item.ItemType < 20 || item.ItemType > 29 {
+		if !inFamily(item) {
 			continue
 		}
-		family := avatarNameFamily(item.Name)
+		family := familyOf(item.Name)
 		if family == "" {
 			continue
 		}
 		key := pvfItemJobsKey(item) + ":" + family
 		group := groups[key]
 		if group == nil {
-			group = &familyGroup{key: "avatar_" + shortHash(key), slots: make(map[int]bool)}
+			group = &nameFamilyGroup{key: prefix + shortHash(key), slots: make(map[int]bool)}
 			groups[key] = group
 		}
 		group.slots[item.ItemType] = true
 	}
 	for index := range items {
 		item := items[index]
-		if item.ItemType < 20 || item.ItemType > 29 || strings.HasPrefix(item.SetKey, "pvf_") {
+		if !inFamily(item) || strings.HasPrefix(item.SetKey, "pvf_") {
 			continue
 		}
-		family := avatarNameFamily(item.Name)
+		family := familyOf(item.Name)
 		if family == "" {
 			continue
 		}
 		group := groups[pvfItemJobsKey(item)+":"+family]
-		if group == nil || len(group.slots) < 6 {
+		if group == nil || len(group.slots) < minSlots {
 			continue
 		}
 		items[index].SetKey = group.key
 	}
 }
 
+// Some simulator PVFs do not expose avatar set-master records. Their item names
+// still carry a shared theme while color and slot words differ per slot.
+func attachAvatarNameFamilies(items []shared.EquipmentCatalogItem) {
+	attachNameFamilySets(items, "avatar_", func(item shared.EquipmentCatalogItem) bool {
+		return item.ItemType >= 20 && item.ItemType <= 29
+	}, avatarNameFamily, 6)
+}
+
 func attachEquipmentNameFamilies(items []shared.EquipmentCatalogItem) {
-	type familyGroup struct {
-		key   string
-		slots map[int]bool
-	}
-	groups := make(map[string]*familyGroup)
-	for _, item := range items {
-		if !equipmentArmorSetSlot(item.ItemType) {
-			continue
-		}
-		family := equipmentNameFamily(item.Name)
-		if family == "" {
-			continue
-		}
-		key := pvfItemJobsKey(item) + ":" + family
-		group := groups[key]
-		if group == nil {
-			group = &familyGroup{key: "equipment_" + shortHash(key), slots: make(map[int]bool)}
-			groups[key] = group
-		}
-		group.slots[item.ItemType] = true
-	}
-	for index := range items {
-		item := items[index]
-		if !equipmentArmorSetSlot(item.ItemType) || strings.HasPrefix(item.SetKey, "pvf_") {
-			continue
-		}
-		family := equipmentNameFamily(item.Name)
-		group := groups[pvfItemJobsKey(item)+":"+family]
-		if group == nil || len(group.slots) < 5 {
-			continue
-		}
-		items[index].SetKey = group.key
-	}
+	attachNameFamilySets(items, "equipment_", func(item shared.EquipmentCatalogItem) bool {
+		return equipmentArmorSetSlot(item.ItemType)
+	}, equipmentNameFamily, 5)
 }
 
 // NormalizeEquipmentSetKeys repairs catalogs produced by older Robot builds.
