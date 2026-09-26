@@ -151,7 +151,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		IdleTimeout:       webIdleTimeout,
 	}
 	foundationlog.Robotf("WEB_SERVER_LISTENING addr=%s robot_addr=%s pid=%d sessions=%d\n", s.webAddr, s.robotAddr, os.Getpid(), s.sessionCount())
-	if strings.TrimSpace(s.cfg.WebPassword) == "twadmin" {
+	if strings.TrimSpace(s.cfg.WebPasswordHash) == "" && strings.TrimSpace(s.cfg.WebPassword) == "twadmin" {
 		foundationlog.Robotf("WEB_SECURITY_WARNING reason=default_password\n")
 	}
 	if host, _, err := net.SplitHostPort(s.webAddr); err == nil && (host == "" || host == "0.0.0.0" || host == "::") {

@@ -2,15 +2,16 @@ package webadmin
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
-	foundationlog "robot/internal/foundation/log"
 	"strings"
 	"time"
+
+	"robot/internal/foundation/config"
+	foundationlog "robot/internal/foundation/log"
 )
 
 const maxWebSessions = 64
@@ -59,11 +60,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	password := r.Form.Get("password")
-	if strings.TrimSpace(s.cfg.WebPassword) == "" {
+	if strings.TrimSpace(s.cfg.WebPassword) == "" && strings.TrimSpace(s.cfg.WebPasswordHash) == "" {
 		s.writeLogin(w, "web password is not configured")
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(password), []byte(s.cfg.WebPassword)) == 1 {
+	if config.VerifyWebPassword(s.cfg.WebPassword, s.cfg.WebPasswordHash, password) {
 		s.clearLoginFailures(peer)
 		token := randomToken()
 		s.tokenMu.Lock()

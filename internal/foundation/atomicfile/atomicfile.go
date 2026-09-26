@@ -28,6 +28,11 @@ func WriteFile(path string, data []byte, perm fs.FileMode) error {
 	if err := os.Rename(tempPath, target); err != nil {
 		return fmt.Errorf("replace %s: %w (target may be read-only or locked by another process)", target, err)
 	}
+	if perm&0o077 == 0 {
+		// Best effort: Windows ACLs carry owner-only intent where the Unix
+		// mode bits cannot.
+		_ = HardenPrivate(target)
+	}
 	return nil
 }
 
@@ -48,7 +53,14 @@ func WriteFileIfMissing(path string, data []byte, perm fs.FileMode) (bool, error
 		}
 		// Some filesystems (for example FAT/exFAT on Windows) do not support
 		// hard links; fall back to an exclusive create.
-		return writeExclusive(path, data, perm)
+		created, writeErr := writeExclusive(path, data, perm)
+		if writeErr == nil && created && perm&0o077 == 0 {
+			_ = HardenPrivate(path)
+		}
+		return created, writeErr
+	}
+	if perm&0o077 == 0 {
+		_ = HardenPrivate(path)
 	}
 	return true, nil
 }

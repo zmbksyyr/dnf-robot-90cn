@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +25,9 @@ import (
 var version = "dev"
 
 func main() {
+	if handled := handlePasswordHashCLI(); handled {
+		return
+	}
 	code := 0
 	for {
 		code = runMain()
@@ -35,6 +39,37 @@ func main() {
 		waitForFatalExit()
 	}
 	os.Exit(code)
+}
+
+// handlePasswordHashCLI implements `robot -hash-password <value>`, which prints
+// a WebPasswordHash value for config.ini and exits.
+func handlePasswordHashCLI() bool {
+	args := os.Args[1:]
+	for index, arg := range args {
+		value := ""
+		switch {
+		case arg == "-hash-password" || arg == "--hash-password":
+			if index+1 < len(args) {
+				value = args[index+1]
+			}
+		case strings.HasPrefix(arg, "-hash-password=") || strings.HasPrefix(arg, "--hash-password="):
+			value = arg[strings.IndexByte(arg, '=')+1:]
+		default:
+			continue
+		}
+		if strings.TrimSpace(value) == "" {
+			fmt.Fprintln(os.Stderr, "usage: robot -hash-password <password>")
+			os.Exit(1)
+		}
+		hash, err := config.HashWebPassword(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "hash password error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(hash)
+		os.Exit(0)
+	}
+	return false
 }
 
 func runMain() int {

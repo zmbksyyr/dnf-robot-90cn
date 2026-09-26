@@ -21,6 +21,7 @@ type SysConfig struct {
 	PartyRoute0Port       int
 	WebPort               int
 	WebPassword           string
+	WebPasswordHash       string
 	LogMaxSizeMB          int
 	LogMaxBackups         int
 	MaxResponseBytes      int
@@ -78,6 +79,7 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 
 	// [Web] section
 	cfg.WebPassword = dec.String("Web", "WebPassword", "twadmin")
+	cfg.WebPasswordHash = strings.TrimSpace(dec.String("Web", "WebPasswordHash", ""))
 
 	// [system] section
 	cfg.LogMaxSizeMB = dec.Int("system", "log_max_size_mb", 100)
@@ -95,7 +97,7 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 	checkPort("Ports", "PartyRoute0", cfg.PartyRoute0Port)
 	dec.Check("Robot", "RobotInnerIp", strings.TrimSpace(cfg.RobotInnerIP) != "", "must not be empty")
 	dec.Check("Robot", "RobotConnectIp", strings.TrimSpace(cfg.RobotConnectIPSetting) != "", "must not be empty")
-	dec.Check("Web", "WebPassword", strings.TrimSpace(cfg.WebPassword) != "", "must not be empty")
+	dec.Check("Web", "WebPassword", strings.TrimSpace(cfg.WebPassword) != "" || cfg.WebPasswordHash != "", "must not be empty unless WebPasswordHash is set")
 	dec.Check("system", "log_max_size_mb", cfg.LogMaxSizeMB >= 1, "must be positive")
 	dec.Check("system", "log_max_backups", cfg.LogMaxBackups >= 1, "must be positive")
 	dec.Check("system", "max_response_bytes", cfg.MaxResponseBytes >= 1, "must be positive")
