@@ -12,8 +12,8 @@ func TestEmbeddedAssetsContainCoreS4A21UI(t *testing.T) {
 		name, content string
 		required      []string
 	}{
-		{"index", indexHTML, []string{"openAutoDialog", "openPortsDialog", "runAction('robotsMove')", "runAction('robotsShout')"}},
-		{"javascript", appJS, []string{"robotsOnlineAsync", "robotsMove", "robotsShout", "robotsLogoutAsync", "cleanupRobotsAsync", "dangerousDeleteAsync", "backendCapabilities"}},
+		{"index", indexHTML, []string{"openAutoDialog", "openBackendDialog", "runAction('robotsMove')", "runAction('robotsShout')"}},
+		{"javascript", appJS, []string{"robotsOnlineAsync", "robotsMove", "robotsShout", "robotsLogoutAsync", "cleanupRobotsAsync", "dangerousDeleteAsync", "backendCapabilities", "restartRobot"}},
 		{"i18n", i18nJS, []string{"I18N_MESSAGES", "toggleLanguage", "auto.target_online", "auto.shout_interval", "backend.recovery"}},
 	}
 	for _, check := range checks {
@@ -27,17 +27,9 @@ func TestEmbeddedAssetsContainCoreS4A21UI(t *testing.T) {
 
 func TestRemovedAndUnimplementedWebSurfacesAreAbsent(t *testing.T) {
 	content := indexHTML + appJS + i18nJS + appCSS
-	for _, token := range []string{"openCompatDialog", "openKeyDialog", "openDiagnosticsDialog", "openMaxDialog", "openScriptDialog", "submitMarketSettings", "market.", "dialog.market", "party-debug", "service-ports", "monitorPort", "auctionPort", "pointPort", "relayPort", "70 Compat", "RSA Key"} {
+	for _, token := range []string{"openCompatDialog", "openKeyDialog", "openDiagnosticsDialog", "openMaxDialog", "openScriptDialog", "openPortsDialog", "portsButton", "game-endpoint", "submitMarketSettings", "market.", "dialog.market", "party-debug", "service-ports", "monitorPort", "auctionPort", "pointPort", "relayPort", "70 Compat", "RSA Key"} {
 		if strings.Contains(content, token) {
 			t.Errorf("obsolete web surface remains: %q", token)
-		}
-	}
-}
-
-func TestPortsDialogOnlyEditsGamePort(t *testing.T) {
-	for _, want := range []string{`const payload={game_port:`, `id="gamePort"`, `renderPortsDialog(x.ports||{})`} {
-		if !strings.Contains(appJS, want) {
-			t.Errorf("game port dialog is missing %q", want)
 		}
 	}
 }
@@ -136,8 +128,8 @@ func TestDashboardRenderingOnlyReferencesPresentElements(t *testing.T) {
 	}
 }
 
-func TestBackendRecoveryAndRestartFlowRemainAvailable(t *testing.T) {
-	for _, want := range []string{"recovery_mode", "restart_required", "restartRobot()", "backendSettings", "backendCapabilities"} {
+func TestBackendRecoveryAndExplicitRestartFlowRemainAvailable(t *testing.T) {
+	for _, want := range []string{"recovery_mode", "submitBackendSelection(true)", "restartRobot", "backendSettings", "backendCapabilities"} {
 		if !strings.Contains(appJS, want) {
 			t.Errorf("backend recovery flow is missing %q", want)
 		}

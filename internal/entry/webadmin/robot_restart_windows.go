@@ -16,6 +16,7 @@ import (
 const (
 	windowsCreateNewProcessGroup = 0x00000200
 	windowsDetachedProcess       = 0x00000008
+	windowsCreateNewConsole      = 0x00000010
 )
 
 func startRobotRestartHelper(exe, configDir string) error {
@@ -123,21 +124,10 @@ func windowsProcessExists(pid int) bool {
 }
 
 func startWindowsRobot(exe, configDir string) error {
-	restartLogPath := windowsRestartLogPath(configDir)
-	if err := os.MkdirAll(filepath.Dir(restartLogPath), 0755); err != nil {
-		return err
-	}
-	restartLog, err := os.OpenFile(restartLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return err
-	}
-	defer restartLog.Close()
-
+	_ = configDir
 	robot := exec.Command(exe)
 	robot.Dir = filepath.Dir(exe)
-	robot.Stdout = restartLog
-	robot.Stderr = restartLog
-	setDetachedWindowsProcess(robot)
+	setVisibleWindowsProcess(robot)
 	if err := robot.Start(); err != nil {
 		return fmt.Errorf("start robot: %w", err)
 	}
@@ -145,6 +135,12 @@ func startWindowsRobot(exe, configDir string) error {
 		return fmt.Errorf("release restarted robot process: %w", err)
 	}
 	return nil
+}
+
+func setVisibleWindowsProcess(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windowsCreateNewProcessGroup | windowsCreateNewConsole,
+	}
 }
 
 func windowsRestartLogPath(configDir string) string {

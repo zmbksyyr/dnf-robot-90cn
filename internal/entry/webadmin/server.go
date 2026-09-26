@@ -137,7 +137,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	mux.HandleFunc("/logout", s.handleLogout)
 	mux.HandleFunc("/api/call", s.requireAuth(s.handleCall))
 	mux.HandleFunc("/api/game-port", s.requireAuth(s.handleGamePort))
-	mux.HandleFunc("/api/game-endpoint", s.requireAuth(s.handleGameEndpoint))
 	mux.HandleFunc("/api/restart-robot", s.requireAuth(s.handleRestartRobot))
 	mux.HandleFunc("/api/backend", s.requireAuth(s.handleBackend))
 	server := &http.Server{
