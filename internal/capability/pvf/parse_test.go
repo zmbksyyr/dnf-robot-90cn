@@ -2,6 +2,7 @@ package pvf
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"robot/internal/shared"
@@ -116,6 +117,17 @@ func TestExplicitPVFSetKeyIgnoresPartSetIndex(t *testing.T) {
 	}
 	if got := explicitPVFSetKey("[set item master]\n123"); got != "set item master:123" {
 		t.Fatalf("master set key got %q", got)
+	}
+}
+
+func TestDeriveEquipmentSetKeyNeverUsesSharedPath(t *testing.T) {
+	item := shared.EquipmentCatalogItem{ItemType: 8, Name: "灵魂猎者", Name2: "灵魂猎者"}
+	if got := deriveItemSetKey("equipment/necklace/20110.equ", "", item); got != "" {
+		t.Fatalf("jewelry path became a set key %q", got)
+	}
+	item = shared.EquipmentCatalogItem{ItemType: 3, Name: "远古尘封术士上衣", UseJob: []int{3}}
+	if got := deriveItemSetKey("equipment/coat/100.equ", "", item); got == "" || strings.HasPrefix(got, "path_") {
+		t.Fatalf("armor set key is not a reliable family key: %q", got)
 	}
 }
 

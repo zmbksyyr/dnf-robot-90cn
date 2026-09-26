@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"robot/internal/capability/pvf"
 	robottemplate "robot/internal/capability/robottemplate"
 	foundationconfig "robot/internal/foundation/config"
 	"robot/internal/foundation/lockhub"
@@ -390,6 +391,9 @@ func equipmentFileView(configDir string, name string) []shared.EquipmentCatalogI
 		var out []shared.EquipmentCatalogItem
 		if json.Unmarshal(data, &out) != nil {
 			return fallback
+		}
+		if name == "equipment_catalog.json" {
+			pvf.NormalizeEquipmentSetKeys(out)
 		}
 		return out
 	})

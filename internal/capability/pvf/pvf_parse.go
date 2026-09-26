@@ -19,6 +19,18 @@ func deriveItemSetKey(path, body string, item shared.EquipmentCatalogItem) strin
 	if key := explicitPVFSetKey(body); key != "" {
 		return "pvf_" + shortHash(key)
 	}
+	// Equipment paths are storage layout, not set metadata. In simulator PVFs a
+	// shared directory is commonly reused by titles, jewelry, special slots,
+	// and unrelated armor pieces. Never expose that path as a set key.
+	if equipmentArmorSetSlot(item.ItemType) {
+		if family := equipmentNameFamily(item.Name + " " + item.Name2); family != "" {
+			return "equipment_" + shortHash(pvfItemJobsKey(item)+":"+family)
+		}
+		return ""
+	}
+	if item.ItemType >= 1 && item.ItemType <= 12 {
+		return ""
+	}
 	if key := pathSetKey(path, item.ItemType); key != "" {
 		return "path_" + shortHash(key)
 	}
@@ -459,6 +471,19 @@ func attachEquipmentNameFamilies(items []shared.EquipmentCatalogItem) {
 	}
 }
 
+// NormalizeEquipmentSetKeys repairs catalogs produced by older Robot builds.
+// Those builds treated an equipment directory as a set, which merged titles,
+// jewelry, special slots, and unrelated armor. Only explicit PVF keys and
+// five-slot armor name families are retained for equipment.
+func NormalizeEquipmentSetKeys(items []shared.EquipmentCatalogItem) {
+	for i := range items {
+		if items[i].ItemType >= 1 && items[i].ItemType <= 12 && !strings.HasPrefix(items[i].SetKey, "pvf_") {
+			items[i].SetKey = ""
+		}
+	}
+	attachEquipmentNameFamilies(items)
+}
+
 func equipmentArmorSetSlot(itemType int) bool {
 	// A five-piece set is the armor block only. Weapons, jewelry and the two
 	// special slots use independent item families and must not inflate armor
@@ -473,7 +498,7 @@ func equipmentNameFamily(value string) string {
 	}
 	for _, word := range []string{
 		"黑色", "白色", "红色", "绿色", "蓝色", "黄色", "金色", "银色", "灰色", "紫色", "粉色", "橙色", "杏色", "乳白色", "古铜色", "巧克力色",
-		"武器", "称号", "上衣", "护肩", "肩甲", "下装", "裤子", "鞋", "腰带", "项链", "手镯", "戒指", "辅助装备", "魔法石", "胸甲", "头盔",
+		"武器", "称号", "上衣", "护肩", "肩甲", "下装", "裤子", "鞋", "鞋子", "战靴", "长靴", "靴", "腰带", "腰部", "项链", "手镯", "戒指", "辅助装备", "魔法石", "胸甲", "护腿", "头盔",
 	} {
 		value = strings.ReplaceAll(value, word, "")
 	}
