@@ -14,10 +14,7 @@ import (
 // platformCPUPercent samples kernel+user time through GetProcessTimes. The
 // first call only establishes a baseline and reports 0.
 func platformCPUPercent() float64 {
-	handle, err := windows.GetCurrentProcess()
-	if err != nil {
-		return 0
-	}
+	handle := windows.CurrentProcess()
 	var creation, exit, kernel, user windows.Filetime
 	if err := windows.GetProcessTimes(handle, &creation, &exit, &kernel, &user); err != nil {
 		return 0
@@ -71,10 +68,7 @@ var (
 
 // platformRSSMB reads the working set size through GetProcessMemoryInfo.
 func platformRSSMB() int {
-	handle, err := windows.GetCurrentProcess()
-	if err != nil {
-		return 0
-	}
+	handle := windows.CurrentProcess()
 	counters := processMemoryCounters{cb: uint32(unsafe.Sizeof(processMemoryCounters{}))}
 	result, _, _ := procGetProcessMemoryInfo.Call(
 		uintptr(handle),
