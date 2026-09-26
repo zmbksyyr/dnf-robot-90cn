@@ -14,6 +14,7 @@ import (
 	robotconfig "robot/internal/capability/robotconfig"
 	robotstate "robot/internal/capability/robotstate"
 	"robot/internal/foundation/charset"
+	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
 )
 
@@ -60,7 +61,12 @@ type startupSQLiteConn interface {
 // ScanAndClean makes the game database the only durable source of S4A21 robot
 // identity. Accounts are owned only when their name is exactly prefix+UID and
 // the UID is inside the configured segment. Any owned account that is not a
-// complete, usable one-character robot is removed in the same transaction.
+// complete, usable one-character robot is removed.
+//
+// The scan is read-only. Deletion runs in a separate short write transaction
+// that re-verifies each candidate against the recorded character set, so the
+// game server is not blocked behind a full-table scan and no account is
+// deleted when it changed between the scan and the cleanup.
 func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInventory, error) {
 	var result StartupInventory
 	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
@@ -86,15 +92,8 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
 		return result, fmt.Errorf("configure S4A21 startup inventory: %w", err)
 	}
-	// A deferred transaction can become SQLITE_BUSY_SNAPSHOT when the game
-	// server writes after our reads but before invalid-account deletion. Take
-	// the write reservation first so the scan and cleanup remain one atomic
-	// startup operation.
-	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
-		return result, fmt.Errorf("begin S4A21 startup inventory: %w", err)
-	}
-	defer conn.ExecContext(context.Background(), `ROLLBACK`)
 
+	// Phase 1: read-only scan.
 	accounts, characterIDs, err := s.readOwnedAccounts(ctx, conn, prefix)
 	if err != nil {
 		return result, err
@@ -105,11 +104,10 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 		return result, err
 	}
 	items := equipmentByID(s.Equipment)
-	invalidAccountIDs := make([]int, 0)
+	invalidAccounts := make([]startupAccount, 0)
 	for _, account := range accounts {
 		if len(account.characters) != 1 || !s.characterCompliant(account.characters[0], index, items) {
-			invalidAccountIDs = append(invalidAccountIDs, account.id)
-			result.DeletedCharacters += len(account.characters)
+			invalidAccounts = append(invalidAccounts, account)
 			continue
 		}
 		character := account.characters[0]
@@ -126,16 +124,125 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 			BackendCharacterID: strconv.Itoa(character.id),
 		})
 	}
-	if err := deleteStartupAccounts(ctx, conn, invalidAccountIDs); err != nil {
-		return result, err
-	}
-	result.DeletedAccounts = len(invalidAccountIDs)
-	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
-		return result, fmt.Errorf("commit S4A21 startup inventory: %w", err)
+
+	// Phase 2: short write transaction.
+	if len(invalidAccounts) > 0 {
+		if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+			return result, fmt.Errorf("begin S4A21 startup inventory: %w", err)
+		}
+		deleted := false
+		defer func() {
+			if !deleted {
+				_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
+			}
+		}()
+		toDelete, deletedCharacters, err := s.verifyInvalidAccounts(ctx, conn, prefix, invalidAccounts)
+		if err != nil {
+			return result, err
+		}
+		if err := deleteStartupAccounts(ctx, conn, toDelete); err != nil {
+			return result, err
+		}
+		if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+			return result, fmt.Errorf("commit S4A21 startup inventory: %w", err)
+		}
+		deleted = true
+		result.DeletedAccounts = len(toDelete)
+		result.DeletedCharacters = deletedCharacters
 	}
 	sort.Slice(result.Robots, func(i, j int) bool { return result.Robots[i].UID < result.Robots[j].UID })
 	sort.Slice(result.Identities, func(i, j int) bool { return result.Identities[i].Account < result.Identities[j].Account })
 	return result, nil
+}
+
+// verifyInvalidAccounts re-reads each invalid candidate inside the write
+// transaction and returns only accounts whose identity and character set still
+// match the scan. An account that changed in the meantime is skipped and left
+// for the next startup instead of being deleted with stale evidence.
+func (s SQLiteStartupInventory) verifyInvalidAccounts(ctx context.Context, conn startupSQLiteConn, prefix string, candidates []startupAccount) ([]int, int, error) {
+	const batchSize = 200
+	toDelete := make([]int, 0, len(candidates))
+	deletedCharacters := 0
+	for start := 0; start < len(candidates); start += batchSize {
+		end := start + batchSize
+		if end > len(candidates) {
+			end = len(candidates)
+		}
+		args := make([]any, end-start)
+		placeholders := make([]string, end-start)
+		for index, candidate := range candidates[start:end] {
+			args[index] = candidate.id
+			placeholders[index] = "?"
+		}
+		query := `SELECT a.account_id,a.m_id,c.character_id FROM accounts a
+LEFT JOIN characters c ON c.account_id=a.account_id
+WHERE a.account_id IN (` + strings.Join(placeholders, ",") + `)`
+		rows, err := conn.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, 0, fmt.Errorf("re-check S4A21 startup candidates: %w", err)
+		}
+		current := make(map[int]*startupAccount, end-start)
+		for rows.Next() {
+			var accountID int
+			var accountName string
+			var characterID sql.NullInt64
+			if err := rows.Scan(&accountID, &accountName, &characterID); err != nil {
+				rows.Close()
+				return nil, 0, fmt.Errorf("read S4A21 startup candidate: %w", err)
+			}
+			account := current[accountID]
+			if account == nil {
+				account = &startupAccount{id: accountID, name: accountName}
+				current[accountID] = account
+			}
+			if characterID.Valid {
+				account.characters = append(account.characters, startupCharacter{id: int(characterID.Int64)})
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, 0, fmt.Errorf("scan S4A21 startup candidates: %w", err)
+		}
+		rows.Close()
+		for index := range candidates[start:end] {
+			candidate := candidates[start+index]
+			state := current[candidate.id]
+			if state == nil {
+				foundationlog.Robotf("STARTUP_INVENTORY_SKIP_CHANGED account=%s reason=account disappeared during startup scan\n", candidate.name)
+				continue
+			}
+			uid, owned := strictRobotUID(state.name, prefix)
+			if !owned || uid != candidate.uid || !sameStartupCharacters(state.characters, candidate.characters) {
+				foundationlog.Robotf("STARTUP_INVENTORY_SKIP_CHANGED account=%s reason=candidate changed during startup scan\n", candidate.name)
+				continue
+			}
+			toDelete = append(toDelete, candidate.id)
+			deletedCharacters += len(candidate.characters)
+		}
+	}
+	return toDelete, deletedCharacters, nil
+}
+
+func sameStartupCharacters(current, recorded []startupCharacter) bool {
+	if len(current) != len(recorded) {
+		return false
+	}
+	currentIDs := make([]int, 0, len(current))
+	for _, character := range current {
+		currentIDs = append(currentIDs, character.id)
+	}
+	recordedIDs := make([]int, 0, len(recorded))
+	for _, character := range recorded {
+		recordedIDs = append(recordedIDs, character.id)
+	}
+	sort.Ints(currentIDs)
+	sort.Ints(recordedIDs)
+	for index := range currentIDs {
+		if currentIDs[index] != recordedIDs[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func deleteStartupAccounts(ctx context.Context, conn startupSQLiteConn, accountIDs []int) error {

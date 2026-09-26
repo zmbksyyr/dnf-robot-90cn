@@ -13,6 +13,49 @@ import (
 	"robot/internal/shared"
 )
 
+func TestStartupInventorySkipsCandidateChangedAfterScan(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	if _, err := db.Exec(`
+INSERT INTO accounts(account_id,m_id) VALUES (8,'robot17000008');
+INSERT INTO characters(character_id,account_id,name,job,grow_type,level,delete_flag) VALUES
+ (80,8,'Reusable',1,0,5,0),(81,8,'NewSibling',1,0,5,0);`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+
+	db2 := openLoadoutTestDB(t, path)
+	defer db2.Close()
+	conn, err := db2.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	purger := SQLiteStartupInventory{AccountPrefix: "robot"}
+
+	// The database gained a second character after the scan: the candidate is
+	// stale and nothing may be deleted.
+	stale := startupAccount{id: 8, uid: 17000008, name: "robot17000008", characters: []startupCharacter{{id: 80}}}
+	toDelete, characters, err := purger.verifyInvalidAccounts(context.Background(), conn, "robot", []startupAccount{stale})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toDelete) != 0 || characters != 0 {
+		t.Fatalf("stale candidate deleted: accounts=%v characters=%d", toDelete, characters)
+	}
+
+	// The unchanged candidate still matches and is deleted.
+	fresh := startupAccount{id: 8, uid: 17000008, name: "robot17000008", characters: []startupCharacter{{id: 80}, {id: 81}}}
+	toDelete, characters, err = purger.verifyInvalidAccounts(context.Background(), conn, "robot", []startupAccount{fresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toDelete) != 1 || toDelete[0] != 8 || characters != 2 {
+		t.Fatalf("fresh candidate = %v characters=%d, want account 8 with 2 characters", toDelete, characters)
+	}
+}
+
 func TestStartupInventoryAdoptsCompliantAndHardDeletesInvalidAccounts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "inventory.db")
 	db := openLoadoutTestDB(t, path)
