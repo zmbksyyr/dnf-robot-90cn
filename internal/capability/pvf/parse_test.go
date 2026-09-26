@@ -119,6 +119,49 @@ func TestExplicitPVFSetKeyIgnoresPartSetIndex(t *testing.T) {
 	}
 }
 
+func TestAttachAvatarNameFamiliesGroupsColorsAndSlots(t *testing.T) {
+	items := []shared.EquipmentCatalogItem{
+		{Name: "绿色扬帆远航帽子", ItemType: 20, UseJob: []int{2}},
+		{Name: "黑色扬帆远航头发", ItemType: 21, UseJob: []int{2}},
+		{Name: "蓝色扬帆远航墨镜", ItemType: 22, UseJob: []int{2}},
+		{Name: "红色扬帆远航上衣", ItemType: 23, UseJob: []int{2}},
+		{Name: "白色扬帆远航裤子", ItemType: 24, UseJob: []int{2}},
+		{Name: "金色扬帆远航鞋子", ItemType: 25, UseJob: []int{2}},
+	}
+	attachAvatarNameFamilies(items)
+	if items[0].SetKey == "" {
+		t.Fatalf("avatar family was not assigned: %q %q %q %q %q %q", avatarNameFamily(items[0].Name), avatarNameFamily(items[1].Name), avatarNameFamily(items[2].Name), avatarNameFamily(items[3].Name), avatarNameFamily(items[4].Name), avatarNameFamily(items[5].Name))
+	}
+	for _, item := range items[1:] {
+		if item.SetKey != items[0].SetKey {
+			t.Fatalf("avatar family key %q differs from %q", item.SetKey, items[0].SetKey)
+		}
+	}
+}
+
+func TestAttachEquipmentNameFamiliesRequiresArmorCoverage(t *testing.T) {
+	items := []shared.EquipmentCatalogItem{
+		{Name: "远古尘封术士上衣", ItemType: 3, UseJob: []int{3}},
+		{Name: "远古尘封术士护肩", ItemType: 4, UseJob: []int{3}},
+		{Name: "远古尘封术士下装", ItemType: 5, UseJob: []int{3}},
+		{Name: "远古尘封术士鞋", ItemType: 6, UseJob: []int{3}},
+		{Name: "远古尘封术士腰带", ItemType: 7, UseJob: []int{3}},
+		{Name: "普通散件上衣", ItemType: 3, UseJob: []int{3}},
+	}
+	attachEquipmentNameFamilies(items)
+	if items[0].SetKey == "" {
+		t.Fatal("equipment family was not assigned")
+	}
+	for _, item := range items[1:5] {
+		if item.SetKey != items[0].SetKey {
+			t.Fatalf("equipment family key %q differs from %q", item.SetKey, items[0].SetKey)
+		}
+	}
+	if items[5].SetKey != "" {
+		t.Fatalf("unrelated equipment received set key %q", items[5].SetKey)
+	}
+}
+
 func TestAppendItemInfoCreatureArtifacts(t *testing.T) {
 	raw := "#PVF_File\r\n" +
 		"63500 1 1 1 1 1 1 1 1 1 1 1 1 70 `red` `red2` 14002\r\n" +

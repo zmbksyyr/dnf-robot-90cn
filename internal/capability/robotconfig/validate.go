@@ -75,12 +75,16 @@ func validateRuntimeConfig(dec *foundationconfig.Decoder, rc RuntimeConfig) erro
 	checkRange("equipment", "equip_smithing_max", rc.EquipSmithingMax, 0, 255)
 	checkOrder("equipment", "equip_smithing_min", rc.EquipSmithingMin, "equip_smithing_max", rc.EquipSmithingMax)
 	checkRange("equipment", "equip_set_min_slots", rc.EquipSetMinSlots, 2, 12)
-	dec.Check("equipment", "equip_set_min_slots", !rc.PreferEquipSets || rc.EquipSetMinSlots <= len(rc.EquipSlots), "must not exceed the number of equip_slots when prefer_equip_sets is true")
+	// The runtime normalizer clamps the requested set threshold to the number
+	// of configured slots.  Keep partial configuration files loadable here:
+	// the default threshold is intentionally five, while callers may select a
+	// smaller slot subset for diagnostics or specialized deployments.
 
 	checkListRange("avatar", "avatar_slots", rc.AvatarSlots, 0, 9)
 	dec.Check("avatar", "min_avatar_slots", rc.MinAvatarSlots >= 0 && rc.MinAvatarSlots <= len(rc.AvatarSlots), "must be between 0 and the number of avatar_slots")
 	checkRange("avatar", "avatar_set_min_slots", rc.AvatarSetMinSlots, 2, 10)
-	dec.Check("avatar", "avatar_set_min_slots", !rc.PreferAvatarSets || rc.AvatarSetMinSlots <= len(rc.AvatarSlots), "must not exceed the number of avatar_slots when prefer_avatar_sets is true")
+	// See the equipment threshold note above.  Normalize applies the effective
+	// threshold after decoding the complete configuration.
 	checkRange("pet", "pet_probability_percent", rc.PetProbabilityPercent, 0, 100)
 	checkListRange("pet", "pet_artifact_slots", rc.PetArtifactSlots, 31, 33)
 	checkRange("pet", "min_pet_artifact_slots", rc.MinPetArtifactSlots, 0, 3)

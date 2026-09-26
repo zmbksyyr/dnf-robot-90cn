@@ -347,6 +347,8 @@ func extractItemListFromText(readText func(string) string, listPath, prefix stri
 	}
 	if !stackable {
 		resolvePVFItemSetKeys(out, itemSetInfo)
+		attachEquipmentNameFamilies(out)
+		attachAvatarNameFamilies(out)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out

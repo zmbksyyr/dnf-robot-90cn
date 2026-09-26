@@ -159,7 +159,8 @@ type pvfThemeGroup struct {
 
 func attachPVFThemeMatches(items []shared.EquipmentCatalogItem, assigned map[int]bool, masterIDs map[int]bool) {
 	groupsByKey := make(map[string]*pvfThemeGroup)
-	for _, item := range items {
+	for index := range items {
+		item := items[index]
 		if !assigned[item.ID] || item.SetKey == "" {
 			continue
 		}
@@ -378,6 +379,138 @@ func nameSetKey(body string, itemType int) string {
 		return name
 	}
 	return ""
+}
+
+// Some simulator PVFs do not expose avatar set-master records. Their item names
+// still carry a shared theme while color and slot words differ per slot.
+func attachAvatarNameFamilies(items []shared.EquipmentCatalogItem) {
+	type familyGroup struct {
+		key   string
+		slots map[int]bool
+	}
+	groups := make(map[string]*familyGroup)
+	for index := range items {
+		item := items[index]
+		if item.ItemType < 20 || item.ItemType > 29 {
+			continue
+		}
+		family := avatarNameFamily(item.Name)
+		if family == "" {
+			continue
+		}
+		key := pvfItemJobsKey(item) + ":" + family
+		group := groups[key]
+		if group == nil {
+			group = &familyGroup{key: "avatar_" + shortHash(key), slots: make(map[int]bool)}
+			groups[key] = group
+		}
+		group.slots[item.ItemType] = true
+	}
+	for index := range items {
+		item := items[index]
+		if item.ItemType < 20 || item.ItemType > 29 || strings.HasPrefix(item.SetKey, "pvf_") {
+			continue
+		}
+		family := avatarNameFamily(item.Name)
+		if family == "" {
+			continue
+		}
+		group := groups[pvfItemJobsKey(item)+":"+family]
+		if group == nil || len(group.slots) < 6 {
+			continue
+		}
+		items[index].SetKey = group.key
+	}
+}
+
+func attachEquipmentNameFamilies(items []shared.EquipmentCatalogItem) {
+	type familyGroup struct {
+		key   string
+		slots map[int]bool
+	}
+	groups := make(map[string]*familyGroup)
+	for _, item := range items {
+		if !equipmentArmorSetSlot(item.ItemType) {
+			continue
+		}
+		family := equipmentNameFamily(item.Name)
+		if family == "" {
+			continue
+		}
+		key := pvfItemJobsKey(item) + ":" + family
+		group := groups[key]
+		if group == nil {
+			group = &familyGroup{key: "equipment_" + shortHash(key), slots: make(map[int]bool)}
+			groups[key] = group
+		}
+		group.slots[item.ItemType] = true
+	}
+	for index := range items {
+		item := items[index]
+		if !equipmentArmorSetSlot(item.ItemType) || strings.HasPrefix(item.SetKey, "pvf_") {
+			continue
+		}
+		family := equipmentNameFamily(item.Name)
+		group := groups[pvfItemJobsKey(item)+":"+family]
+		if group == nil || len(group.slots) < 5 {
+			continue
+		}
+		items[index].SetKey = group.key
+	}
+}
+
+func equipmentArmorSetSlot(itemType int) bool {
+	// A five-piece set is the armor block only. Weapons, jewelry and the two
+	// special slots use independent item families and must not inflate armor
+	// set coverage.
+	return itemType >= 3 && itemType <= 7
+}
+
+func equipmentNameFamily(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" || strings.EqualFold(value, "errorstring") {
+		return ""
+	}
+	for _, word := range []string{
+		"黑色", "白色", "红色", "绿色", "蓝色", "黄色", "金色", "银色", "灰色", "紫色", "粉色", "橙色", "杏色", "乳白色", "古铜色", "巧克力色",
+		"武器", "称号", "上衣", "护肩", "肩甲", "下装", "裤子", "鞋", "腰带", "项链", "手镯", "戒指", "辅助装备", "魔法石", "胸甲", "头盔",
+	} {
+		value = strings.ReplaceAll(value, word, "")
+	}
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return -1
+	}, value)
+	if len([]rune(value)) < 3 || strings.HasPrefix(value, "name") {
+		return ""
+	}
+	return value
+}
+
+func avatarNameFamily(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" || strings.EqualFold(value, "errorstring") {
+		return ""
+	}
+	for _, word := range []string{
+		"黑色", "白色", "红色", "绿色", "蓝色", "黄色", "金色", "银色", "灰色", "紫色", "粉色", "橙色", "杏色", "乳白色", "古铜色", "巧克力色", "透明",
+		"高级", "稀有", "普通", "华丽", "灿烂", "白金", "帽子", "头发", "脸部", "面部", "眼影", "墨镜", "耳环", "胸部", "胸", "上衣", "外套", "裤子", "鞋子", "鞋", "腰部", "腰带", "皮肤", "光环", "装扮", "套装",
+		"cap", "hat", "hair", "face", "neck", "coat", "jacket", "pants", "shoes", "waist", "skin", "aura", "avatar",
+	} {
+		value = strings.ReplaceAll(value, word, "")
+	}
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return -1
+	}, value)
+	if len([]rune(value)) < 3 || strings.HasPrefix(value, "name") {
+		return ""
+	}
+	return value
 }
 
 func itemTypePathSegment(part string) bool {

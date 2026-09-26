@@ -12,8 +12,8 @@ func Default() RuntimeConfig {
 		LoginDelayMS: 1000, ReconnectDelayMS: 5000, MaxReconnect: 2, MaxOnlineRobots: 10000, MaxOnlinePerCommand: 1000, OnlineDispatchIntervalMS: 1000, OnlineConfirmTimeoutMS: 90000,
 		DefaultMoney: 1000000, DefaultCoin: 5, InventoryCapacity: 16,
 		EquipSlots: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, EquipRarityMin: 0, EquipRarityMax: 5, EquipIntensifyMin: 7, EquipIntensifyMax: 10, EquipSmithingMin: 0, EquipSmithingMax: 8,
-		PreferEquipSets: true, EquipSetMinSlots: 2,
-		AvatarSlots: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, MinAvatarSlots: 8, PreferAvatarSets: true, AvatarSetMinSlots: 2,
+		PreferEquipSets: true, EquipSetMinSlots: 5,
+		AvatarSlots: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, MinAvatarSlots: 8, PreferAvatarSets: true, AvatarSetMinSlots: 6,
 		PetEnabled: true, PetProbabilityPercent: 80, PetArtifactEnabled: true, PetArtifactSlots: []int{31, 32, 33}, MinPetArtifactSlots: 1, MaxPetArtifactSlots: 2,
 		StoreEquipmentStartBox: 7, StoreMaterialStartBox: 105, StoreEquipmentIntensifyMin: 7, StoreEquipmentIntensifyMax: 13,
 		StoreEquipmentPriceMin: 500000, StoreEquipmentPriceMax: 1000000, StoreMaterialPriceMin: 10, StoreMaterialPriceMax: 50,
@@ -92,7 +92,10 @@ func Normalize(rc *RuntimeConfig) {
 		rc.EquipSmithingMin, rc.EquipSmithingMax = rc.EquipSmithingMax, rc.EquipSmithingMin
 	}
 	if rc.EquipSetMinSlots <= 1 {
-		rc.EquipSetMinSlots = 2
+		rc.EquipSetMinSlots = 5
+	}
+	if rc.PreferEquipSets && rc.EquipSetMinSlots < 5 {
+		rc.EquipSetMinSlots = 5
 	}
 	if rc.PreferEquipSets && len(rc.EquipSlots) > 0 && rc.EquipSetMinSlots > len(rc.EquipSlots) {
 		rc.EquipSetMinSlots = len(rc.EquipSlots)
@@ -101,7 +104,10 @@ func Normalize(rc *RuntimeConfig) {
 		rc.MinAvatarSlots = 0
 	}
 	if rc.AvatarSetMinSlots <= 1 {
-		rc.AvatarSetMinSlots = 2
+		rc.AvatarSetMinSlots = 6
+	}
+	if rc.PreferAvatarSets && rc.AvatarSetMinSlots < 6 {
+		rc.AvatarSetMinSlots = 6
 	}
 	if rc.PreferAvatarSets && len(rc.AvatarSlots) > 0 && rc.AvatarSetMinSlots > len(rc.AvatarSlots) {
 		rc.AvatarSetMinSlots = len(rc.AvatarSlots)
