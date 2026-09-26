@@ -30,7 +30,30 @@ func Default() RuntimeConfig {
 	}
 }
 
+// Normalize clamps every configurable value into its supported range. Values
+// are applied group by group in a fixed order because later groups depend on
+// earlier capacity defaults (for example the target online count is clamped
+// against max_online_robots).
 func Normalize(rc *RuntimeConfig) {
+	if rc == nil {
+		return
+	}
+	normalizeOnlineCapacity(rc)
+	normalizeMovementAndInventory(rc)
+	normalizeIdentityDefaults(rc)
+	normalizeEquipmentDefaults(rc)
+	normalizeAvatarDefaults(rc)
+	normalizePetDefaults(rc)
+	normalizeAutoSchedule(rc)
+	normalizeGamePortProbe(rc)
+	normalizeStoreSchedule(rc)
+	normalizeSchedulerDefaults(rc)
+	normalizeSystemDefaults(rc)
+	normalizeStoreEconomy(rc)
+	normalizeSpawnDefaults(rc)
+}
+
+func normalizeOnlineCapacity(rc *RuntimeConfig) {
 	if rc.MaxOnlineRobots <= 0 {
 		rc.MaxOnlineRobots = 10000
 	}
@@ -55,6 +78,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.MaxReconnect > 10 {
 		rc.MaxReconnect = 10
 	}
+}
+
+func normalizeMovementAndInventory(rc *RuntimeConfig) {
 	if rc.ShoutDelayMS < 0 {
 		rc.ShoutDelayMS = 0
 	}
@@ -70,6 +96,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.InventoryCapacity <= 0 {
 		rc.InventoryCapacity = 16
 	}
+}
+
+func normalizeIdentityDefaults(rc *RuntimeConfig) {
 	if len(rc.Jobs) == 0 {
 		rc.Jobs = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	}
@@ -82,6 +111,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.RobotUIDEnd < rc.RobotUIDStart {
 		rc.RobotUIDEnd = rc.RobotUIDStart + 999
 	}
+}
+
+func normalizeEquipmentDefaults(rc *RuntimeConfig) {
 	if rc.EquipRarityMax < rc.EquipRarityMin {
 		rc.EquipRarityMin, rc.EquipRarityMax = rc.EquipRarityMax, rc.EquipRarityMin
 	}
@@ -100,6 +132,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.PreferEquipSets && len(rc.EquipSlots) > 0 && rc.EquipSetMinSlots > len(rc.EquipSlots) {
 		rc.EquipSetMinSlots = len(rc.EquipSlots)
 	}
+}
+
+func normalizeAvatarDefaults(rc *RuntimeConfig) {
 	if rc.MinAvatarSlots < 0 {
 		rc.MinAvatarSlots = 0
 	}
@@ -112,6 +147,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.PreferAvatarSets && len(rc.AvatarSlots) > 0 && rc.AvatarSetMinSlots > len(rc.AvatarSlots) {
 		rc.AvatarSetMinSlots = len(rc.AvatarSlots)
 	}
+}
+
+func normalizePetDefaults(rc *RuntimeConfig) {
 	if len(rc.PetArtifactSlots) == 0 {
 		rc.PetArtifactSlots = []int{31, 32, 33}
 	}
@@ -133,6 +171,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.MaxPetArtifactSlots < rc.MinPetArtifactSlots {
 		rc.MinPetArtifactSlots, rc.MaxPetArtifactSlots = rc.MaxPetArtifactSlots, rc.MinPetArtifactSlots
 	}
+}
+
+func normalizeAutoSchedule(rc *RuntimeConfig) {
 	if rc.AutoMoveIntervalMinSec <= 0 {
 		rc.AutoMoveIntervalMinSec = 6
 	}
@@ -151,6 +192,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.AutoTargetOnlineCount > rc.MaxOnlineRobots {
 		rc.AutoTargetOnlineCount = rc.MaxOnlineRobots
 	}
+}
+
+func normalizeGamePortProbe(rc *RuntimeConfig) {
 	if rc.AutoGamePortStableSec <= 0 {
 		rc.AutoGamePortStableSec = 15
 	}
@@ -163,6 +207,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.AutoGamePortCheckTimeoutMS > 10000 {
 		rc.AutoGamePortCheckTimeoutMS = 10000
 	}
+}
+
+func normalizeStoreSchedule(rc *RuntimeConfig) {
 	if rc.AutoStoreProbabilityPercent < 0 {
 		rc.AutoStoreProbabilityPercent = 0
 	}
@@ -202,6 +249,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.AutoStoreFailCooldownSec > 3600 {
 		rc.AutoStoreFailCooldownSec = 3600
 	}
+}
+
+func normalizeSchedulerDefaults(rc *RuntimeConfig) {
 	if rc.SchedulerBadRecoverSec <= 0 {
 		rc.SchedulerBadRecoverSec = 60
 	}
@@ -262,6 +312,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.SchedulerPortDownReleaseBatch > 120 {
 		rc.SchedulerPortDownReleaseBatch = 120
 	}
+}
+
+func normalizeSystemDefaults(rc *RuntimeConfig) {
 	if rc.SystemActorPollMS <= 0 {
 		rc.SystemActorPollMS = 1000
 	}
@@ -280,6 +333,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.SystemPacketRatePerSec <= 0 {
 		rc.SystemPacketRatePerSec = 20
 	}
+}
+
+func normalizeStoreEconomy(rc *RuntimeConfig) {
 	if rc.StoreEquipmentPriceMin <= 0 {
 		rc.StoreEquipmentPriceMin = 500000
 	}
@@ -339,6 +395,9 @@ func Normalize(rc *RuntimeConfig) {
 	if rc.StoreConfirmTimeoutSec > 35 {
 		rc.StoreConfirmTimeoutSec = 35
 	}
+}
+
+func normalizeSpawnDefaults(rc *RuntimeConfig) {
 	if rc.SpawnVillage < 1 {
 		rc.SpawnVillage = 1
 	}
