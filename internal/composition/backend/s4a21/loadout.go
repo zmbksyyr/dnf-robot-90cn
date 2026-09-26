@@ -22,11 +22,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// s4a21PersistenceMu is the adapter-owned single-writer gate. Protocol
-// operations remain the preferred mutation path; the few required SQLite
-// repairs are serialized here and never compete through per-actor pools.
-var s4a21PersistenceMu lockhub.Locker
-
 const s4a21PersistenceTimeout = 15 * time.Second
 
 const (
@@ -66,6 +61,9 @@ type SQLiteLoadoutApplier struct {
 	db           *sql.DB
 	items        map[int]shared.EquipmentCatalogItem
 	petSchema    bool
+	executorMu   lockhub.Locker
+	executor     *persistenceExecutor
+	closed       bool
 }
 
 func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config robotconfig.RuntimeConfig, equipment []shared.EquipmentCatalogItem, randIntn func(int) int) (*SQLiteLoadoutApplier, error) {
@@ -88,16 +86,47 @@ func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config ro
 	return &SQLiteLoadoutApplier{
 		DatabasePath: databasePath, Config: config, Equipment: equipment, RandIntn: randIntn,
 		db: db, items: equipmentByID(equipment), petSchema: petSchemaAvailable(ctx, db),
+		executor: newPersistenceExecutor(s4a21PersistenceQueueSize),
 	}, nil
 }
 
 func (a *SQLiteLoadoutApplier) Close() error {
-	if a == nil || a.db == nil {
+	if a == nil {
+		return nil
+	}
+	a.executorMu.Lock()
+	executor := a.executor
+	a.executor = nil
+	a.closed = true
+	a.executorMu.Unlock()
+	executor.Close()
+	if a.db == nil {
 		return nil
 	}
 	err := a.db.Close()
 	a.db = nil
 	return err
+}
+
+func (a *SQLiteLoadoutApplier) persistenceDo(ctx context.Context, run func(context.Context) error) error {
+	if a == nil {
+		return fmt.Errorf("S4A21 persistence adapter is nil")
+	}
+	a.executorMu.Lock()
+	if a.closed {
+		a.executorMu.Unlock()
+		return errPersistenceExecutorClosed
+	}
+	if a.executor == nil {
+		a.executor = newPersistenceExecutor(s4a21PersistenceQueueSize)
+	}
+	executor := a.executor
+	a.executorMu.Unlock()
+	return executor.Do(ctx, func(jobCtx context.Context) error {
+		jobCtx, cancel := context.WithTimeout(jobCtx, s4a21PersistenceTimeout)
+		defer cancel()
+		return run(jobCtx)
+	})
 }
 
 func (a SQLiteLoadoutApplier) database(ctx context.Context) (*sql.DB, func(), error) {
@@ -214,77 +243,76 @@ func sqliteReadOnlyDSN(path string) string {
 	return (&url.URL{Scheme: "file", Path: uriPath, RawQuery: "mode=ro"}).String()
 }
 
-func (a SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account string, info robotcap.Info) error {
-	s4a21PersistenceMu.Lock()
-	defer s4a21PersistenceMu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
-	defer cancel()
-	if strings.TrimSpace(a.DatabasePath) == "" {
-		return fmt.Errorf("S4A21 loadout database path is required")
-	}
-	db, closeDB, err := a.database(ctx)
-	if err != nil {
-		return fmt.Errorf("open S4A21 loadout database: %w", err)
-	}
-	defer closeDB()
-	if a.db == nil {
-		if err := validateLoadoutSchema(ctx, db); err != nil {
+func (a *SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account string, info robotcap.Info) error {
+	return a.persistenceDo(ctx, func(ctx context.Context) error {
+		if strings.TrimSpace(a.DatabasePath) == "" {
+			return fmt.Errorf("S4A21 loadout database path is required")
+		}
+		db, closeDB, err := a.database(ctx)
+		if err != nil {
+			return fmt.Errorf("open S4A21 loadout database: %w", err)
+		}
+		defer closeDB()
+		if a.db == nil {
+			if err := validateLoadoutSchema(ctx, db); err != nil {
+				return err
+			}
+		}
+		accountID, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
+		if err != nil {
 			return err
 		}
-	}
-	accountID, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
-	if err != nil {
-		return err
-	}
-	items := a.items
-	if items == nil {
-		items = equipmentByID(a.Equipment)
-	}
-	petSchema := a.petSchema
-	if a.db == nil {
-		petSchema = petSchemaAvailable(ctx, db)
-	}
-	return a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema)
+		items := a.items
+		if items == nil {
+			items = equipmentByID(a.Equipment)
+		}
+		petSchema := a.petSchema
+		if a.db == nil {
+			petSchema = petSchemaAvailable(ctx, db)
+		}
+		return a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema)
+	})
 }
 
-func (a SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
+func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
 	if level < 1 || level > math.MaxUint8 {
 		return info, fmt.Errorf("S4A21 character level must be between 1 and %d", math.MaxUint8)
 	}
-	s4a21PersistenceMu.Lock()
-	defer s4a21PersistenceMu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
-	defer cancel()
-	db, closeDB, err := a.database(ctx)
-	if err != nil {
-		return info, fmt.Errorf("open S4A21 character database: %w", err)
-	}
-	defer closeDB()
-	if a.db == nil {
-		if err := validateLoadoutSchema(ctx, db); err != nil {
-			return info, err
+	actual := info
+	err := a.persistenceDo(ctx, func(ctx context.Context) error {
+		db, closeDB, err := a.database(ctx)
+		if err != nil {
+			return fmt.Errorf("open S4A21 character database: %w", err)
 		}
-	}
-	accountID, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
-	if err != nil {
-		return info, err
-	}
-	actual, err = writeResolvedCharacterLevel(ctx, db, characterID, actual, level)
-	if err != nil {
-		return info, err
-	}
-	items := a.items
-	if items == nil {
-		items = equipmentByID(a.Equipment)
-	}
-	petSchema := a.petSchema
-	if a.db == nil {
-		petSchema = petSchemaAvailable(ctx, db)
-	}
-	if err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema); err != nil {
-		return info, err
-	}
-	return actual, nil
+		defer closeDB()
+		if a.db == nil {
+			if err := validateLoadoutSchema(ctx, db); err != nil {
+				return err
+			}
+		}
+		accountID, characterID, resolved, err := resolveCharacterProfile(ctx, db, account, info)
+		if err != nil {
+			return err
+		}
+		resolved, err = writeResolvedCharacterLevel(ctx, db, characterID, resolved, level)
+		if err != nil {
+			return err
+		}
+		items := a.items
+		if items == nil {
+			items = equipmentByID(a.Equipment)
+		}
+		petSchema := a.petSchema
+		if a.db == nil {
+			petSchema = petSchemaAvailable(ctx, db)
+		}
+		if err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, resolved, items, petSchema); err != nil {
+			return err
+		}
+		actual = resolved
+		return nil
+	})
+	return actual, err
 }
 
 func (a SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) error {
@@ -371,44 +399,50 @@ func selectS4A21Equipment(items []shared.EquipmentCatalogItem, level, job int, r
 	return selected
 }
 
-func (a SQLiteLoadoutApplier) ResolveCharacterProfile(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
-	if strings.TrimSpace(a.DatabasePath) == "" {
-		return info, fmt.Errorf("S4A21 profile database path is required")
-	}
-	db, closeDB, err := a.database(ctx)
-	if err != nil {
-		return info, fmt.Errorf("open S4A21 profile database: %w", err)
-	}
-	defer closeDB()
-	_, _, actual, err := resolveCharacterProfile(ctx, db, account, info)
+func (a *SQLiteLoadoutApplier) ResolveCharacterProfile(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
+	actual := info
+	err := a.persistenceDo(ctx, func(ctx context.Context) error {
+		if strings.TrimSpace(a.DatabasePath) == "" {
+			return fmt.Errorf("S4A21 profile database path is required")
+		}
+		db, closeDB, err := a.database(ctx)
+		if err != nil {
+			return fmt.Errorf("open S4A21 profile database: %w", err)
+		}
+		defer closeDB()
+		_, _, resolved, err := resolveCharacterProfile(ctx, db, account, info)
+		actual = resolved
+		return err
+	})
 	return actual, err
 }
 
-func (a SQLiteLoadoutApplier) ApplyPlannedCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
+func (a *SQLiteLoadoutApplier) ApplyPlannedCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
 	if level < 1 || level > math.MaxUint8 {
 		return info, fmt.Errorf("S4A21 character level must be between 1 and %d", math.MaxUint8)
 	}
 	return a.writeCharacterLevel(ctx, account, info, level)
 }
 
-func (a SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
-	s4a21PersistenceMu.Lock()
-	defer s4a21PersistenceMu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
-	defer cancel()
-	if strings.TrimSpace(a.DatabasePath) == "" {
-		return info, fmt.Errorf("S4A21 profile database path is required")
-	}
-	db, closeDB, err := a.database(ctx)
-	if err != nil {
-		return info, fmt.Errorf("open S4A21 profile database: %w", err)
-	}
-	defer closeDB()
-	_, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
-	if err != nil {
-		return info, err
-	}
-	return a.reconcileResolvedCharacterLevel(ctx, db, characterID, actual)
+func (a *SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
+	actual := info
+	err := a.persistenceDo(ctx, func(ctx context.Context) error {
+		if strings.TrimSpace(a.DatabasePath) == "" {
+			return fmt.Errorf("S4A21 profile database path is required")
+		}
+		db, closeDB, err := a.database(ctx)
+		if err != nil {
+			return fmt.Errorf("open S4A21 profile database: %w", err)
+		}
+		defer closeDB()
+		_, characterID, resolved, err := resolveCharacterProfile(ctx, db, account, info)
+		if err != nil {
+			return err
+		}
+		actual, err = a.reconcileResolvedCharacterLevel(ctx, db, characterID, resolved)
+		return err
+	})
+	return actual, err
 }
 
 func (a SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info) (robotcap.Info, error) {
@@ -428,24 +462,25 @@ func (a SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Contex
 	return writeResolvedCharacterLevel(ctx, db, characterID, actual, randomBetween(a.RandIntn, minLevel, maxLevel))
 }
 
-func (a SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
-	s4a21PersistenceMu.Lock()
-	defer s4a21PersistenceMu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, s4a21PersistenceTimeout)
-	defer cancel()
-	if strings.TrimSpace(a.DatabasePath) == "" {
-		return info, fmt.Errorf("S4A21 profile database path is required")
-	}
-	db, closeDB, err := a.database(ctx)
-	if err != nil {
-		return info, fmt.Errorf("open S4A21 profile database: %w", err)
-	}
-	defer closeDB()
-	_, characterID, actual, err := resolveCharacterProfile(ctx, db, account, info)
-	if err != nil {
-		return info, err
-	}
-	return writeResolvedCharacterLevel(ctx, db, characterID, actual, level)
+func (a *SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
+	actual := info
+	err := a.persistenceDo(ctx, func(ctx context.Context) error {
+		if strings.TrimSpace(a.DatabasePath) == "" {
+			return fmt.Errorf("S4A21 profile database path is required")
+		}
+		db, closeDB, err := a.database(ctx)
+		if err != nil {
+			return fmt.Errorf("open S4A21 profile database: %w", err)
+		}
+		defer closeDB()
+		_, characterID, resolved, err := resolveCharacterProfile(ctx, db, account, info)
+		if err != nil {
+			return err
+		}
+		actual, err = writeResolvedCharacterLevel(ctx, db, characterID, resolved, level)
+		return err
+	})
+	return actual, err
 }
 
 func writeResolvedCharacterLevel(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info, level int) (robotcap.Info, error) {
