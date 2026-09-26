@@ -18,6 +18,10 @@ func TestLoginPeerUsesForwardedForOnlyForTrustedProxies(t *testing.T) {
 	if got := trusted.loginPeer(proxied); got != "203.0.113.9" {
 		t.Fatalf("trusted proxy peer = %q, want the rightmost untrusted address", got)
 	}
+	proxied.Header.Set("X-Forwarded-For", "192.0.2.99, 203.0.113.9, 10.0.0.7")
+	if got := trusted.loginPeer(proxied); got != "203.0.113.9" {
+		t.Fatalf("spoofed prefix peer = %q, want the address adjacent to the trusted proxies", got)
+	}
 
 	direct := &Server{}
 	untrusted := httptest.NewRequest(http.MethodPost, "/login", nil)

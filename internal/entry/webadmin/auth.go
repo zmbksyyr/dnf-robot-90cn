@@ -95,7 +95,9 @@ func (s *Server) loginPeer(r *http.Request) string {
 	if s == nil || s.cfg == nil || len(s.cfg.WebTrustedProxies) == 0 || !trustedProxy(host, s.cfg.WebTrustedProxies) {
 		return host
 	}
-	for _, candidate := range splitForwardedFor(r.Header.Get("X-Forwarded-For")) {
+	forwarded := splitForwardedFor(r.Header.Get("X-Forwarded-For"))
+	for i := len(forwarded) - 1; i >= 0; i-- {
+		candidate := forwarded[i]
 		if candidate == "" || trustedProxy(candidate, s.cfg.WebTrustedProxies) {
 			continue
 		}

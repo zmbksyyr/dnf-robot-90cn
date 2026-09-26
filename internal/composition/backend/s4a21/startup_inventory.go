@@ -174,7 +174,8 @@ func (s SQLiteStartupInventory) verifyInvalidAccounts(ctx context.Context, conn 
 			args[index] = candidate.id
 			placeholders[index] = "?"
 		}
-		query := `SELECT a.account_id,a.m_id,c.character_id FROM accounts a
+		query := `SELECT a.account_id,a.m_id,c.character_id,c.name,c.job,c.grow_type,c.level,
+c.town_id,c.area_id,c.pos_x,c.pos_y,c.slot_index,c.delete_flag FROM accounts a
 LEFT JOIN characters c ON c.account_id=a.account_id
 WHERE a.account_id IN (` + strings.Join(placeholders, ",") + `)`
 		rows, err := conn.QueryContext(ctx, query, args...)
@@ -185,8 +186,10 @@ WHERE a.account_id IN (` + strings.Join(placeholders, ",") + `)`
 		for rows.Next() {
 			var accountID int
 			var accountName string
-			var characterID sql.NullInt64
-			if err := rows.Scan(&accountID, &accountName, &characterID); err != nil {
+			var characterID, job, grow, level, village, area, x, y, slot, deleteFlag sql.NullInt64
+			var nameRaw []byte
+			if err := rows.Scan(&accountID, &accountName, &characterID, &nameRaw, &job, &grow, &level,
+				&village, &area, &x, &y, &slot, &deleteFlag); err != nil {
 				rows.Close()
 				return nil, 0, fmt.Errorf("read S4A21 startup candidate: %w", err)
 			}
@@ -196,7 +199,12 @@ WHERE a.account_id IN (` + strings.Join(placeholders, ",") + `)`
 				current[accountID] = account
 			}
 			if characterID.Valid {
-				account.characters = append(account.characters, startupCharacter{id: int(characterID.Int64)})
+				account.characters = append(account.characters, startupCharacter{
+					id: int(characterID.Int64), nameRaw: append([]byte(nil), nameRaw...),
+					job: int(job.Int64), grow: int(grow.Int64), level: int(level.Int64),
+					village: int(village.Int64), area: int(area.Int64), x: int(x.Int64), y: int(y.Int64),
+					slot: int(slot.Int64), deleteFlag: int(deleteFlag.Int64),
+				})
 			}
 		}
 		if err := rows.Err(); err != nil {
@@ -204,6 +212,17 @@ WHERE a.account_id IN (` + strings.Join(placeholders, ",") + `)`
 			return nil, 0, fmt.Errorf("scan S4A21 startup candidates: %w", err)
 		}
 		rows.Close()
+		characterIDs := make([]int, 0)
+		for _, account := range current {
+			if len(account.characters) == 1 {
+				characterIDs = append(characterIDs, account.characters[0].id)
+			}
+		}
+		currentIndex, err := readStartupInventoryIndexForIDs(ctx, conn, characterIDs)
+		if err != nil {
+			return nil, 0, err
+		}
+		items := equipmentByID(s.Equipment)
 		for index := range candidates[start:end] {
 			candidate := candidates[start+index]
 			state := current[candidate.id]
@@ -214,6 +233,10 @@ WHERE a.account_id IN (` + strings.Join(placeholders, ",") + `)`
 			uid, owned := strictRobotUID(state.name, prefix)
 			if !owned || uid != candidate.uid || !sameStartupCharacters(state.characters, candidate.characters) {
 				foundationlog.Robotf("STARTUP_INVENTORY_SKIP_CHANGED account=%s reason=candidate changed during startup scan\n", candidate.name)
+				continue
+			}
+			if len(state.characters) == 1 && s.characterCompliant(state.characters[0], currentIndex, items) {
+				foundationlog.Robotf("STARTUP_INVENTORY_SKIP_CHANGED account=%s reason=candidate is now compliant\n", candidate.name)
 				continue
 			}
 			toDelete = append(toDelete, candidate.id)
@@ -243,6 +266,90 @@ func sameStartupCharacters(current, recorded []startupCharacter) bool {
 		}
 	}
 	return true
+}
+
+// readStartupInventoryIndexForIDs limits the write-transaction recheck to
+// candidate characters. The initial inventory scan remains read-only.
+func readStartupInventoryIndexForIDs(ctx context.Context, conn startupSQLiteConn, characterIDs []int) (startupInventoryIndex, error) {
+	index := startupInventoryIndex{
+		cores: make(map[int]map[int][]byte), avatarDetails: make(map[int]map[int]struct{}), creatureKeys: make(map[int]map[int]struct{}),
+	}
+	const batchSize = 200
+	for start := 0; start < len(characterIDs); start += batchSize {
+		end := min(start+batchSize, len(characterIDs))
+		args := make([]any, end-start)
+		places := make([]string, end-start)
+		for i, id := range characterIDs[start:end] {
+			args[i] = id
+			places[i] = "?"
+		}
+		ids := strings.Join(places, ",")
+		rows, err := conn.QueryContext(ctx, `SELECT character_id,slot_index,item_core FROM character_inventory_items
+WHERE list_type=? AND slot_index BETWEEN 0 AND 28 AND character_id IN (`+ids+`)`, append([]any{a21ListTypeEquipment}, args...)...)
+		if err != nil {
+			return index, fmt.Errorf("re-check S4A21 equipped items: %w", err)
+		}
+		for rows.Next() {
+			var id, slot int
+			var core []byte
+			if err := rows.Scan(&id, &slot, &core); err != nil {
+				rows.Close()
+				return index, err
+			}
+			if index.cores[id] == nil {
+				index.cores[id] = make(map[int][]byte)
+			}
+			index.cores[id][slot] = append([]byte(nil), core...)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return index, err
+		}
+		rows.Close()
+
+		rows, err = conn.QueryContext(ctx, `SELECT character_id,item_uid FROM character_avatar_detail WHERE character_id IN (`+ids+`)`, args...)
+		if err != nil {
+			return index, fmt.Errorf("re-check S4A21 avatar details: %w", err)
+		}
+		for rows.Next() {
+			var id, itemUID int
+			if err := rows.Scan(&id, &itemUID); err != nil {
+				rows.Close()
+				return index, err
+			}
+			if index.avatarDetails[id] == nil {
+				index.avatarDetails[id] = make(map[int]struct{})
+			}
+			index.avatarDetails[id][itemUID] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return index, err
+		}
+		rows.Close()
+
+		rows, err = conn.QueryContext(ctx, `SELECT character_id,creature_key FROM character_creatures WHERE character_id IN (`+ids+`)`, args...)
+		if err != nil {
+			return index, fmt.Errorf("re-check S4A21 creature details: %w", err)
+		}
+		for rows.Next() {
+			var id, creatureKey int
+			if err := rows.Scan(&id, &creatureKey); err != nil {
+				rows.Close()
+				return index, err
+			}
+			if index.creatureKeys[id] == nil {
+				index.creatureKeys[id] = make(map[int]struct{})
+			}
+			index.creatureKeys[id][creatureKey] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return index, err
+		}
+		rows.Close()
+	}
+	return index, nil
 }
 
 func deleteStartupAccounts(ctx context.Context, conn startupSQLiteConn, accountIDs []int) error {

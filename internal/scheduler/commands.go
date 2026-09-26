@@ -151,12 +151,12 @@ func (m *RobotManager) StoreManaged(req robotcap.CommandRequest) (robotcap.Comma
 }
 
 func (m *RobotManager) LogoutManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
-	m.mutationMu.RLock()
-	defer m.mutationMu.RUnlock()
-	registry, robots, rc, early, err := m.prepareUserActorCommand(req, "logout", true)
+	registry, robots, rc, early, err := m.prepareLogoutCommand(req)
 	if err != nil || early != nil {
 		return resultOrZero(early), err
 	}
+	// Actor commands carry a lease generation, so a concurrent structural
+	// operation can safely invalidate a queued logout after selection.
 	timeout := time.Duration(rc.SystemManualActionTimeoutSec) * time.Second
 	items := make([]robotcap.ActionResult, len(robots))
 	oks := make([]bool, len(robots))
@@ -196,6 +196,12 @@ func (m *RobotManager) LogoutManaged(req robotcap.CommandRequest) (robotcap.Comm
 		}
 	}
 	return result, nil
+}
+
+func (m *RobotManager) prepareLogoutCommand(req robotcap.CommandRequest) (actorRegistry, []robotcap.Info, robotconfig.RuntimeConfig, *robotcap.CommandResult, error) {
+	m.mutationMu.RLock()
+	defer m.mutationMu.RUnlock()
+	return m.prepareUserActorCommand(req, "logout", true)
 }
 
 func (m *RobotManager) actorCommandManaged(req robotcap.CommandRequest, cmd actormodel.Command, action string) (robotcap.CommandResult, error) {

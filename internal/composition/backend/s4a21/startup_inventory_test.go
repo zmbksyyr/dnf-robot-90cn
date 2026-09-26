@@ -56,6 +56,46 @@ INSERT INTO characters(character_id,account_id,name,job,grow_type,level,delete_f
 	}
 }
 
+func TestStartupInventorySkipsCandidateRepairedAfterScan(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES (8,'robot17000008');
+INSERT INTO characters(character_id,account_id,name,job,grow_type,level,delete_flag)
+VALUES (80,8,'Repaired',1,0,5,0);`); err != nil {
+		t.Fatal(err)
+	}
+	rc := robotconfig.Default()
+	rc.LevelMin, rc.LevelMax = 50, 85
+	rc.Jobs, rc.GrowTypes = []int{1}, []int{0}
+	rc.EquipSlots = []int{1}
+	rc.MinAvatarSlots = 0
+	rc.PreferEquipSets, rc.PreferAvatarSets = false, false
+	rc.PetEnabled = false
+	item := shared.EquipmentCatalogItem{ID: 1001, ItemType: 1, Level: 40, UseJob: []int{1}}
+	if _, err := db.Exec(`UPDATE characters SET level=50 WHERE character_id=80`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO character_inventory_items(character_id,list_type,slot_index,item_core)
+VALUES (80,?,?,?)`, a21ListTypeEquipment, 12, a21ItemCore(a21ItemKindEquipment, item, 0, 1)); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	purger := SQLiteStartupInventory{AccountPrefix: "robot", Config: rc, Equipment: []shared.EquipmentCatalogItem{item}}
+	stale := startupAccount{id: 8, uid: 17000008, name: "robot17000008", characters: []startupCharacter{{id: 80, level: 5}}}
+	toDelete, characters, err := purger.verifyInvalidAccounts(context.Background(), conn, "robot", []startupAccount{stale})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toDelete) != 0 || characters != 0 {
+		t.Fatalf("repaired candidate marked for deletion: accounts=%v characters=%d", toDelete, characters)
+	}
+}
+
 func TestStartupInventoryAdoptsCompliantAndHardDeletesInvalidAccounts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "inventory.db")
 	db := openLoadoutTestDB(t, path)
