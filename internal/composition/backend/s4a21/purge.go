@@ -111,6 +111,10 @@ func (p SQLiteRobotPurger) open(ctx context.Context) (*sql.DB, error) {
 		return nil, fmt.Errorf("open S4A21 purge database: %w", err)
 	}
 	configureSQLitePool(db)
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("configure S4A21 purge database: %w", err)
+	}
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("ping S4A21 purge database: %w", err)

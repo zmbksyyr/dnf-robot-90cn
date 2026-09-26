@@ -11,6 +11,23 @@ import (
 	"robot/internal/capability/robotstate"
 )
 
+func TestSQLiteRobotPurgerOpenConfiguresBusyTimeout(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	purger := SQLiteRobotPurger{DatabasePath: path, AccountPrefix: "robot"}
+	db, err := purger.open(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var timeout int
+	if err := db.QueryRowContext(context.Background(), `PRAGMA busy_timeout`).Scan(&timeout); err != nil {
+		t.Fatal(err)
+	}
+	if timeout != 5000 {
+		t.Fatalf("busy_timeout = %d, want 5000", timeout)
+	}
+}
+
 func TestSQLiteRobotPurgerRangeDeletesStrictRobotAccountsAndState(t *testing.T) {
 	path := newPurgeTestDatabase(t)
 	state := robotstate.NewMemoryStore([]robotcap.Info{

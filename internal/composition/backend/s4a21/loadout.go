@@ -215,6 +215,9 @@ func (i PersistenceInspector) checkStatus(ctx context.Context) shared.Persistenc
 	}
 	configureSQLitePool(db)
 	defer db.Close()
+	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout=5000;`); err != nil {
+		return fail(fmt.Errorf("configure S4A21 database inspection: %w", err))
+	}
 	if err := db.PingContext(ctx); err != nil {
 		return fail(fmt.Errorf("ping S4A21 database: %w", err))
 	}
