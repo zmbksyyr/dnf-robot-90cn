@@ -2,14 +2,21 @@ package scheduler
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	actormodel "robot/internal/actor"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/shared"
-	"time"
 )
 
 const robotOnlineConfirmBudget = 75 * time.Second
+
+// logoutBatchConcurrency bounds how many logout commands are dispatched at
+// once. Each logout performs a fixed safety sleep, so serial dispatch made
+// batch logout time linear in the robot count.
+const logoutBatchConcurrency = 32
 
 func (m *RobotManager) OnlineManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
 	m.mutationMu.RLock()
@@ -137,11 +144,33 @@ func (m *RobotManager) LogoutManaged(req robotcap.CommandRequest) (robotcap.Comm
 	if err != nil || early != nil {
 		return resultOrZero(early), err
 	}
-	result := robotcap.NewCommandResult(len(robots))
 	timeout := time.Duration(rc.SystemManualActionTimeoutSec) * time.Second
-	for _, robot := range robots {
-		item, ok := registry.LogoutUID(robot.UID, timeout)
-		item.CID = robot.CID
+	items := make([]robotcap.ActionResult, len(robots))
+	oks := make([]bool, len(robots))
+	batch := logoutBatchConcurrency
+	if batch > len(robots) {
+		batch = len(robots)
+	}
+	if batch > 0 {
+		sem := make(chan struct{}, batch)
+		var wg sync.WaitGroup
+		for index := range robots {
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				item, ok := registry.LogoutUID(robots[index].UID, timeout)
+				item.CID = robots[index].CID
+				items[index] = item
+				oks[index] = ok
+			}(index)
+		}
+		wg.Wait()
+	}
+	result := robotcap.NewCommandResult(len(robots))
+	for index := range robots {
+		item, ok := items[index], oks[index]
 		if ok && item.OK {
 			result.Accepted++
 			if item.State != robotcap.ActionStatePending {
@@ -150,7 +179,7 @@ func (m *RobotManager) LogoutManaged(req robotcap.CommandRequest) (robotcap.Comm
 			result.Robots = append(result.Robots, item)
 		} else {
 			result.Failed++
-			result.Robots = append(result.Robots, failedActorResult(robot, item, "logout actor command failed"))
+			result.Robots = append(result.Robots, failedActorResult(robots[index], item, "logout actor command failed"))
 		}
 	}
 	return result, nil
