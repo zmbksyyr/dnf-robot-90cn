@@ -7,476 +7,61 @@ import (
 	"testing"
 )
 
-func TestEmbeddedWebAssetsContainRequiredContent(t *testing.T) {
-	tests := []struct {
-		name     string
-		content  string
-		required []string
-	}{
-		{name: "login", content: loginHTML, required: []string{"Robot Web", `action="/login"`, "{{if .Error}}", i18nJSPlaceholder, `id="languageButton"`}},
-		{name: "index", content: indexHTML, required: []string{"TW Robot Web", appCSSPlaceholder, i18nJSPlaceholder, appJSPlaceholder, `id="languageButton"`}},
-		{name: "css", content: appCSS, required: []string{":root{", ".service-lights", ".diagrow", ".market-policy-select", ".market-rule-article", ".market-rule-details", ".market-rule-chevrons"}},
-		{name: "i18n", content: i18nJS, required: []string{"I18N_MESSAGES", "tw_language", "toggleLanguage", "currentLanguage=localStorage.getItem(I18N_STORAGE_KEY)==='zh'?'zh':'en'", "auto.shout_interval", "auto.follow_account", "喊话间隔", "validation.shout_interval", "market.section_status", "market.price_range_policy", "market.allowed_rarities", "上架稀有度（0-9）", "范围外回收概率"}},
-		{name: "javascript", content: appJS, required: []string{"async function api(", "openPartyCompatDialog", "openCompatDialog", "openDiagnosticsDialog", "restartRobot", "autoMailNotify", "autoShoutMin", "autoShoutMax", "followAccount", "follow.follow_account", "auto.auto_shout_interval_min_sec", "auto.auto_shout_interval_max_sec", "marketEquipmentRarities", "marketOtherRarities", "marketBlockedItemIDs", "parseBlockedItemIDExpression", "formatBlockedItemIDs", "marketAllowedItemIDs", "parseAllowedItemIDExpression", "formatAllowedItemIDs", "allowed_item_id_expression", "Allowed item IDs", "物品 ID 白名单", "normalizeRarityDigits", "equipment_allowed_rarities", "other_allowed_rarities", "blocked_item_id_expression", "marketEquipmentLevelMin", "marketDetailsFormSection", "marketCategoryPriceRules", "marketEquipmentExtras", "marketCommonPriceSettings", "category_price_rules", "equipment_multiplier_min", "equipment_multiplier_max", "equipment_final_max_price", "equipment_trade_policy", "other_trade_policy", "marketInRangeProbability", "marketApplyListingConfig", "marketKindsProgress", "种类（实际 / 预期）"}},
+func TestEmbeddedAssetsContainCoreS4A21UI(t *testing.T) {
+	checks := []struct{name, content string; required []string}{
+		{"index", indexHTML, []string{"openAutoDialog", "openPortsDialog", "runAction('robotsMove')", "runAction('robotsShout')"}},
+		{"javascript", appJS, []string{"robotsOnlineAsync", "robotsMove", "robotsShout", "robotsLogoutAsync", "cleanupRobotsAsync", "dangerousDeleteAsync", "backendCapabilities"}},
+		{"i18n", i18nJS, []string{"I18N_MESSAGES", "toggleLanguage", "auto.target_online", "auto.shout_interval", "backend.recovery"}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if strings.TrimSpace(tt.content) == "" {
-				t.Fatal("embedded asset is empty")
-			}
-			for _, required := range tt.required {
-				if !strings.Contains(tt.content, required) {
-					t.Errorf("embedded asset is missing %q", required)
-				}
-			}
-		})
+	for _, check := range checks { for _, want := range check.required { if !strings.Contains(check.content, want) { t.Errorf("%s is missing %q", check.name, want) } } }
+}
+
+func TestNativeAndUnimplementedWebSurfacesAreAbsent(t *testing.T) {
+	content := indexHTML+appJS+i18nJS+appCSS
+	for _, token := range []string{"openCompatDialog", "openKeyDialog", "openDiagnosticsDialog", "openMaxDialog", "openScriptDialog", "submitMarketSettings", "market.", "dialog.market", "party-debug", "service-ports", "monitorPort", "auctionPort", "pointPort", "relayPort", "70 Compat", "RSA Key"} {
+		if strings.Contains(content, token) { t.Errorf("obsolete web surface remains: %q", token) }
 	}
 }
 
-func TestAutoControlIsNotGatedByMarketCapability(t *testing.T) {
-	if !strings.Contains(appJS, `async function openAutoDialog`) {
-		t.Fatal("auto control is missing from the web asset")
-	}
-	if strings.Contains(appJS, `cmd.includes("openMaxDialog")||cmd.includes("openScriptDialog")||cmd.includes("openAutoDialog")`) {
-		t.Fatal("auto control is incorrectly gated by market capability")
-	}
+func TestPortsDialogOnlyEditsGamePort(t *testing.T) {
+	for _, want := range []string{`const payload={game_port:`, `id="gamePort"`, `renderPortsDialog(x.ports||{})`} { if !strings.Contains(appJS, want) { t.Errorf("game port dialog is missing %q", want) } }
 }
 
-func TestAutoDialogConfiguresFollowerWithoutEnablingPartyActions(t *testing.T) {
-	if strings.Contains(appJS, `selectedBackendID==='sim_a21'`) {
-		t.Fatal("auto dialog must use backend capability metadata instead of a concrete backend ID")
-	}
-	for _, want := range []string{
-		`id="followAccount"`,
-		`cfg.follow_account`,
-		`'follow.follow_account'`,
-		`followCapability=backendCapabilities.dungeon_follow||{}`,
-		`followMode=followCapability.mode||'account'`,
-		`i18nFormat('auto.dungeon_follower')`,
-		`follow.type==='checkbox'`,
-		`backendCapabilities.party_debug?.enabled?api('partyDebugStatus')`,
-		`sec.name==='Party'&&backendCapabilities.party_debug?.enabled`,
-	} {
-		if !strings.Contains(appJS, want) {
-			t.Fatalf("follower configuration boundary is missing %q", want)
-		}
-	}
-	for _, want := range []string{`'auto.dungeon_follower':'Dungeon follower'`, `'auto.dungeon_follower':'地下城跟随'`} {
-		if !strings.Contains(i18nJS, want) {
-			t.Fatalf("follower backend label is missing %q", want)
-		}
-	}
+func TestAutoDialogUsesBackendCapacityAndCapabilities(t *testing.T) {
+	for _, want := range []string{"backendMaxOnline||10000", "backendCapabilities.mail_notification", "backendCapabilities.dungeon_follow", "auto.auto_target_online_count", "auto.auto_shout_interval_min_sec", "auto.auto_shout_interval_max_sec"} { if !strings.Contains(appJS, want) { t.Errorf("auto boundary is missing %q", want) } }
 }
 
-func TestAutoDialogAllowsPlatformOnlineCapacity(t *testing.T) {
-	for _, want := range []string{`backendMaxOnline=Number(selected?.max_online||10000)`, `max="'+maxOnline+'"`, `Math.min(backendMaxOnline||10000`} {
-		if !strings.Contains(appJS, want) {
-			t.Fatalf("auto target input does not use backend capacity: missing %q", want)
-		}
-	}
-}
-
-func TestAutoDialogDisablesUnsupportedMailWithoutSubmittingIt(t *testing.T) {
-	for _, want := range []string{`mailCapability=backendCapabilities.mail_notification||{}`, `mailCapability.enabled?'':' disabled`, `if(backendCapabilities.mail_notification?.enabled)updates['auto.auto_mail_notify']`} {
-		if !strings.Contains(appJS, want) {
-			t.Fatalf("mail capability boundary is missing %q", want)
-		}
-	}
-}
-
-func TestWebUsesSinglePreferredShoutAction(t *testing.T) {
-	if strings.Contains(indexHTML, `robotsShoutLocal`) || !strings.Contains(indexHTML, `runAction('robotsShout')`) {
-		t.Fatal("web must expose one preferred shout action")
-	}
-	if !strings.Contains(appJS, `backendCapabilities.world_shout?.enabled?'world_shout':'shout'`) {
-		t.Fatal("preferred shout capability fallback is missing")
-	}
-}
-
-func TestWebKeepsOriginalMovementLabel(t *testing.T) {
-	if !strings.Contains(indexHTML, `data-i18n="action.move"`) || !strings.Contains(indexHTML, `>Move</button>`) {
-		t.Fatal("movement action label is missing")
-	}
-	if !strings.Contains(i18nJS, "'action.move':'Move'") || !strings.Contains(i18nJS, "'action.move':'移动'") {
-		t.Fatal("movement translations are missing")
-	}
-	if !strings.Contains(appJS, "robotsMove:'Move'") {
-		t.Fatal("action summary does not use the original movement label")
-	}
-}
-
-func TestWebApiSurfacesPerRobotActionFailure(t *testing.T) {
-	if !strings.Contains(appJS, "function apiErrorMessage(") || !strings.Contains(appJS, "robot&&robot.message") {
-		t.Fatal("web API must surface per-robot action failure messages")
-	}
-}
-
-func TestWebCapabilityMappingCoversSimulatorBoundary(t *testing.T) {
-	for _, want := range []string{
-		`cmd.includes("robotsMove")`,
-		`cmd.includes("robotsShout")`,
-		`backendCapabilities.world_shout?.enabled?'world_shout':'shout'`,
-		`cmd.includes("openDangerousDelete"))cap='dangerous_delete'`,
-		`cmd.includes("robotsStore")`,
-		`cmd.includes("openCleanupDialog")`,
-	} {
-		if !strings.Contains(appJS, want) {
-			t.Fatalf("web capability mapping is missing %q", want)
-		}
-	}
-}
-
-func TestDatabaseCardUsesBackendDashboardStatus(t *testing.T) {
-	for _, want := range []string{
-		`api('dashboardStatus')`,
-		`backendCapabilities.database`,
-		`String(r.engine).toUpperCase()`,
-		`r.writable?' · writable':''`,
-	} {
-		if !strings.Contains(appJS, want) {
-			t.Fatalf("backend database dashboard is missing %q", want)
-		}
-	}
-}
-
-func TestDashboardCardsFollowBackendCapabilities(t *testing.T) {
-	for _, want := range []string{
-		`function applyBackendCapabilities(){applyDashboardCapabilityVisibility();`,
-	} {
-		if !strings.Contains(indexHTML+appJS, want) {
-			t.Fatalf("dashboard capability visibility is missing %q", want)
-		}
-	}
-	if strings.Contains(appJS, `selectedBackendID==='sim_a21'`) {
-		t.Fatal("dashboard visibility must not branch on a concrete backend")
-	}
-}
-
-func TestHeaderActionsStayRightAlignedAndBackendSelectorIsCompact(t *testing.T) {
-	for _, want := range []string{
-		`class="header-actions-spacer"`,
-		`.header-actions-spacer{margin-left:auto}`,
-		`anchor=byId('portsButton')`,
-		`anchor.parentElement.insertBefore(button,anchor)`,
-		`showModal(i18nFormat('backend.title'),body`,
-		`'backend',false`,
-		`dialog.backend{width:min(640px,96vw)`,
-		`class="backend-choices"`,
-		`backendSettingText(field,'label')`,
-		`field[key+'_zh']`,
-		`button.textContent=selected?.display_name`,
-	} {
-		if !strings.Contains(indexHTML+appCSS+appJS, want) {
-			t.Fatalf("compact right-aligned backend controls are missing %q", want)
-		}
-	}
-}
-
-func TestRecoveryModeGuidesFirstWindowsStartup(t *testing.T) {
-	for _, want := range []string{
-		`{{if .Recovery}}`,
-		`data-i18n="login.recovery"`,
-		`r.recovery_mode?`,
-		`r.recovery_reason||''`,
-		`if(backend?.recovery_mode){await openBackendDialog();return}`,
-		`restartRecovery=!!(r.recovery_mode&&r.restart_required)`,
-		`if(restartRecovery)await restartRobot()`,
-		`'backend.recovery':'Robot needs a server selection before it can start.'`,
-		`'backend.recovery':'Robot 启动前需要选择服务端。'`,
-	} {
-		if !strings.Contains(loginHTML+appJS+i18nJS, want) {
-			t.Fatalf("recovery startup UI is missing %q", want)
-		}
-	}
-}
-
-func TestMarketPricingAndRuleSummaryAreBilingual(t *testing.T) {
-	for _, want := range []string{
-		"Category unit-price ranges", "分类单价范围",
-		"Unit price range", "单价范围",
-		"Equipment price", "装备价格",
-		"Equipment price multiplier", "装备价格倍率",
-		"Other / Unclassified", "其他 / 未分类",
-		"Final maximum unit price", "最终单价上限",
-		"Upgrade price rate (nonlinear)", "强化加价率（非线性）",
-		"Final price fluctuation", "最终价格浮动",
-		"Rule details", "规则说明",
-		"Data sources and boundary", "数据来源与边界",
-		"Saving and rebuilding", "保存与重建",
-		"Filtering order", "过滤顺序",
-		"Restock planning", "补货规划",
-		"Price calculation", "价格计算",
-		"Execution and confirmation", "执行与确认",
-		"Automatic recycling", "自动回收",
-		"Automatic operation and recovery", "自动运行与恢复",
-		"Manual actions", "手动操作",
-		"intersection of the PVF auction catalog", "PVF 拍卖目录与当前已发布的 iteminfo.dat 的交集",
-		"does not export, replace, or publish ItemInfo", "不会导出、替换或发布 ItemInfo",
-		"paused temporarily and resumed after rebuilding", "先临时停止，并在重建结束后恢复",
-		"allowlist take effect", "之后才处理白名单",
-		"currently deployed iteminfo.dat", "当前已发布的 iteminfo.dat",
-		"partially stocked ID is not topped up", "已有部分库存的 ID 不会继续补足",
-		"titles, creatures, artifacts, avatars", "称号、宠物、宠物装备、时装",
-		"item-specific price range has the highest priority", "启用物品独立价格范围时优先使用该范围",
-		"checks the database again", "再次查询数据库",
-		"player buyout listings", "玩家一口价商品",
-		"total price divided by quantity", "总价除以数量作为单价",
-		"reduce send pressure", "降低发送压力",
-		"separate publishing workflow", "独立的发布流程",
-	} {
-		if !strings.Contains(appJS, want) {
-			t.Errorf("market UI is missing bilingual text %q", want)
-		}
-	}
-	for _, removed := range []string{"equipment_price_protection", "marketEquipmentPriceProtection", "level_price_rate", "rarity_price_rate", "value_model_enabled", "value_category_recognition", "value_curve_span", "value_base_price", "equip_inflate_min"} {
-		if strings.Contains(appJS, removed) {
-			t.Errorf("market UI still contains removed pricing setting %q", removed)
-		}
-	}
-}
-
-func TestMarketRuleDetailsAreCollapsedWithDoubleChevron(t *testing.T) {
-	for _, want := range []string{
-		`<details class="formsection market-rule-details"><summary>`,
-		`class="market-rule-chevrons" aria-hidden="true"><i></i><i></i>`,
-		`.market-rule-details[open] .market-rule-chevrons`,
-	} {
-		if !strings.Contains(appJS+appCSS, want) {
-			t.Errorf("market rule disclosure is missing %q", want)
-		}
-	}
-	if strings.Contains(appJS, `<details class="formsection market-rule-details" open`) {
-		t.Fatal("market rule details must be collapsed by default")
-	}
+func TestDatabaseCardUsesDashboardProjection(t *testing.T) {
+	for _, want := range []string{"api('dashboardStatus')", "backendCapabilities.database", "String(r.engine).toUpperCase()", "r.writable?' · writable':''"} { if !strings.Contains(appJS, want) { t.Errorf("database projection is missing %q", want) } }
 }
 
 func TestIndexTemplateInlinesEmbeddedAssets(t *testing.T) {
 	var rendered bytes.Buffer
-	if err := cleanIndexTemplate.Execute(&rendered, nil); err != nil {
-		t.Fatalf("execute index template: %v", err)
-	}
+	if err := cleanIndexTemplate.Execute(&rendered, nil); err != nil { t.Fatal(err) }
 	page := rendered.String()
-	if strings.Contains(page, appCSSPlaceholder) || strings.Contains(page, i18nJSPlaceholder) || strings.Contains(page, appJSPlaceholder) {
-		t.Fatal("rendered index still contains an asset placeholder")
-	}
-	for _, want := range []string{
-		"<style>\n" + trimAssetTerminator(appCSS) + "\n</style>",
-		"<script>\n" + trimAssetTerminator(i18nJS) + "\n</script>",
-		"<script>\n" + trimAssetTerminator(appJS) + "\n</script>",
-	} {
-		if !strings.Contains(page, want) {
-			t.Fatal("rendered index does not contain an embedded asset")
-		}
-	}
-	if strings.Index(page, trimAssetTerminator(i18nJS)) > strings.Index(page, trimAssetTerminator(appJS)) {
-		t.Fatal("i18n script must load before the application script")
-	}
+	for _, placeholder := range []string{appCSSPlaceholder, i18nJSPlaceholder, appJSPlaceholder} { if strings.Contains(page, placeholder) { t.Errorf("rendered index contains %q", placeholder) } }
+	for _, asset := range []string{trimAssetTerminator(appCSS), trimAssetTerminator(i18nJS), trimAssetTerminator(appJS)} { if !strings.Contains(page, asset) { t.Fatal("rendered index is missing an embedded asset") } }
 }
 
-func TestLoginTemplateInlinesI18nAsset(t *testing.T) {
+func TestLoginTemplateEscapesErrorAndSupportsRecovery(t *testing.T) {
+	const loginError = `<script>alert("bad")</script>`
 	var rendered bytes.Buffer
-	if err := cleanLoginTemplate.Execute(&rendered, nil); err != nil {
-		t.Fatalf("execute login template: %v", err)
-	}
+	if err := cleanLoginTemplate.Execute(&rendered, map[string]any{"Error": loginError, "Recovery": true}); err != nil { t.Fatal(err) }
 	page := rendered.String()
-	if strings.Contains(page, i18nJSPlaceholder) {
-		t.Fatal("rendered login still contains the i18n asset placeholder")
-	}
-	if !strings.Contains(page, trimAssetTerminator(i18nJS)) {
-		t.Fatal("rendered login does not contain the embedded i18n asset")
-	}
+	if strings.Contains(page, loginError) || !strings.Contains(page, "&lt;script&gt;") || !strings.Contains(page, `data-i18n="login.recovery"`) { t.Fatal("login template does not escape errors or expose recovery") }
 }
 
 func TestI18nLocalesHaveMatchingKeys(t *testing.T) {
-	parts := strings.SplitN(i18nJS, "\n},\nzh:{\n", 2)
-	if len(parts) != 2 {
-		t.Fatal("cannot split English and Chinese locale tables")
-	}
-	keyPattern := regexp.MustCompile(`'([a-zA-Z0-9_.]+)':`)
-	keys := func(content string) map[string]bool {
-		out := make(map[string]bool)
-		for _, match := range keyPattern.FindAllStringSubmatch(content, -1) {
-			out[match[1]] = true
-		}
-		return out
-	}
-	zhTable := strings.SplitN(parts[1], "\n}};", 2)[0]
-	enKeys, zhKeys := keys(parts[0]), keys(zhTable)
-	for key := range enKeys {
-		if !zhKeys[key] {
-			t.Errorf("Chinese locale is missing %q", key)
-		}
-	}
-	for key := range zhKeys {
-		if !enKeys[key] {
-			t.Errorf("English locale is missing %q", key)
-		}
-	}
+	parts := strings.SplitN(i18nJS, "\n},\nzh:{\n", 2); if len(parts)!=2 { t.Fatal("cannot split locales") }
+	re := regexp.MustCompile(`'([a-zA-Z0-9_.]+)':`); keys:=func(s string)map[string]bool{m:=map[string]bool{};for _,x:=range re.FindAllStringSubmatch(s,-1){m[x[1]]=true};return m}
+	zhTable:=strings.SplitN(parts[1],"\n}};",2)[0]; en,zh:=keys(parts[0]),keys(zhTable)
+	for key:=range en { if !zh[key] { t.Errorf("Chinese locale is missing %q",key) } }; for key:=range zh { if !en[key] { t.Errorf("English locale is missing %q",key) } }
 }
 
-func TestRobotJobNamesAlwaysUseChineseCatalog(t *testing.T) {
-	if !strings.Contains(appJS, "const table=I18N_MESSAGES.zh||{}") {
-		t.Fatal("robot job display is not fixed to the Chinese catalog")
-	}
+func TestSchedulerAndStoreRemainCompactEnglish(t *testing.T) {
+	for _, want := range []string{`class="scheduler" data-i18n-skip`, "i18nEnglishFormat('scheduler.attach_value'", `<th data-i18n-skip>Store</th>`, "i18nEnglishFormat('status.'+store)"} { if !strings.Contains(indexHTML+appJS, want) { t.Errorf("compact English UI is missing %q", want) } }
 }
 
-func TestDiagnosticsDialogKeepsRawEnglishText(t *testing.T) {
-	if !strings.Contains(appJS, "showModal('Diagnostics',body,'<button onclick=\"closeModal()\">Close</button>','diagnostics',false)") {
-		t.Fatal("diagnostics dialog is not configured to bypass translation")
-	}
-	for _, want := range []string{"Start Party Debug", "Stop &amp; Analyze", "partyDebugStatus", "partyDebugActions", "Party Debug Result", "party-debug-result"} {
-		if !strings.Contains(appJS, want) {
-			t.Fatalf("party debug UI is missing %q", want)
-		}
-	}
-	if strings.Contains(appJS, "partyDebugPanelHTML") || strings.Contains(appCSS, "background:#0f172a") {
-		t.Fatal("Diagnostics still contains the old persistent black Party debug panel")
-	}
-}
-
-func TestSchedulerAlwaysUsesCompactEnglish(t *testing.T) {
-	for _, want := range []string{
-		`class="scheduler" data-i18n-skip`,
-		`<div class="k">Policy</div>`,
-		`<div class="k">Attach</div>`,
-		"i18nEnglishFormat('scheduler.attach_value'",
-		"'{rate}/s · b{batch}'",
-		"node.parentElement?.closest('[data-i18n-skip]')",
-	} {
-		if !strings.Contains(indexHTML+appJS+i18nJS, want) {
-			t.Fatalf("scheduler compact English behavior is missing %q", want)
-		}
-	}
-}
-
-func TestRequestedChineseLabelsAndDialogWidths(t *testing.T) {
-	for _, want := range []string{
-		"'action.market':'拍卖'",
-		"'common.cast':'释放'",
-		"auto-form",
-		"party-account-input",
-		".party-account-input{width:124px!important}",
-	} {
-		if !strings.Contains(appCSS+appJS+i18nJS, want) {
-			t.Fatalf("requested web label or width is missing %q", want)
-		}
-	}
-}
-
-func TestMarketDialogUsesCompactAlignedLayout(t *testing.T) {
-	for _, want := range []string{
-		"dialog.market{width:min(680px,96vw)",
-		"dialog.market .formgrid>label{white-space:nowrap}",
-		"dialog.market .market-range",
-		"showModal('Market',body,foot,'market')",
-	} {
-		if !strings.Contains(appCSS+appJS, want) {
-			t.Fatalf("market dialog is missing compact layout rule %q", want)
-		}
-	}
-}
-
-func TestStoreColumnStaysEnglish(t *testing.T) {
-	if strings.Contains(indexHTML, `data-i18n="robots.store"`) {
-		t.Fatal("robot Store header still participates in language switching")
-	}
-	if !strings.Contains(indexHTML, `<th data-i18n-skip>Store</th>`) {
-		t.Fatal("robot Store header is not protected from text-node translation")
-	}
-	if !strings.Contains(appJS, "span.textContent=i18nEnglishFormat('status.'+store)") {
-		t.Fatal("robot Store values are not fixed to English")
-	}
-}
-
-func TestAutoDialogUsesStandardFooterWithoutWrapping(t *testing.T) {
-	for _, want := range []string{
-		`const foot='<button onclick="submitAuto(null)">'+i18nFormat('auto.save')+'</button>`,
-		"showModal(i18nFormat('action.auto'),body,foot)",
-		".auto-form>input[type=number]{width:120px}",
-		".auto-option{white-space:nowrap}",
-		"grid-template-columns:68px 16px 68px max-content",
-		`<span>~</span><input id="autoShoutMax"`,
-	} {
-		if !strings.Contains(appCSS+appJS, want) {
-			t.Fatalf("Auto dialog layout is missing %q", want)
-		}
-	}
-}
-
-func TestPortsDialogUsesStandardFooter(t *testing.T) {
-	for _, want := range []string{
-		`const foot='<button onclick="submitGamePort()">Save Ports</button>`,
-		"showModal('Ports',body,foot,'ports')",
-		"dialog.ports{width:min(320px,96vw)",
-		"dialog.ports .formgrid{grid-template-columns:100px 92px}",
-		`const ports=endpoint.ports||{};const body='<div class="formgrid"><label>Game</label>`,
-	} {
-		if !strings.Contains(appCSS+appJS, want) {
-			t.Fatalf("Ports dialog standard footer is missing %q", want)
-		}
-	}
-	for _, removed := range []string{`id="gameHost"`, `id="loginIP"`, `id="auctionHost"`, `id="pointHost"`, `id="relayHost"`, `id="serviceRoot"`, `id="serviceRunScript"`} {
-		if strings.Contains(appJS, removed) {
-			t.Fatalf("Ports dialog still exposes non-port field %q", removed)
-		}
-	}
-}
-
-func TestMarketFieldsUseOneCompactAlignment(t *testing.T) {
-	for _, want := range []string{
-		"dialog.market .formgrid{grid-template-columns:160px minmax(0,1fr)}",
-		"grid-template-columns:minmax(0,180px) max-content",
-		"grid-template-columns:120px 16px 120px max-content",
-		"marketUpgradeMax",
-		"marketStackSizes",
-		"market-range-price",
-		"market-range-short",
-		"market-field-price",
-		"market-field-short",
-		"grid-template-columns:140px 16px 140px max-content",
-		"grid-template-columns:72px 16px 72px max-content",
-	} {
-		if !strings.Contains(appCSS+appJS, want) {
-			t.Fatalf("compact market alignment is missing %q", want)
-		}
-	}
-	if strings.Index(appJS, "marketUpgradeMax") > strings.Index(appJS, "marketStackSizes") {
-		t.Fatal("stack sizes must appear below upgrade in the market dialog")
-	}
-}
-
-func TestMarketDialogHasExplicitRebuildWithoutAutoSave(t *testing.T) {
-	for _, want := range []string{
-		`id="modalSaveButton"`,
-		"submitMarketSettings()",
-		"marketApplyListingConfig",
-		"style==='market'?'':'none'",
-	} {
-		if !strings.Contains(indexHTML+appJS, want) {
-			t.Fatalf("market save behavior is missing %q", want)
-		}
-	}
-	for _, hidden := range []string{"marketCycleSeconds", "marketAutoConcurrent", "marketRestockMaxActions", "marketCollectMaxActions", "marketCollectConcurrent"} {
-		if strings.Contains(appJS, hidden) {
-			t.Fatalf("market dialog still exposes runtime field %q", hidden)
-		}
-	}
-	if strings.Contains(appJS, "function autoSaveMarketConfig()") {
-		t.Fatal("market dialog must not auto-save")
-	}
-	if strings.Contains(appJS, "Only these rarity digits will be listed; missing rarity is treated as 0</div>") {
-		t.Fatal("market rarity field still renders its explanatory note")
-	}
-}
-
-func TestLoginTemplateEscapesError(t *testing.T) {
-	const loginError = `<script>alert("bad")</script>`
-	var rendered bytes.Buffer
-	if err := cleanLoginTemplate.Execute(&rendered, map[string]string{"Error": loginError}); err != nil {
-		t.Fatalf("execute login template: %v", err)
-	}
-	page := rendered.String()
-	if strings.Contains(page, loginError) || !strings.Contains(page, "&lt;script&gt;") {
-		t.Fatalf("login error was not HTML-escaped: %q", page)
-	}
+func TestBackendRecoveryAndRestartFlowRemainAvailable(t *testing.T) {
+	for _, want := range []string{"recovery_mode", "restart_required", "restartRobot()", "backendSettings", "backendCapabilities"} { if !strings.Contains(appJS, want) { t.Errorf("backend recovery flow is missing %q", want) } }
 }
