@@ -2,8 +2,12 @@ package robotconfig
 
 import "strings"
 
+func stripBOM(text string) string {
+	return strings.TrimPrefix(text, "\ufeff")
+}
+
 func UpdateINIText(text string, values map[string]string) string {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	lines := strings.Split(strings.ReplaceAll(stripBOM(text), "\r\n", "\n"), "\n")
 	section := ""
 	seen := make(map[string]bool, len(values))
 	sectionLine := make(map[string]int)
@@ -105,7 +109,7 @@ func PublicText(text string) string {
 		"system.manual_action_timeout_sec":     true,
 		"system.packet_rate_per_sec":           true,
 	}
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	lines := strings.Split(strings.ReplaceAll(stripBOM(text), "\r\n", "\n"), "\n")
 	out := make([]string, 0, len(lines))
 	section := ""
 	for _, line := range lines {
