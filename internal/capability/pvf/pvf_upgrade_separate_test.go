@@ -60,6 +60,27 @@ func TestPatchPVFUpgradeSeparateRequiresRecoveryDestination(t *testing.T) {
 	}
 }
 
+func TestParsePVFPatchEntriesClampsHugeFileCount(t *testing.T) {
+	raw := buildUpgradeSeparateTestPVF(t, 7)
+	binary.LittleEndian.PutUint32(raw[16:20], 0xFFFFFFFF)
+	path := filepath.Join(t.TempDir(), "Script.pvf")
+	if err := os.WriteFile(path, raw, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// A corrupt file count must not trigger a multi-gigabyte preallocation;
+	// the tree is short, so parsing must stay bounded and still work.
+	status, err := InspectPVFUpgradeSeparate(path)
+	if err != nil {
+		t.Fatalf("inspect with corrupt file count: %v", err)
+	}
+	if status.Value != 7 {
+		t.Fatalf("status = %+v, want value 7", status)
+	}
+	if entries := parsePVFPatchEntries(make([]byte, 40), 0xFFFFFFFF); len(entries) > 2 {
+		t.Fatalf("entries = %d, want bounded by tree length", len(entries))
+	}
+}
+
 func TestPatchPVFUpgradeSeparateRotatesBoundedBackups(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Script.pvf")

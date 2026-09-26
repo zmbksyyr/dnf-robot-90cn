@@ -17,11 +17,13 @@ import (
 )
 
 const (
-	a21PVFHeaderSize    = 0x30
-	a21PVFFileItemSize  = 0x18
-	a21PVFGroupItemSize = 8
-	a21PVFMagic         = 0x69706B6E
-	a21PVFMaxBytes      = 512 * 1024 * 1024
+	a21PVFHeaderSize     = 0x30
+	a21PVFFileItemSize   = 0x18
+	a21PVFGroupItemSize  = 8
+	a21PVFMagic          = 0x69706B6E
+	a21PVFMaxBytes       = 512 * 1024 * 1024
+	a21PVFMaxChunkBytes  = 512 * 1024 * 1024
+	a21PVFMaxStringBytes = 64 * 1024 * 1024
 )
 
 type a21PVFFileItem struct {
@@ -240,7 +242,14 @@ func (a *a21PVFArchive) chunk(index int) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decompress S4A21 PVF chunk %d: %w", index, err)
 	}
-	data, readErr := io.ReadAll(reader)
+	want := a.groups[index].original
+	if want < 0 || want > a21PVFMaxChunkBytes {
+		_ = reader.Close()
+		return nil, fmt.Errorf("S4A21 PVF chunk %d declares an invalid size %d", index, want)
+	}
+	// Read at most want+1 bytes: a malicious or corrupt stream must not be
+	// able to allocate unbounded memory before the size check below.
+	data, readErr := io.ReadAll(io.LimitReader(reader, int64(want)+1))
 	closeErr := reader.Close()
 	if readErr != nil {
 		return nil, fmt.Errorf("read S4A21 PVF chunk %d: %w", index, readErr)
@@ -248,7 +257,7 @@ func (a *a21PVFArchive) chunk(index int) ([]byte, error) {
 	if closeErr != nil {
 		return nil, fmt.Errorf("close S4A21 PVF chunk %d: %w", index, closeErr)
 	}
-	if want := a.groups[index].original; want != len(data) {
+	if len(data) != want {
 		return nil, fmt.Errorf("S4A21 PVF chunk %d size=%d want=%d", index, len(data), want)
 	}
 	a.chunkData[index] = data
@@ -308,9 +317,12 @@ func a21PVFStringBuffer(data []byte, offset *int, key string, xor uint32) []byte
 	if err != nil {
 		return nil
 	}
-	decoded, err := io.ReadAll(reader)
+	decoded, err := io.ReadAll(io.LimitReader(reader, a21PVFMaxStringBytes+1))
 	_ = reader.Close()
 	if err != nil {
+		return nil
+	}
+	if len(decoded) > a21PVFMaxStringBytes {
 		return nil
 	}
 	return decoded

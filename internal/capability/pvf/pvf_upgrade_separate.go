@@ -191,7 +191,16 @@ func readPVFPlainFile(raw []byte, target string) ([]byte, []string, pvfPatchEntr
 }
 
 func parsePVFPatchEntries(tree []byte, fileCount int) []pvfPatchEntry {
-	entries := make([]pvfPatchEntry, 0, fileCount)
+	// Every entry needs at least 20 bytes of tree data. Clamping the
+	// preallocation keeps a corrupt header from requesting gigabytes.
+	capacity := fileCount
+	if max := len(tree) / 20; capacity > max {
+		capacity = max
+	}
+	if capacity < 0 {
+		capacity = 0
+	}
+	entries := make([]pvfPatchEntry, 0, capacity)
 	for offset, i := 0, 0; i < fileCount && offset+20 <= len(tree); i++ {
 		nameLen := int(binary.LittleEndian.Uint32(tree[offset+4 : offset+8]))
 		if nameLen < 0 || offset+20+nameLen > len(tree) {
