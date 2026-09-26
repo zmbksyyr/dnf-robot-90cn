@@ -63,6 +63,11 @@ func (e *persistenceExecutor) Do(ctx context.Context, run func(context.Context) 
 	select {
 	case err := <-job.result:
 		return err
+	case <-e.stop:
+		// The executor was closed after the job was queued but before it was
+		// consumed; without this branch a caller with a cancellation-free
+		// context would block forever.
+		return errPersistenceExecutorClosed
 	case <-ctx.Done():
 		return ctx.Err()
 	}

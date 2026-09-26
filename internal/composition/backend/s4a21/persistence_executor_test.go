@@ -3,6 +3,7 @@ package s4a21
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -111,4 +112,32 @@ func TestPersistenceExecutorCloseStopsWorkerAndRejectsJobs(t *testing.T) {
 		t.Fatalf("post-close job = %v, want closed error", err)
 	}
 	executor.Close()
+}
+
+func TestPersistenceExecutorDoNeverBlocksAfterWorkerStops(t *testing.T) {
+	executor := newPersistenceExecutor(8)
+	// Simulate the close window: stop is signaled and the worker has already
+	// drained, but the caller raced past the closed flag check.
+	close(executor.stop)
+	<-executor.workerDone
+
+	done := make(chan error, 1)
+	go func() {
+		for i := 0; i < 50; i++ {
+			err := executor.Do(context.Background(), func(context.Context) error { return nil })
+			if !errors.Is(err, errPersistenceExecutorClosed) {
+				done <- fmt.Errorf("Do[%d] = %v, want closed error", i, err)
+				return
+			}
+		}
+		done <- nil
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Do blocked after the executor worker stopped")
+	}
 }
