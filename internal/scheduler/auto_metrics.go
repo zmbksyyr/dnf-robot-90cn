@@ -212,30 +212,6 @@ func (s *RobotSupervisor) updateMetrics(rc robotconfig.RuntimeConfig, signals ad
 	robotLogf("%s", line)
 }
 
-func (s *RobotSupervisor) filterBlockedRuntimeStatus(status map[int]robotcap.RuntimeStatus) {
-	s.ledger.FilterBlockedRuntimeStatus(status)
-}
-
-func (s *RobotSupervisor) filterMissingRuntimeStatus(status map[int]robotcap.RuntimeStatus) {
-	if len(status) == 0 {
-		return
-	}
-	uids := make([]int, 0, len(status))
-	for uid := range status {
-		uids = append(uids, uid)
-	}
-	alive, err := s.manager.aliveRobotUIDs(uids)
-	if err != nil {
-		robotLogf("[RobotSupervisor] runtime_alive_filter_failed err=%v\n", err)
-		return
-	}
-	for uid := range status {
-		if !alive[uid] {
-			delete(status, uid)
-		}
-	}
-}
-
 func (s *RobotSupervisor) actorCounts(now time.Time, rc robotconfig.RuntimeConfig) actormodel.LedgerCounts {
 	return s.ledger.Counts(now, rc)
 }
