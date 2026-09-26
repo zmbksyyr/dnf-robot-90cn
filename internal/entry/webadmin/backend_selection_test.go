@@ -14,6 +14,32 @@ import (
 	"robot/internal/shared"
 )
 
+func TestRuntimeSettingDefaultKeepsDottedServerDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "DfoServer.v1")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{cfg: &config.SysConfig{ServerDirectory: dir}}
+	if got := server.runtimeSettingDefault("server_directory"); got != dir {
+		t.Fatalf("directory default = %q, want %q", got, dir)
+	}
+
+	pvf := filepath.Join(dir, "Script.pvf")
+	server.cfg.ServerDirectory = pvf
+	if got := server.runtimeSettingDefault("server_directory"); got != dir {
+		t.Fatalf("pvf default = %q, want %q", got, dir)
+	}
+
+	exe := filepath.Join(dir, "DfoServer.exe")
+	if err := os.WriteFile(exe, []byte("stub"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server.cfg.ServerDirectory = exe
+	if got := server.runtimeSettingDefault("server_directory"); got != dir {
+		t.Fatalf("executable default = %q, want %q", got, dir)
+	}
+}
+
 func TestBackendSelectionDefaultsWithoutWriting(t *testing.T) {
 	dir := t.TempDir()
 	s := NewWithCatalog(&config.SysConfig{ConfigDir: dir}, "", "", shared.BackendID("test"), testBackendCatalog())

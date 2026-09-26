@@ -129,8 +129,17 @@ func (s *Server) runtimeSettingDefault(source string) string {
 	switch source {
 	case "server_directory":
 		value := strings.TrimSpace(s.cfg.ServerDirectory)
-		if filepath.Ext(value) != "" {
-			value = filepath.Dir(value)
+		if value == "" {
+			return ""
+		}
+		// Only a .pvf file is treated as the server executable; any other
+		// path is returned as-is, because a directory may legitimately contain
+		// dots (for example DfoServer.v1).
+		if strings.EqualFold(filepath.Ext(value), ".pvf") {
+			return filepath.Dir(value)
+		}
+		if stat, err := os.Stat(value); err == nil && !stat.IsDir() {
+			return filepath.Dir(value)
 		}
 		return value
 	case "game_host":
