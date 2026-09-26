@@ -142,30 +142,41 @@ func (m *RobotManager) autoGamePortStable(now time.Time, rc robotconfig.RuntimeC
 	open := m.autoPortProbeOpen
 	errText := m.autoPortProbeError
 	dial := m.autoPortDial
+	probeInFlight := m.autoPortProbeInflight
 	m.autoMu.Unlock()
-	if !probeCached {
+	if !probeCached && !probeInFlight {
 		if dial == nil {
 			dial = net.DialTimeout
 		}
-		conn, err := dial("tcp", addr, timeout)
-		open = err == nil
-		errText = ""
-		if err != nil {
-			errText = err.Error()
-		}
-		if conn != nil {
-			_ = conn.Close()
-		}
-		probeTTL := time.Second
-		if !open {
-			probeTTL = 3 * time.Second
-		}
+		// Probing runs in the background: a black-holed game port must not
+		// stall the scheduler tick for the whole dial timeout.
+		probeAddr := addr
+		probeAt := now
 		m.autoMu.Lock()
-		m.autoPortProbeAddr = addr
-		m.autoPortProbeOpen = open
-		m.autoPortProbeError = errText
-		m.autoPortProbeAt = now.Add(probeTTL)
+		m.autoPortProbeInflight = true
 		m.autoMu.Unlock()
+		go func() {
+			conn, err := dial("tcp", probeAddr, timeout)
+			probeOpen := err == nil
+			probeErr := ""
+			if err != nil {
+				probeErr = err.Error()
+			}
+			if conn != nil {
+				_ = conn.Close()
+			}
+			probeTTL := time.Second
+			if !probeOpen {
+				probeTTL = 3 * time.Second
+			}
+			m.autoMu.Lock()
+			m.autoPortProbeAddr = probeAddr
+			m.autoPortProbeOpen = probeOpen
+			m.autoPortProbeError = probeErr
+			m.autoPortProbeAt = probeAt.Add(probeTTL)
+			m.autoPortProbeInflight = false
+			m.autoMu.Unlock()
+		}()
 	}
 
 	stableFor := time.Duration(rc.AutoGamePortStableSec) * time.Second

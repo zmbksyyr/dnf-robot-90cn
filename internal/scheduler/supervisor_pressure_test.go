@@ -184,6 +184,13 @@ func TestSupervisorBreakerStillConvergesDownToTarget(t *testing.T) {
 		SchedulerBadFailures:         3,
 		SchedulerMetricsIntervalSec:  60,
 	}
+	// The game port probe now runs asynchronously; wait for it before the
+	// single guard pass that this test asserts on.
+	_ = manager.autoGamePortStable(now, rc)
+	waitForGamePortProbe(t, manager)
+	manager.autoMu.Lock()
+	manager.autoPortSince = now.Add(-time.Minute)
+	manager.autoMu.Unlock()
 
 	if !supervisor.handleAutoGuards(now, rc, adaptiveSchedulerSignals{Actors: 3}) {
 		t.Fatal("active breaker did not pause the supervisor loop")
@@ -191,6 +198,24 @@ func TestSupervisorBreakerStillConvergesDownToTarget(t *testing.T) {
 	counts := supervisor.ledger.Counts(time.Now(), rc)
 	if counts.Auto != 1 || counts.Leased != 1 || counts.Draining != 0 {
 		t.Fatalf("breaker did not converge down to target: %+v", counts)
+	}
+}
+
+func waitForGamePortProbe(t *testing.T, manager *RobotManager) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		manager.autoMu.Lock()
+		inflight := manager.autoPortProbeInflight
+		open := manager.autoPortProbeOpen
+		manager.autoMu.Unlock()
+		if !inflight && open {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("game port probe did not report the open port")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

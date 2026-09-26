@@ -65,6 +65,7 @@ type RobotManager struct {
 	autoPortProbeAddr               string
 	autoPortProbeOpen               bool
 	autoPortProbeError              string
+	autoPortProbeInflight           bool
 	autoPortDial                    func(string, string, time.Duration) (net.Conn, error)
 	autoStats                       robotcap.AutoStatus
 	autoBreakerUntil                time.Time
