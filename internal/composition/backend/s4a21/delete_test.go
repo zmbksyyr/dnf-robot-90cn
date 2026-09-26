@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,6 +149,28 @@ func TestRobotCleanerKeepsStateWhenProtocolDoesNotConfirmDelete(t *testing.T) {
 	robots, _ := state.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 10})
 	if len(robots) != 1 || robots[0].UID != 7 {
 		t.Fatalf("robot state must remain after unconfirmed delete: %+v", robots)
+	}
+}
+
+func TestRobotCleanerProtectsAmbiguousCharacterNames(t *testing.T) {
+	state := robotstate.NewMemoryStore([]robotcap.Info{{UID: 7, Name: "shared"}})
+	if err := state.RegisterIdentities(context.Background(), []robotstate.Identity{
+		{Backend: BackendID, Account: "acct07", CharacterName: "shared"},
+		{Backend: BackendID, Account: "acct09", CharacterName: "shared"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	protocolDelete := &recordingDeleteProtocol{}
+	result, err := (RobotCleaner{Protocol: protocolDelete, State: state}).CleanupRobots(
+		context.Background(), robotcap.CleanupRequest{UIDs: []int{7}, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Deleted != 0 || result.Skipped != 1 || len(protocolDelete.identities) != 0 {
+		t.Fatalf("result=%+v identities=%v", result, protocolDelete.identities)
+	}
+	if !result.Candidates[0].Protected || !strings.Contains(result.Candidates[0].Reason, "ambiguous") {
+		t.Fatalf("candidate = %+v", result.Candidates[0])
 	}
 }
 

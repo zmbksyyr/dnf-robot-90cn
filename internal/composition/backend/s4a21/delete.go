@@ -47,7 +47,15 @@ func (c RobotCleaner) CleanupRobots(ctx context.Context, request robotcap.Cleanu
 		return robotcap.CleanupResult{}, err
 	}
 	identityByName := make(map[string]robotstate.Identity, len(identities))
+	ambiguousNames := make(map[string]struct{})
 	for _, identity := range identities {
+		if _, exists := identityByName[identity.CharacterName]; exists {
+			// Two accounts can share a character name in the roster. Deleting
+			// through a guessed identity could hit the wrong account, so the
+			// name is marked ambiguous and its robots are protected.
+			ambiguousNames[identity.CharacterName] = struct{}{}
+			continue
+		}
 		identityByName[identity.CharacterName] = identity
 	}
 	wanted := make(map[int]struct{}, len(request.UIDs))
@@ -64,6 +72,9 @@ func (c RobotCleaner) CleanupRobots(ctx context.Context, request robotcap.Cleanu
 		if !ok {
 			candidate.Protected = true
 			candidate.Reason = "S4A21 robot identity is missing"
+		} else if _, ambiguous := ambiguousNames[robot.Name]; ambiguous {
+			candidate.Protected = true
+			candidate.Reason = "S4A21 robot identity is ambiguous (duplicate character name)"
 		}
 		result.Candidates = append(result.Candidates, candidate)
 	}
@@ -167,6 +178,10 @@ func (d CharacterDeleter) DeleteCharacter(ctx context.Context, identity robotsta
 	return true, nil
 }
 
+// clearRobotAccountRoster deletes every character remaining on the account,
+// not only the planned robot. Robot accounts are dedicated, so this is the
+// intended cleanup boundary; the post-condition below verifies the roster is
+// empty before the account is reported as deleted.
 func clearRobotAccountRoster(ctx context.Context, client *protocol.Client, rosterBody []byte) error {
 	roster, err := protocol.DecodeCharacterRoster(rosterBody)
 	if err != nil {
