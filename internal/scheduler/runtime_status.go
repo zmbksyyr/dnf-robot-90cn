@@ -9,6 +9,12 @@ import (
 
 const runtimeStatusCacheTTL = 2000 * time.Millisecond
 
+// runtimeStatusRefreshTimeout bounds one adapter status read. It is a var so
+// tests can shorten it; production keeps it small relative to the cache TTL.
+var runtimeStatusRefreshTimeout = 3 * time.Second
+
+const runtimeStatusTimeoutLogInterval = 30 * time.Second
+
 type runtimeStatusMapProvider interface {
 	RuntimeStatusMap() map[int]robotcap.RuntimeStatus
 }
@@ -23,6 +29,7 @@ type runtimeStateTable struct {
 	summary   robotcap.RuntimeStatusSummary
 	summaryAt time.Time
 	refresh   chan struct{}
+	staleLog  time.Time
 }
 
 // runtimeStatusMap returns an immutable snapshot. Callers that need to delete
@@ -88,12 +95,49 @@ func (m *RobotManager) refreshRuntimeStatusMap(refreshDone chan struct{}) (statu
 		m.runtimeState.mu.Unlock()
 	}()
 
-	status = m.loadRuntimeStatusMap()
+	status, ok := m.loadRuntimeStatusMapBounded()
+	if !ok {
+		// The adapter did not answer in time. Serve the previous snapshot,
+		// refreshed on the normal TTL, instead of blocking every scheduler,
+		// Web and API consumer behind the stuck call.
+		m.runtimeState.mu.RLock()
+		previous := m.runtimeState.snapshot
+		staleLog := m.runtimeState.staleLog
+		m.runtimeState.mu.RUnlock()
+		if previous == nil {
+			previous = make(map[int]robotcap.RuntimeStatus)
+		}
+		status = previous
+		for _, st := range status {
+			summary.Add(st)
+		}
+		complete = true
+		if now := time.Now(); now.Sub(staleLog) >= runtimeStatusTimeoutLogInterval {
+			m.runtimeState.mu.Lock()
+			m.runtimeState.staleLog = now
+			m.runtimeState.mu.Unlock()
+			robotLogf("RUNTIME_STATUS_REFRESH_TIMEOUT timeout=%s serving_stale=true\n", runtimeStatusRefreshTimeout)
+		}
+		return status
+	}
 	for _, st := range status {
 		summary.Add(st)
 	}
 	complete = true
 	return status
+}
+
+func (m *RobotManager) loadRuntimeStatusMapBounded() (map[int]robotcap.RuntimeStatus, bool) {
+	done := make(chan map[int]robotcap.RuntimeStatus, 1)
+	go func() { done <- m.loadRuntimeStatusMap() }()
+	timer := time.NewTimer(runtimeStatusRefreshTimeout)
+	defer timer.Stop()
+	select {
+	case status := <-done:
+		return status, true
+	case <-timer.C:
+		return nil, false
+	}
 }
 
 func (m *RobotManager) runtimeStatusSummarySnapshot() robotcap.RuntimeStatusSummary {

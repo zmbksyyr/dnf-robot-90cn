@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type countingStatusRuntime struct {
@@ -177,6 +178,44 @@ func TestAutoAndSystemStatusShareRuntimeSummary(t *testing.T) {
 	}
 	if got := runtime.calls.Load(); got != 1 {
 		t.Fatalf("RuntimeStatus calls got %d want 1", got)
+	}
+}
+
+func TestRuntimeStatusRefreshServesStaleAfterTimeout(t *testing.T) {
+	previousTimeout := runtimeStatusRefreshTimeout
+	runtimeStatusRefreshTimeout = 40 * time.Millisecond
+	defer func() { runtimeStatusRefreshTimeout = previousTimeout }()
+
+	runtime := &countingStatusRuntime{statuses: []robotcap.RuntimeStatus{
+		{UID: 17000001, StateName: robotcap.RuntimeStateRunning},
+	}}
+	manager := NewRobotManager(nil, nil, runtime)
+	if status, ok := manager.runtimeStatus(17000001); !ok || status.UID != 17000001 {
+		t.Fatalf("initial status = %+v ok=%t", status, ok)
+	}
+
+	release := make(chan struct{})
+	runtime.release = release
+	manager.invalidateRuntimeStatusCache()
+
+	start := time.Now()
+	status, ok := manager.runtimeStatus(17000001)
+	elapsed := time.Since(start)
+	close(release)
+	if !ok || status.UID != 17000001 {
+		t.Fatalf("stale status = %+v ok=%t", status, ok)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("stale lookup blocked for %v", elapsed)
+	}
+
+	// The stale snapshot is served from cache until the TTL expires.
+	start = time.Now()
+	if _, ok := manager.runtimeStatus(17000001); !ok {
+		t.Fatal("cached stale status missing")
+	}
+	if elapsed := time.Since(start); elapsed > runtimeStatusRefreshTimeout {
+		t.Fatalf("cached stale lookup blocked for %v", elapsed)
 	}
 }
 
