@@ -2,9 +2,31 @@ package actor
 
 import (
 	"testing"
+	"time"
 
 	robotcap "robot/internal/capability/robot"
+	robotconfig "robot/internal/capability/robotconfig"
 )
+
+func BenchmarkLedgerCounts550(b *testing.B) {
+	ledger := NewLedger()
+	runtime := &partyWaitRuntime{status: robotcap.RuntimeStatus{StateName: robotcap.RuntimeStateRunning}}
+	ledger.indexMu.Lock()
+	for i := 0; i < 550; i++ {
+		actor := NewActor(i+1, ModeAuto, runtime)
+		actor.resetForUID(17000000 + i)
+		ledger.actors[i+1] = actor
+		ledger.uidActors[17000000+i] = actor
+	}
+	ledger.indexMu.Unlock()
+	rc := robotconfig.RuntimeConfig{SchedulerBadFailures: 3, OnlineConfirmTimeoutMS: 60000}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ledger.Counts(time.Now(), rc)
+	}
+}
 
 func testLedgerActor(slotID int, mode Mode, uid int) *Actor {
 	actor := NewActor(slotID, mode, nil)

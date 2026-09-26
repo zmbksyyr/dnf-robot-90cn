@@ -9,14 +9,19 @@ import (
 
 func (a *Actor) status(now time.Time, rc robotconfig.RuntimeConfig) Status {
 	s := a.snapshot()
-	var lookup RuntimeStatusLookup
-	if a.runtime != nil {
-		lookup = a.runtime.Status
-	}
 	return EvaluateStatus(s, now, StatusConfig{
 		BadFailures:            rc.SchedulerBadFailures,
 		OnlineConfirmTimeoutMS: rc.OnlineConfirmTimeoutMS,
-	}, lookup)
+	}, a.runtimeStatusLookup())
+}
+
+// runtimeStatusLookup returns the runtime status reader for this actor without
+// touching actor state.
+func (a *Actor) runtimeStatusLookup() RuntimeStatusLookup {
+	if a.runtime == nil {
+		return nil
+	}
+	return a.runtime.Status
 }
 
 func (a *Actor) resetForUID(uid int) {

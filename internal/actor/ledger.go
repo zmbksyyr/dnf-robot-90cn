@@ -67,21 +67,30 @@ func (l *Ledger) Counts(now time.Time, rc robotconfig.RuntimeConfig) LedgerCount
 	counts := LedgerCounts{Blocked: l.BlockedCount()}
 	type actorCountView struct {
 		actor    *Actor
+		snapshot Snapshot
 		draining bool
 	}
 	l.indexMu.RLock()
 	actors := make([]actorCountView, 0, len(l.actors))
 	for slotID, actor := range l.actors {
-		if actor.ModeValue() == ModeAuto {
-			actors = append(actors, actorCountView{
-				actor: actor, draining: l.draining[slotID] == actor,
-			})
+		// Take one state snapshot under the index lock; evaluation below then
+		// needs no further actor lock acquisitions.
+		snapshot := actor.snapshot()
+		if snapshot.Mode != ModeAuto {
+			continue
 		}
+		actors = append(actors, actorCountView{
+			actor: actor, snapshot: snapshot, draining: l.draining[slotID] == actor,
+		})
 	}
 	l.indexMu.RUnlock()
+	statusConfig := StatusConfig{
+		BadFailures:            rc.SchedulerBadFailures,
+		OnlineConfirmTimeoutMS: rc.OnlineConfirmTimeoutMS,
+	}
 	for _, view := range actors {
 		actor := view.actor
-		status := actor.Status(now, rc)
+		status := EvaluateStatus(view.snapshot, now, statusConfig, actor.runtimeStatusLookup())
 		counts.Auto++
 		if status.UID > 0 {
 			counts.Leased++
@@ -668,23 +677,41 @@ func (l *Ledger) nextSlotLocked() int {
 }
 
 func SortActorsForStop(actors []*Actor, status map[int]robotcap.RuntimeStatus) {
-	sort.Slice(actors, func(i, j int) bool {
-		leftPriority := StopPriority(actors[i].UIDValue(), status)
-		rightPriority := StopPriority(actors[j].UIDValue(), status)
-		if leftPriority != rightPriority {
-			return leftPriority < rightPriority
+	type stopEntry struct {
+		actor    *Actor
+		uid      int
+		slot     int
+		priority int
+	}
+	// Snapshot every key once: taking actor locks inside the comparator makes
+	// the sort O(n log n) lock acquisitions on the scheduler hot path.
+	entries := make([]stopEntry, 0, len(actors))
+	for _, actor := range actors {
+		uid := actor.UIDValue()
+		entries = append(entries, stopEntry{
+			actor:    actor,
+			uid:      uid,
+			slot:     actor.SlotIDValue(),
+			priority: StopPriority(uid, status),
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		left, right := entries[i], entries[j]
+		if left.priority != right.priority {
+			return left.priority < right.priority
 		}
-		leftUID := actors[i].UIDValue()
-		rightUID := actors[j].UIDValue()
-		if leftUID <= 0 || rightUID <= 0 {
-			if leftUID != rightUID {
-				return leftUID <= 0
+		if left.uid <= 0 || right.uid <= 0 {
+			if left.uid != right.uid {
+				return left.uid <= 0
 			}
-			return actors[i].SlotIDValue() > actors[j].SlotIDValue()
+			return left.slot > right.slot
 		}
-		if leftUID != rightUID {
-			return leftUID > rightUID
+		if left.uid != right.uid {
+			return left.uid > right.uid
 		}
-		return actors[i].SlotIDValue() > actors[j].SlotIDValue()
+		return left.slot > right.slot
 	})
+	for index := range entries {
+		actors[index] = entries[index].actor
+	}
 }
