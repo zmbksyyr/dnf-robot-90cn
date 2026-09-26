@@ -88,6 +88,7 @@ func TestSessionFactoryEnablesPartyDungeonFollower(t *testing.T) {
 	}
 	defer listener.Close()
 	release := make(chan struct{})
+	followerReady := make(chan struct{})
 	serverDone := make(chan error, 1)
 	go func() {
 		conn, acceptErr := listener.Accept()
@@ -122,6 +123,7 @@ func TestSessionFactoryEnablesPartyDungeonFollower(t *testing.T) {
 				return
 			}
 		}
+		close(followerReady)
 		<-release
 		serverDone <- nil
 	}()
@@ -133,6 +135,12 @@ func TestSessionFactoryEnablesPartyDungeonFollower(t *testing.T) {
 	if err != nil {
 		close(release)
 		t.Fatal(err)
+	}
+	select {
+	case <-followerReady:
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("background dungeon follower preparation timed out")
 	}
 	close(release)
 	if err := session.Close(); err != nil {

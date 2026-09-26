@@ -10,6 +10,7 @@ import (
 
 	"robot/internal/foundation/charset"
 	"robot/internal/foundation/lockhub"
+	foundationlog "robot/internal/foundation/log"
 	protocol "robot/internal/protocol/s4a21"
 	"robot/internal/shared"
 )
@@ -115,13 +116,21 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	go session.drain(runCtx)
 	go session.keepalive(runCtx)
 	if request.EnablePartyDungeonFollower {
-		if err := session.EnableDungeonFollower(openCtx); err != nil {
-			_ = session.Close()
-			return nil, err
-		}
+		go session.prepareOptionalDungeonFollower(runCtx)
 	}
 	closeOnError = false
 	return session, nil
+}
+
+func (s *Session) prepareOptionalDungeonFollower(ctx context.Context) {
+	if err := s.EnableDungeonFollower(ctx); err != nil {
+		select {
+		case <-s.Done():
+			return
+		default:
+			foundationlog.Robotf("S4A21_PARTY_PREPARE_FAILED uid=%d err=%v\n", s.selfUID, err)
+		}
+	}
 }
 
 func initializeTownPresence(ctx context.Context, client *protocol.Client, request shared.OpenSessionRequest) error {

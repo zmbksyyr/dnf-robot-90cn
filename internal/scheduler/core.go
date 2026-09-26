@@ -71,6 +71,10 @@ type RobotManager struct {
 	autoBreakerLastShoutLocalFailed int
 	autoBreakerLastShoutWorldFailed int
 	autoBreakerLastStoreFailed      int
+	schedulerLastOnlineSuccess      int
+	schedulerLastOnlineFailed       int
+	schedulerRecentOnlineSuccess    int
+	schedulerRecentOnlineFailed     int
 	runtimeState                    runtimeStateTable
 	followLookupMu                  lockhub.Locker
 	followLookup                    followAccountLookup

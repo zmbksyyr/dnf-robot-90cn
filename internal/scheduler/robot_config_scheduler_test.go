@@ -3,6 +3,7 @@ package scheduler
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -374,6 +375,20 @@ func TestAdaptiveSchedulerLiveFeedbackReducesPressure(t *testing.T) {
 	}
 	if rc.AutoStoreIntervalMinSec != 112 || rc.AutoStoreIntervalMaxSec != 292 {
 		t.Fatalf("AutoStoreInterval got %d..%d want 112..292", rc.AutoStoreIntervalMinSec, rc.AutoStoreIntervalMaxSec)
+	}
+}
+
+func TestAdaptiveSchedulerThrottlesRecentOnlineFailures(t *testing.T) {
+	rc := robotconfig.RuntimeConfig{AutoTargetOnlineCount: 1500, MaxOnlineRobots: 2000}
+	decision := applyAdaptiveSchedulerConfig(&rc, adaptiveSchedulerSignals{
+		Live: true, Running: 900, Actors: 1100, GamePortReady: true,
+		OnlineSuccess: 20, OnlineFailed: 80,
+	})
+	if decision.Mode != schedulerPolicyPressure || !strings.Contains(decision.Reason, "online_failure_pressure") {
+		t.Fatalf("decision = %+v", decision)
+	}
+	if rc.SchedulerOnlineStartRate != 7 || rc.SchedulerOnlineBatchSize != 15 {
+		t.Fatalf("online throttle rate=%d batch=%d, want 7/15", rc.SchedulerOnlineStartRate, rc.SchedulerOnlineBatchSize)
 	}
 }
 

@@ -57,6 +57,8 @@ type adaptiveSchedulerSignals struct {
 	CPUPercent       float64
 	MemoryMB         int
 	Goroutines       int
+	OnlineSuccess    int
+	OnlineFailed     int
 }
 
 type schedulerPolicyDecision struct {
@@ -105,6 +107,8 @@ func (m *RobotManager) adaptiveSchedulerSignals() adaptiveSchedulerSignals {
 		CPUPercent:       cpu,
 		MemoryMB:         mem,
 		Goroutines:       goroutines,
+		OnlineSuccess:    m.schedulerRecentOnlineSuccess,
+		OnlineFailed:     m.schedulerRecentOnlineFailed,
 	}
 }
 
@@ -227,9 +231,21 @@ func applyLiveSchedulerFeedback(rc *robotconfig.RuntimeConfig, target int, sig a
 	resourcePressure := sig.CPUPercent >= 85 || sig.MemoryMB >= 4096 || sig.Goroutines >= 20000
 	pendingPressure := sig.Idle >= robotconfig.PendingActorLimit(target, *rc)
 	connectionPressure := sig.Connecting > robotconfig.Clamp(target/10, 3, 60)
-	pressure := sig.BreakerActive || !sig.GamePortReady || resourcePressure || connectionPressure || pendingPressure
+	onlineAttempts := sig.OnlineSuccess + sig.OnlineFailed
+	onlineFailurePressure := onlineAttempts >= 10 && sig.OnlineFailed*100 >= onlineAttempts*20
+	pressure := sig.BreakerActive || !sig.GamePortReady || resourcePressure || connectionPressure || pendingPressure || onlineFailurePressure
 
 	if pressure {
+		if onlineFailurePressure && sig.GamePortReady && !sig.BreakerActive && !resourcePressure {
+			divisor := 2
+			if sig.OnlineFailed*2 >= onlineAttempts {
+				divisor = 4
+			}
+			rc.SchedulerOnlineBatchSize = robotconfig.Clamp(rc.SchedulerOnlineBatchSize/divisor, 5, 30)
+			rc.SchedulerOnlineStartRate = robotconfig.Clamp(rc.SchedulerOnlineStartRate/divisor, 2, 20)
+			rc.SchedulerOnlineFillTimeout = robotconfig.Clamp(rc.SchedulerOnlineFillTimeout*2, 60, 300)
+			return schedulerPolicyDecision{Mode: schedulerPolicyPressure, Reason: fmt.Sprintf("online_failure_pressure success=%d failed=%d running=%d target=%d", sig.OnlineSuccess, sig.OnlineFailed, sig.Running, target)}
+		}
 		if pendingPressure && sig.GamePortReady && !sig.BreakerActive && !resourcePressure && !connectionPressure {
 			rc.SchedulerOnlineBatchSize = -1
 			rc.SchedulerOnlineStartRate = robotconfig.Clamp(rc.SchedulerOnlineStartRate/2, 1, 10)

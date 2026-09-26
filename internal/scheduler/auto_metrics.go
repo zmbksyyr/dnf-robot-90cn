@@ -192,6 +192,10 @@ func (s *RobotSupervisor) updateMetrics(rc robotconfig.RuntimeConfig, signals ad
 	s.manager.updateAutoBreaker(now, rc, counts, running, connecting)
 	s.manager.autoMu.Lock()
 	stats := s.manager.autoStats
+	s.manager.schedulerRecentOnlineSuccess = stats.OnlineSuccess - s.manager.schedulerLastOnlineSuccess
+	s.manager.schedulerRecentOnlineFailed = stats.OnlineFailed - s.manager.schedulerLastOnlineFailed
+	s.manager.schedulerLastOnlineSuccess = stats.OnlineSuccess
+	s.manager.schedulerLastOnlineFailed = stats.OnlineFailed
 	policy := s.manager.schedulerStatus
 	s.manager.autoMu.Unlock()
 	line := fmt.Sprintf("[RobotMetrics] policy=%s target=%d actors=%d leased=%d idle=%d state idle=%d assigned=%d online=%d running=%d busy=%d releasing=%d runtime running=%d store=%d connecting=%d recycling=%d blocked=%d cpu=%.1f mem_mb=%d goroutines=%d online=%d/%d move=%d/%d shout_local=%d/%d shout_world=%d/%d store=%d/%d expired=%d\n",
