@@ -2,8 +2,10 @@ package s4a21
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"robot/internal/foundation/lockhub"
@@ -11,6 +13,10 @@ import (
 )
 
 const DefaultMaxPacketLength = 1024 * 1024
+
+// defaultWriteTimeout bounds a single framed write. Without it a peer that
+// stops reading can block the write path (and the shared sendMu) forever.
+const defaultWriteTimeout = 15 * time.Second
 
 type Client struct {
 	conn         net.Conn
@@ -23,13 +29,16 @@ type Client struct {
 	selfSlot     byte
 	slotKnown    bool
 	maxSize      int
+	writeTimeout time.Duration
 }
 
 func Dial(ctx context.Context, address string) (*Client, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
+	// Keepalive lets the kernel eventually surface a half-open peer (crashed
+	// server or black-holed link) instead of blocking reads forever.
+	conn, err := (&net.Dialer{KeepAlive: 30 * time.Second}).DialContext(ctx, "tcp", address)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +46,7 @@ func Dial(ctx context.Context, address string) (*Client, error) {
 }
 
 func NewClient(conn net.Conn) *Client {
-	return &Client{conn: conn, maxSize: DefaultMaxPacketLength, udpPeers: make(map[string]*partyUDPPeer)}
+	return &Client{conn: conn, maxSize: DefaultMaxPacketLength, writeTimeout: defaultWriteTimeout, udpPeers: make(map[string]*partyUDPPeer)}
 }
 
 // SetPartyIdentity gives the wire adapter the selected session identity. The
@@ -53,15 +62,20 @@ func (c *Client) SetPartyIdentity(uid uint16) {
 }
 
 func (c *Client) Close() error {
-	if c == nil || c.conn == nil {
+	if c == nil {
 		return nil
 	}
-	err := c.conn.Close()
-	if c.udpConn != nil {
-		_ = c.udpConn.Close()
-		c.udpConn = nil
+	c.udpMu.Lock()
+	udpConn := c.udpConn
+	c.udpConn = nil
+	c.udpMu.Unlock()
+	if udpConn != nil {
+		_ = udpConn.Close()
 	}
-	return err
+	if c.conn == nil {
+		return nil
+	}
+	return c.conn.Close()
 }
 
 // RegisterUDPEndpoint announces a real local UDP port before party packets
@@ -71,9 +85,12 @@ func (c *Client) RegisterUDPEndpoint(ctx context.Context) error {
 	if c == nil || c.conn == nil {
 		return fmt.Errorf("s4a21 client is closed")
 	}
+	c.udpMu.Lock()
 	if c.udpConn != nil {
+		c.udpMu.Unlock()
 		return nil
 	}
+	c.udpMu.Unlock()
 	localIP := net.IPv4zero
 	if addr, ok := c.conn.LocalAddr().(*net.TCPAddr); ok && addr.IP.To4() != nil {
 		localIP = addr.IP.To4()
@@ -96,11 +113,23 @@ func (c *Client) RegisterUDPEndpoint(ctx context.Context) error {
 		_ = udpConn.Close()
 		return err
 	}
+	c.udpMu.Lock()
+	if c.udpConn != nil {
+		// Another caller registered first; keep its socket and discard ours.
+		c.udpMu.Unlock()
+		_ = udpConn.Close()
+		return nil
+	}
 	c.udpConn = udpConn
+	c.udpMu.Unlock()
 	go c.servePartyUDP(udpConn)
 	if err := c.send(ctx, Encode(1, CmdSetUDPIPPort, body)); err != nil {
+		c.udpMu.Lock()
+		if c.udpConn == udpConn {
+			c.udpConn = nil
+		}
+		c.udpMu.Unlock()
 		_ = udpConn.Close()
-		c.udpConn = nil
 		return err
 	}
 	return nil
@@ -300,14 +329,32 @@ func (c *Client) send(ctx context.Context, frame []byte) error {
 		return ctx.Err()
 	default:
 	}
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = c.conn.SetWriteDeadline(deadline)
+	writeTimeout := c.writeTimeout
+	if writeTimeout <= 0 {
+		writeTimeout = defaultWriteTimeout
+	}
+	deadline := time.Now().Add(writeTimeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		return err
 	}
 	resetDeadline := interruptOnCancel(ctx, c.conn.SetWriteDeadline)
 	defer resetDeadline()
 	err := network.WriteFull(c.conn, frame)
-	if err != nil && ctx.Err() != nil {
-		return ctx.Err()
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// The caller canceled (interruptOnCancel unblocks the socket but
+			// the connection stays usable for the next write).
+			return ctxErr
+		}
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			// Our own write timeout fired: a partial frame may have been
+			// delivered, so close the connection to force a reconnect rather
+			// than continuing on a desynchronized stream.
+			_ = c.conn.Close()
+		}
 	}
 	return err
 }
