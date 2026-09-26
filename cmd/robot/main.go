@@ -35,6 +35,10 @@ func main() {
 }
 
 func runMain() int {
+	if err := ensureWindowsRuntime(); err != nil {
+		fmt.Fprintf(os.Stderr, "startup blocked: %v\n", err)
+		return 1
+	}
 	robotlog.PrintfGreen("robot starting...\n")
 
 	configPath, configDir, err := runtimeConfigPaths()
@@ -118,6 +122,16 @@ func runMain() int {
 			robotlog.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
 		}
 	}
+}
+
+// ensureWindowsRuntime is intentionally kept at the process entry boundary so
+// the temporary distribution restriction can be removed without touching the
+// adapter, scheduler, or protocol layers.
+func ensureWindowsRuntime() error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("this distribution can only run on Windows")
+	}
+	return nil
 }
 
 func loadBackendSelection(path string) (shared.BackendSelection, error) {

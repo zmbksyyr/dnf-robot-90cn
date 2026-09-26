@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	backendregistry "robot/internal/composition/backend"
@@ -56,6 +57,16 @@ func TestLoadRequiredRobotConfigAcceptsValidFile(t *testing.T) {
 func TestRecoveryWebURLUsesLoopback(t *testing.T) {
 	if got := recoveryWebURL(8112); got != "http://127.0.0.1:8112/" {
 		t.Fatalf("recovery URL = %q", got)
+	}
+}
+
+func TestWindowsRuntimeGate(t *testing.T) {
+	err := ensureWindowsRuntime()
+	if runtime.GOOS == "windows" && err != nil {
+		t.Fatalf("Windows runtime was blocked: %v", err)
+	}
+	if runtime.GOOS != "windows" && err == nil {
+		t.Fatal("non-Windows runtime was not blocked")
 	}
 }
 
