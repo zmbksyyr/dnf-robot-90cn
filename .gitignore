@@ -3,8 +3,10 @@
 *.test
 *.out
 coverage.out
+/robot
 /robot-linux-amd64*
 /build/
+/dist/
 
 # Local protocol investigation captures
 /real_inventory_sample.tsv

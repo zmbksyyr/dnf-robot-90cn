@@ -20,6 +20,9 @@ import (
 	"robot/internal/shared"
 )
 
+// version is injected at build time with -ldflags "-X main.version=<value>".
+var version = "dev"
+
 func main() {
 	code := 0
 	for {
@@ -86,6 +89,7 @@ func runMain() int {
 		robotlog.LogClose()
 	}()
 	robotlog.LogString(fmt.Sprintf("ROBOT_CONFIG path=%s config_dir=%s\n", configPath, cfg.ConfigDir))
+	robotlog.LogString(fmt.Sprintf("ROBOT_VERSION version=%s go=%s os=%s arch=%s\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH))
 	robotlog.LogString(fmt.Sprintf("BACKEND_SELECTED id=%s generation=%d selected_at=%s capabilities=%d\n", backendInfo.ID, backendSelection.ConfigGeneration, backendSelection.SelectedAt.UTC().Format(time.RFC3339), len(backendInfo.Capabilities)))
 	if backendReinitialized {
 		robotlog.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
