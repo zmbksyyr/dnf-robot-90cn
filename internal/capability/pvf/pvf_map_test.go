@@ -24,10 +24,10 @@ func TestReadTownMapCatalogRejectsMissingArchive(t *testing.T) {
 	}
 }
 
-func TestLiveReadNativeTownMapCatalog(t *testing.T) {
-	path := os.Getenv("NATIVE_TEST_PVF")
+func TestLiveReadTownMapCatalog(t *testing.T) {
+	path := os.Getenv("TEST_PVF")
 	if path == "" {
-		t.Skip("NATIVE_TEST_PVF is not set")
+		t.Skip("TEST_PVF is not set")
 	}
 	maps, err := ReadTownMapCatalog(path)
 	if err != nil {

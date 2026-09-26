@@ -40,7 +40,7 @@ func TestRobotCreatorBuildsSixHundredRobotsOneAtATime(t *testing.T) {
 		}
 		seenNames[robot.Name] = struct{}{}
 	}
-	identities, err := store.Identities(context.Background(), shared.BackendS4A21)
+	identities, err := store.Identities(context.Background(), BackendID)
 	if err != nil || len(identities) != 600 {
 		t.Fatalf("identities=%d err=%v", len(identities), err)
 	}
@@ -51,7 +51,7 @@ type creatorProvisioner struct{}
 func (creatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
 	results := make([]shared.ProvisionCharacterResult, len(requests))
 	for i, request := range requests {
-		results[i] = shared.ProvisionCharacterResult{Backend: shared.BackendS4A21, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID}
+		results[i] = shared.ProvisionCharacterResult{Backend: BackendID, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID}
 	}
 	return results, nil
 }
@@ -70,7 +70,7 @@ func (p *concurrentCreatorProvisioner) ProvisionCharacters(_ context.Context, re
 	}
 	p.uids[request.RobotUID] = struct{}{}
 	return []shared.ProvisionCharacterResult{{
-		Backend: shared.BackendS4A21, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
+		Backend: BackendID, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
 	}}, nil
 }
 
@@ -117,7 +117,7 @@ type profiledCreatorProvisioner struct{}
 func (profiledCreatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
 	request := requests[0]
 	return []shared.ProvisionCharacterResult{{
-		Backend: shared.BackendS4A21, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
+		Backend: BackendID, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
 		ProfileKnown: true, Job: request.Job, Grow: 0, Level: 1,
 	}}, nil
 }
@@ -146,7 +146,7 @@ type reusedCreatorProvisioner struct{}
 func (reusedCreatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
 	request := requests[0]
 	return []shared.ProvisionCharacterResult{{
-		Backend: shared.BackendS4A21, CharacterName: "existing-character", Created: true, Reused: true, RobotUID: request.RobotUID,
+		Backend: BackendID, CharacterName: "existing-character", Created: true, Reused: true, RobotUID: request.RobotUID,
 		ProfileKnown: true, Job: 3, Grow: 2, Level: 63,
 	}}, nil
 }
@@ -225,7 +225,7 @@ func TestRobotCreatorPreservesReusedProfileAndReconcilesLoadout(t *testing.T) {
 	if initializer.profileCalls != 0 || initializer.loadoutCalls != 1 {
 		t.Fatalf("reused character initialization: profile=%d loadout=%d", initializer.profileCalls, initializer.loadoutCalls)
 	}
-	identities, err := store.Identities(context.Background(), shared.BackendS4A21)
+	identities, err := store.Identities(context.Background(), BackendID)
 	if err != nil || len(identities) != 1 || identities[0].Account != "robot17000000" || identities[0].CharacterName != "existing-character" {
 		t.Fatalf("recovered identities=%+v err=%v", identities, err)
 	}
@@ -239,10 +239,10 @@ func (p *conflictThenCreateProvisioner) ProvisionCharacters(_ context.Context, r
 	p.calls++
 	request := requests[0]
 	if p.calls == 1 {
-		return []shared.ProvisionCharacterResult{{Backend: shared.BackendS4A21, RobotUID: request.RobotUID}}, &AccountRosterConflictError{Account: request.AccountName, Count: 2}
+		return []shared.ProvisionCharacterResult{{Backend: BackendID, RobotUID: request.RobotUID}}, &AccountRosterConflictError{Account: request.AccountName, Count: 2}
 	}
 	return []shared.ProvisionCharacterResult{{
-		Backend: shared.BackendS4A21, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
+		Backend: BackendID, CharacterName: request.CharacterName, Created: true, RobotUID: request.RobotUID,
 	}}, nil
 }
 
@@ -277,7 +277,7 @@ func (p *failingCreatorProvisioner) ProvisionCharacters(_ context.Context, reque
 	}
 	request := requests[0]
 	return []shared.ProvisionCharacterResult{{
-		Backend: shared.BackendS4A21, CharacterName: request.CharacterName,
+		Backend: BackendID, CharacterName: request.CharacterName,
 		Created: true, RobotUID: request.RobotUID,
 	}}, nil
 }
@@ -315,7 +315,7 @@ func TestRobotCreatorBuildsPlansAndRegistersState(t *testing.T) {
 	if err != nil || len(robots) != 2 {
 		t.Fatalf("robots=%+v err=%v", robots, err)
 	}
-	identities, err := store.Identities(context.Background(), shared.BackendS4A21)
+	identities, err := store.Identities(context.Background(), BackendID)
 	if err != nil || len(identities) != 2 {
 		t.Fatalf("identities=%+v err=%v", identities, err)
 	}

@@ -18,7 +18,7 @@ var defaultFiles embed.FS
 // defaults. PVF parsing, transport setup, and persistence belong to the
 // adapter lifecycle after this step.
 func InitConfigOnly(cfg *config.SysConfig) error {
-	return InitConfigForBackend(cfg, shared.BackendInfo{ID: shared.DefaultBackendID()})
+	return InitConfigForBackend(cfg, shared.BackendInfo{})
 }
 
 // InitConfigForBackend releases only files declared by the selected adapter.
@@ -42,19 +42,12 @@ func InitConfigForBackend(cfg *config.SysConfig, backend shared.BackendInfo) err
 }
 
 func releaseBackendDefaults(paths layout.Paths, backend shared.BackendInfo) error {
-	if backend.ID != shared.DefaultBackendID() {
-		return fmt.Errorf("adapter %s has no released runtime defaults", backend.ID)
-	}
-	for _, name := range []string{"robot_config_s4a21.ini", "robot_name_templates.json", "robot_shout_templates.json"} {
+	for _, name := range []string{"robot_config.ini", "robot_name_templates.json", "robot_shout_templates.json"} {
 		data, err := defaultFiles.ReadFile("defaults/" + name)
 		if err != nil {
 			return err
 		}
-		releaseName := name
-		if name == "robot_config_s4a21.ini" {
-			releaseName = "robot_config.ini"
-		}
-		dst, err := defaultReleasePath(paths, releaseName)
+		dst, err := defaultReleasePath(paths, name)
 		if err != nil {
 			return err
 		}

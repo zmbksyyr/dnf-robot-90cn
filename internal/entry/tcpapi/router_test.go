@@ -78,7 +78,7 @@ func TestHandlePacketReturnsErrorAfterPanic(t *testing.T) {
 func TestAsyncCommandRejectsUnsupportedCapabilityBeforeQueue(t *testing.T) {
 	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported in test backend"})
 	manager := scheduler.NewRobotManager(nil, nil, nil)
-	manager.SetBackendRobotCreator(shared.BackendInfo{ID: shared.BackendS4A21, Capabilities: capabilities}, nil)
+	manager.SetBackendRobotCreator(shared.BackendInfo{ID: shared.BackendID("test"), Capabilities: capabilities}, nil)
 	gateCalled := false
 	manager.SetGameCommandGate(recordingGameGate{called: &gateCalled})
 	for _, command := range []string{"robotsStoreAsync", "cleanupRobotsAsync"} {

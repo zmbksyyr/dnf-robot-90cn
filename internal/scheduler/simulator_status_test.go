@@ -15,7 +15,7 @@ func TestRobotsStatusUsesSimulatorRobotStateWithoutSchemaRepository(t *testing.T
 		Village: 1, Area: 2, X: 480, Y: 240,
 	}})
 	if err := store.RegisterIdentity(context.Background(), robotstate.Identity{
-		Backend: shared.BackendS4A21, Account: "sim-account", CharacterName: "sim-robot",
+		Backend: shared.BackendID("test"), Account: "sim-account", CharacterName: "sim-robot",
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -54,7 +54,7 @@ func NewRecoveryWithCatalog(cfg *config.SysConfig, robotAddr, webAddr string, se
 }
 
 func New(cfg *config.SysConfig, robotAddr, webAddr string, backend ...shared.BackendID) *Server {
-	selected := shared.DefaultBackendID()
+	selected := shared.BackendID("default")
 	if len(backend) > 0 && backend[0] != "" {
 		selected = backend[0]
 	}
@@ -75,7 +75,7 @@ func newServer(cfg *config.SysConfig, robotAddr, webAddr string, backend shared.
 	}
 	selectedBackend := backend
 	if selectedBackend == "" {
-		selectedBackend = shared.DefaultBackendID()
+		selectedBackend = shared.BackendID("default")
 	}
 	if len(catalog) == 0 {
 		catalog = []shared.BackendInfo{{ID: selectedBackend, DisplayName: string(selectedBackend), Selectable: true, Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{Enabled: true})}}

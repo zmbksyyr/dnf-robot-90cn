@@ -71,7 +71,7 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	}
 	buildPlan := func(uid int) (robotlifecycle.ProtocolRobotPlan, error) {
 		plans, err := robotlifecycle.BuildProtocolRobotPlans(robotlifecycle.ProtocolPlanOptions{
-			Backend: shared.BackendS4A21, Count: 1, IDStart: uid, AccountPrefix: c.AccountPrefix,
+			Backend: BackendID, Count: 1, IDStart: uid, AccountPrefix: c.AccountPrefix,
 			PasswordHash: c.PasswordHash, Config: c.Config, Names: c.Names, Maps: c.Maps, RandIntn: c.RandIntn, RandBetween: c.RandBetween,
 			NameExists: nameTaken,
 		})
@@ -97,7 +97,7 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		batchID := fmt.Sprintf("s4a21-%d-%d-%d", time.Now().UnixNano(), creatorBatchSequence.Add(1), i)
 		result, provisionErr := robotlifecycle.ProvisionProtocolBatch(
 			ctx, c.BatchStore, c.IdentityStore, c.Provisioner, batchID,
-			shared.BackendS4A21, []shared.ProvisionCharacterRequest{plan.Request},
+			BackendID, []shared.ProvisionCharacterRequest{plan.Request},
 		)
 		if provisionErr != nil {
 			var conflict *AccountRosterConflictError

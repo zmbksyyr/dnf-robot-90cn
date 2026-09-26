@@ -14,6 +14,8 @@ func Available() []shared.BackendInfo {
 	return []shared.BackendInfo{s4a21backend.Info()}
 }
 
+func DefaultID() shared.BackendID { return s4a21backend.BackendID }
+
 func Select(id shared.BackendID, platform string) (shared.BackendInfo, error) {
 	if platform == "" {
 		platform = runtime.GOOS

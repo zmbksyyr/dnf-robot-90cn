@@ -9,11 +9,6 @@ import (
 
 type BackendID string
 
-const BackendS4A21 BackendID = "sim_a21"
-
-// DefaultBackendID is the backend compiled into this distribution.
-func DefaultBackendID() BackendID { return BackendS4A21 }
-
 type BackendCapability string
 
 const (
@@ -26,13 +21,11 @@ const (
 	CapabilityStore              BackendCapability = "store"
 	CapabilityParty              BackendCapability = "party"
 	CapabilityGuildInvite        BackendCapability = "guild_invite"
-	CapabilityPartyCompatibility BackendCapability = "party_compatibility"
 	CapabilityPartyDebug         BackendCapability = "party_debug"
 	CapabilitySkill              BackendCapability = "skill"
 	CapabilityMarket             BackendCapability = "market"
 	CapabilityCleanup            BackendCapability = "cleanup"
 	CapabilityDangerousDelete    BackendCapability = "dangerous_delete"
-	CapabilityMailboxGuard       BackendCapability = "mailbox_guard"
 	CapabilityMailNotification   BackendCapability = "mail_notification"
 	CapabilityDatabase           BackendCapability = "database"
 	CapabilityDiagnostics        BackendCapability = "diagnostics"
@@ -119,9 +112,9 @@ type BatchCharacterProvisioner interface {
 }
 
 func DecodeBackendSelection(data []byte) (BackendSelection, error) {
-	selection := BackendSelection{BackendID: BackendS4A21}
+	selection := BackendSelection{}
 	if len(data) == 0 {
-		return selection, nil
+		return selection, fmt.Errorf("empty backend selection")
 	}
 	if err := json.Unmarshal(data, &selection); err != nil {
 		return BackendSelection{}, fmt.Errorf("invalid backend selection: %w", err)
@@ -137,8 +130,8 @@ func CapabilityMatrix(status CapabilityStatus) map[BackendCapability]CapabilityS
 	for _, capability := range []BackendCapability{
 		CapabilityProvision, CapabilityTownMove, CapabilityDungeonMove, CapabilityDungeonFollow,
 		CapabilityShout, CapabilityWorldShout, CapabilityStore, CapabilityParty, CapabilityGuildInvite,
-		CapabilityPartyCompatibility, CapabilityPartyDebug, CapabilitySkill,
-		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete, CapabilityMailboxGuard,
+		CapabilityPartyDebug, CapabilitySkill,
+		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete,
 		CapabilityMailNotification,
 		CapabilityDatabase, CapabilityDiagnostics,
 		CapabilitySystemAnnouncement, CapabilityServiceControl,

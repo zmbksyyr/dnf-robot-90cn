@@ -129,7 +129,7 @@ func (s *Server) backendSettingsWithDefaults(state backendSelectionState) map[st
 func (s *Server) runtimeSettingDefault(source string) string {
 	switch source {
 	case "server_directory":
-		value := strings.TrimSpace(s.cfg.DFGameR)
+		value := strings.TrimSpace(s.cfg.ServerDirectory)
 		if filepath.Ext(value) != "" {
 			value = filepath.Dir(value)
 		}
@@ -217,7 +217,7 @@ func selectBackendFromCatalog(catalog []shared.BackendInfo, id shared.BackendID,
 }
 
 func (s *Server) readBackendSelectionLocked() (backendSelectionState, bool, error) {
-	defaultState := backendSelectionState{BackendID: shared.DefaultBackendID()}
+	defaultState := backendSelectionState{BackendID: s.backend}
 	path := layout.New(s.cfg.ConfigDir).BackendSelection()
 	if strings.TrimSpace(path) == "" {
 		return defaultState, false, fmt.Errorf("backend selection path is unavailable")

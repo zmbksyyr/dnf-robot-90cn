@@ -15,13 +15,13 @@ func TestSimulatorStartupDoesNotMarkRuntimeBeforePVFInit(t *testing.T) {
 	root := t.TempDir()
 	paths := layout.New(root)
 	cfg := &config.SysConfig{
-		ConfigDir:      root,
-		DFGameR:        filepath.Join(root, "missing", "DfoServer.exe"),
-		RobotConnectIP: "127.0.0.1",
-		RobotGamePort:  1,
+		ConfigDir:       root,
+		ServerDirectory: filepath.Join(root, "missing", "DfoServer.exe"),
+		RobotConnectIP:  "127.0.0.1",
+		RobotGamePort:   1,
 	}
-	selection := shared.BackendSelection{BackendID: shared.BackendS4A21, ConfigGeneration: 3}
-	if got := runBackend(cfg, paths, shared.BackendInfo{ID: shared.BackendS4A21}, selection); got == 0 {
+	selection := shared.BackendSelection{BackendID: shared.BackendID("test"), ConfigGeneration: 3}
+	if got := runBackend(cfg, paths, shared.BackendInfo{ID: shared.BackendID("test")}, selection); got == 0 {
 		t.Fatal("simulator startup unexpectedly succeeded with missing PVF")
 	}
 	if _, err := os.Stat(paths.BackendRuntime()); !os.IsNotExist(err) {

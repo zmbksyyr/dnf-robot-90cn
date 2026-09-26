@@ -158,7 +158,7 @@ func extractPVFLevelExp(a *pvfArchive) ([]int, error) {
 	}
 	for level := 2; level < len(values); level++ {
 		if values[level] < values[level-1] {
-			// Some DFGamer PVFs append a reset or unsupported-level segment after
+			// Some PVFs append a reset or unsupported-level segment after
 			// the usable accumulated-experience curve. Keep the verified monotonic
 			// prefix; character creation still fails explicitly if configured above
 			// the last exported level.
@@ -170,7 +170,7 @@ func extractPVFLevelExp(a *pvfArchive) ([]int, error) {
 }
 
 func appendItemInfoCreatureArtifacts(equipment []shared.EquipmentCatalogItem, rawItemInfo string) []shared.EquipmentCatalogItem {
-	rows := parsePVFItemInfoRows(formatPVFItemInfoDAT(rawItemInfo))
+	rows := parseItemInfoRows(normalizeItemInfoRows(rawItemInfo))
 	if len(rows) == 0 {
 		return equipment
 	}

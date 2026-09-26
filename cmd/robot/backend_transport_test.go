@@ -14,7 +14,7 @@ func TestComposeRejectsNonS4A21Backend(t *testing.T) {
 }
 
 func TestComposeS4A21TransportsRequiresGameAddress(t *testing.T) {
-	if _, err := composeBackendTransports(shared.BackendInfo{ID: shared.BackendS4A21}, &config.SysConfig{}); err == nil {
+	if _, err := composeBackendTransports(shared.BackendInfo{ID: shared.BackendID("test")}, &config.SysConfig{}); err == nil {
 		t.Fatal("incomplete S4A21 address unexpectedly accepted")
 	}
 }

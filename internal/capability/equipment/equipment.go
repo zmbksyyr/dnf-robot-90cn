@@ -680,7 +680,7 @@ func WriteStoreEquipSlot(dst []byte, item shared.EquipmentCatalogItem, rng *rand
 	if durability <= 0 {
 		// Catalogs exported before durability was included remain usable. One is
 		// valid for durable equipment and avoids generating a value above the PVF
-		// maximum, which the tested DFGamer store validator rejects with 0x11.
+		// maximum, which the tested store validator rejects with 0x11.
 		durability = 1
 	}
 	if durability > 65535 {

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	backendregistry "robot/internal/composition/backend"
 	"robot/internal/entry/tcpapi"
-	"robot/internal/shared"
 )
 
 func TestLoadRequiredRobotConfigRejectsMissingOrInvalidFile(t *testing.T) {
@@ -27,7 +27,7 @@ func TestLoadRequiredRobotConfigRejectsMissingOrInvalidFile(t *testing.T) {
 func TestLoadBackendSelectionDefaultsAndRejectsInvalid(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "backend_selection.json")
 	selection, err := loadBackendSelection(missing)
-	if err != nil || selection.BackendID != shared.BackendS4A21 {
+	if err != nil || selection.BackendID != backendregistry.DefaultID() {
 		t.Fatalf("missing selection = %+v, %v", selection, err)
 	}
 	invalid := filepath.Join(t.TempDir(), "backend_selection.json")

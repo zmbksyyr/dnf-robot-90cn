@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	// DFGamer private stores without a shop doll accept display indexes 0..6.
+	// Private stores without a shop doll accept display indexes 0..6.
 	// Field verification found three reliable material positions and four
 	// equipment positions, so generated stores intentionally use a 3+4 layout.
 	StoreMaterialSlots   = 3
@@ -59,7 +59,7 @@ func BuildItemPool(equipment, stackable []shared.EquipmentCatalogItem, intensify
 
 	seenEquipment := make(map[int]struct{})
 	for _, item := range equipment {
-		// The tested DFGamer store validator accepts equipment types 1..10.
+		// The tested store validator accepts equipment types 1..10.
 		// Later support/magic-stone types can exist in PVF but are rejected by
 		// CPrivateStore::CheckValidItem with CMD 90 error 0x11.
 		if item.ID <= 0 || item.ItemType < 1 || item.ItemType > 10 || item.Expire || !shared.ClientCompatibleEquipment(item) || item.NoTrade || item.TradeBlock {
@@ -123,7 +123,7 @@ func isStoreMaterial(item shared.EquipmentCatalogItem) bool {
 	if item.ID <= 0 || item.Expire || item.NoTrade || item.TradeBlock {
 		return false
 	}
-	// The tested DFGamer validator rejects indirect stackables with 0x11 even
+	// The tested store validator rejects indirect stackables with 0x11 even
 	// when PVF marks them tradeable. Only basic free materials are field-verified.
 	if !item.BasicMaterial || !strings.EqualFold(strings.TrimSpace(item.Attach), "free") {
 		return false

@@ -52,7 +52,7 @@ func (p Provisioner) ProvisionCharacters(ctx context.Context, requests []shared.
 }
 
 func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.ProvisionCharacterRequest) (shared.ProvisionCharacterResult, error) {
-	result := shared.ProvisionCharacterResult{Backend: shared.BackendS4A21, CharacterName: request.CharacterName, RobotUID: request.RobotUID}
+	result := shared.ProvisionCharacterResult{Backend: BackendID, CharacterName: request.CharacterName, RobotUID: request.RobotUID}
 	if strings.TrimSpace(request.AccountName) == "" {
 		return result, fmt.Errorf("account name is required")
 	}

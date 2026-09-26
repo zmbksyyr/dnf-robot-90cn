@@ -450,7 +450,7 @@ func (r *RobotRuntime) waitDisjointPositionResult(info robotcap.Info, shouldStop
 }
 
 func retryDisjointInCurrentSession(reason string) bool {
-	// Reversed from df_game_r Dispatcher_CreateDisjointStore and
+	// Derived from the established server disjoint-store dispatcher and
 	// CDisjointer::OnCreateDisjointStore:
 	//   0x13: not in town-run state, already has a disjoint object, or in party.
 	//   0x14: CVillageObjectMgr::register_object rejected the machine.

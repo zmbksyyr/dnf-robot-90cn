@@ -13,13 +13,12 @@ import (
 // SysConfig holds all robot configuration from config.ini.
 type SysConfig struct {
 	RobotPort             int
-	DFGameR               string
+	ServerDirectory       string
 	ConfigDir             string
 	RobotInnerIP          string
 	RobotConnectIP        string
 	RobotConnectIPSetting string
 	RobotGamePort         int
-	GameServerGroup       int
 	PartyRoute0Port       int
 	WebPort               int
 	WebPassword           string
@@ -70,14 +69,13 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 	cfg.PartyRoute0Port = dec.Int("Ports", "PartyRoute0", 5063)
 
 	// [Robot] section
-	cfg.DFGameR = dec.String("Robot", "DfGameR", "/home/neople/game/df_game_r")
+	cfg.ServerDirectory = strings.TrimSpace(dec.String("Robot", "ServerDirectory", ""))
 	cfg.RobotInnerIP = dec.String("Robot", "RobotInnerIp", "10.0.0.1")
 	cfg.RobotConnectIPSetting = strings.TrimSpace(dec.String("Robot", "RobotConnectIp", "auto"))
 	if cfg.RobotConnectIPSetting == "" {
 		cfg.RobotConnectIPSetting = "auto"
 	}
 	cfg.RobotConnectIP = cfg.RobotConnectIPSetting
-	cfg.GameServerGroup = dec.Int("Robot", "GameServerGroup", 3)
 
 	// [Web] section
 	cfg.WebPassword = dec.String("Web", "WebPassword", "twadmin")
@@ -96,10 +94,8 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 	// below the upper TCP port boundary.
 	dec.Check("Ports", "Game", cfg.RobotGamePort >= 1 && cfg.RobotGamePort <= 64535, "must be between 1 and 64535")
 	checkPort("Ports", "PartyRoute0", cfg.PartyRoute0Port)
-	dec.Check("Robot", "DfGameR", strings.TrimSpace(cfg.DFGameR) != "", "must not be empty")
 	dec.Check("Robot", "RobotInnerIp", strings.TrimSpace(cfg.RobotInnerIP) != "", "must not be empty")
 	dec.Check("Robot", "RobotConnectIp", strings.TrimSpace(cfg.RobotConnectIPSetting) != "", "must not be empty")
-	dec.Check("Robot", "GameServerGroup", cfg.GameServerGroup >= 0 && uint64(cfg.GameServerGroup) <= uint64(^uint32(0)), "must be between 0 and 4294967295")
 	dec.Check("Web", "WebPassword", strings.TrimSpace(cfg.WebPassword) != "", "must not be empty")
 	dec.Check("system", "log_max_size_mb", cfg.LogMaxSizeMB >= 1, "must be positive")
 	dec.Check("system", "log_max_backups", cfg.LogMaxBackups >= 1, "must be positive")
@@ -171,14 +167,12 @@ func generateDefaultConfig(path string) error {
 	lines = append(lines,
 		"",
 		"[Robot]",
-		"# df_game_r path, used for runtime self-check and PVF export.",
-		"DfGameR = /home/neople/game/df_game_r",
+		"# Selected adapter server directory. The Web setup writes the effective value.",
+		"ServerDirectory =",
 		"# Inner game IP written into robot login data.",
 		"RobotInnerIp = 10.0.0.1",
 		"# Game connection host. Use auto to resolve the primary local IPv4 at runtime.",
 		"RobotConnectIp = auto",
-		"# S4A21 game server group used for cache invalidation packets.",
-		"GameServerGroup = 3",
 		"[Web]",
 		"# Web login password.",
 		"WebPassword = twadmin",

@@ -197,7 +197,7 @@ func (s *Session) MoveTownArea(ctx context.Context, intent shared.TownAreaMoveIn
 
 func (s *Session) MoveDungeon(ctx context.Context, intent shared.DungeonMoveIntent) error {
 	return shared.UnsupportedCapabilityError{
-		Backend:   shared.BackendS4A21,
+		Backend:   BackendID,
 		Operation: shared.CapabilityDungeonMove,
 		Reason:    "only server-directed party following is available; active dungeon movement is unsupported",
 	}
@@ -209,9 +209,9 @@ func (s *Session) Shout(ctx context.Context, intent shared.ShoutIntent) error {
 	case shared.ShoutChannelArea:
 		mode = 3
 	case shared.ShoutChannelParty:
-		return shared.UnsupportedCapabilityError{Backend: shared.BackendS4A21, Operation: shared.CapabilityShout, Reason: "S4A21 party-recipient message mode is not verified"}
+		return shared.UnsupportedCapabilityError{Backend: BackendID, Operation: shared.CapabilityShout, Reason: "S4A21 party-recipient message mode is not verified"}
 	case shared.ShoutChannelWorld:
-		return shared.UnsupportedCapabilityError{Backend: shared.BackendS4A21, Operation: shared.CapabilityWorldShout, Reason: "S4A21 has no verified world-shout protocol mode"}
+		return shared.UnsupportedCapabilityError{Backend: BackendID, Operation: shared.CapabilityWorldShout, Reason: "S4A21 has no verified world-shout protocol mode"}
 	default:
 		return fmt.Errorf("unknown shout channel %q", intent.Channel)
 	}

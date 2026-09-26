@@ -76,7 +76,7 @@ func TestProvisionCharacterFollowsProtocolSequence(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !result.Created || result.Backend != shared.BackendS4A21 {
+	if !result.Created || result.Backend != BackendID {
 		t.Fatalf("result = %+v", result)
 	}
 }

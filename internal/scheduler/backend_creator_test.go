@@ -9,12 +9,12 @@ import (
 	"robot/internal/shared"
 )
 
-func TestCreateRobotsDoesNotFallBackToNativeForBackendWithoutCreator(t *testing.T) {
+func TestCreateRobotsDoesNotBypassBackendWithoutCreator(t *testing.T) {
 	m := NewRobotManager(nil, nil, nil)
 	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	_, err := m.CreateRobots(robotcap.CreateRequest{Count: 1})
 	var unsupported shared.UnsupportedCapabilityError
-	if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendS4A21 || unsupported.Operation != shared.CapabilityProvision {
+	if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendID("test") || unsupported.Operation != shared.CapabilityProvision {
 		t.Fatalf("error=%v", err)
 	}
 }

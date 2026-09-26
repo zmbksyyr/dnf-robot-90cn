@@ -249,8 +249,8 @@ func (m *RobotManager) prepareRobotConfigLocked(rc robotconfig.RuntimeConfig) (r
 	if previous != nil && reflect.DeepEqual(previous.base, base) {
 		return base, previous, nil
 	}
-		if previous == nil || previous.base.MaxOnlineRobots != base.MaxOnlineRobots {
-			if err := process.EnsureOpenFileLimit(base.MaxOnlineRobots, 64); err != nil {
+	if previous == nil || previous.base.MaxOnlineRobots != base.MaxOnlineRobots {
+		if err := process.EnsureOpenFileLimit(base.MaxOnlineRobots, 64); err != nil {
 			return robotconfig.RuntimeConfig{}, previous, fmt.Errorf("apply max_online_robots=%d: %w", base.MaxOnlineRobots, err)
 		}
 	}

@@ -14,25 +14,19 @@ import (
 	"robot/internal/shared"
 )
 
-func loadBackendTownMapCatalog(ctx context.Context, info shared.BackendInfo, cfg *config.SysConfig) ([]shared.MapCatalogItem, error) {
+func loadBackendTownMapCatalog(ctx context.Context, _ shared.BackendInfo, cfg *config.SysConfig) ([]shared.MapCatalogItem, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("backend catalog requires config")
 	}
-	if info.ID != shared.BackendS4A21 {
-		return nil, fmt.Errorf("backend %s is not supported by this build", info.ID)
-	}
-	path, err := s4a21PVFPath(cfg.DFGameR)
+	path, err := s4a21PVFPath(cfg.ServerDirectory)
 	if err != nil {
 		return nil, err
 	}
 	return (s4a21backend.TownMapCatalogProvider{PVFPath: path}).TownMapCatalog(ctx)
 }
 
-func exportBackendItemCatalogs(info shared.BackendInfo, cfg *config.SysConfig, paths layout.Paths) error {
-	if info.ID != shared.BackendS4A21 {
-		return fmt.Errorf("backend %s is not supported by this build", info.ID)
-	}
-	pvfPath, err := s4a21PVFPath(cfg.DFGameR)
+func exportBackendItemCatalogs(_ shared.BackendInfo, cfg *config.SysConfig, paths layout.Paths) error {
+	pvfPath, err := s4a21PVFPath(cfg.ServerDirectory)
 	if err != nil {
 		return err
 	}
@@ -53,10 +47,10 @@ func exportItemCatalogs(paths layout.Paths, equipment, stackable []shared.Equipm
 	return nil
 }
 
-func s4a21PVFPath(dfGameR string) (string, error) {
-	value := strings.TrimSpace(dfGameR)
+func s4a21PVFPath(serverDirectory string) (string, error) {
+	value := strings.TrimSpace(serverDirectory)
 	if value == "" {
-		return "", fmt.Errorf("S4A21 PVF path cannot be resolved from empty DfGameR")
+		return "", fmt.Errorf("S4A21 PVF path cannot be resolved from empty ServerDirectory")
 	}
 	if strings.EqualFold(filepath.Ext(value), ".pvf") {
 		if _, err := os.Stat(value); err != nil {
@@ -64,7 +58,7 @@ func s4a21PVFPath(dfGameR string) (string, error) {
 		}
 		return value, nil
 	}
-	// Some adapter bundles configure DfGameR as the server executable,
+	// Some adapter bundles configure ServerDirectory as the server executable,
 	// while Linux-oriented bundles may configure it as the server directory.
 	// Resolve both forms without making backend selection implicit.
 	base := filepath.Dir(value)
@@ -78,16 +72,16 @@ func s4a21PVFPath(dfGameR string) (string, error) {
 	return candidate, nil
 }
 
-func s4a21DatabasePath(dfGameR, configured string) (string, error) {
+func s4a21DatabasePath(serverDirectory, configured string) (string, error) {
 	if value := strings.TrimSpace(configured); value != "" {
 		if _, err := os.Stat(value); err != nil {
 			return "", fmt.Errorf("S4A21 database %q: %w", value, err)
 		}
 		return value, nil
 	}
-	value := strings.TrimSpace(dfGameR)
+	value := strings.TrimSpace(serverDirectory)
 	if value == "" {
-		return "", fmt.Errorf("S4A21 database path cannot be resolved from empty DfGameR")
+		return "", fmt.Errorf("S4A21 database path cannot be resolved from empty ServerDirectory")
 	}
 	base := value
 	if stat, err := os.Stat(value); err == nil && !stat.IsDir() {

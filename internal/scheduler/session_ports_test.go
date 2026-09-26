@@ -81,7 +81,7 @@ func TestSessionReloginWaitsForSameUID(t *testing.T) {
 	}
 }
 
-func TestBackendSessionTransportBypassesNativeOnlinePath(t *testing.T) {
+func TestBackendSessionTransportUsesAdapterOnlinePath(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	backend := &backendSessionStub{}
 	m.SetBackendSessionTransport(backend)
@@ -182,7 +182,7 @@ func TestBackendSessionTransportResolvesRobotOwnedIdentity(t *testing.T) {
 	store := robotstate.NewMemoryStore([]robotcap.Info{{UID: 17000001, Name: "sim-robot"}})
 	slot := uint16(3)
 	if err := store.RegisterIdentity(context.Background(), robotstate.Identity{
-		Backend: shared.BackendS4A21, Account: "robot17000001", CharacterName: "sim-robot", Slot: &slot,
+		Backend: shared.BackendID("test"), Account: "robot17000001", CharacterName: "sim-robot", Slot: &slot,
 	}); err != nil {
 		t.Fatal(err)
 	}

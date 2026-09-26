@@ -234,7 +234,7 @@ type allowGameCommandGate struct{}
 func (allowGameCommandGate) Check() error { return nil }
 
 // SetRobotStateDirectory injects the adapter-owned robot state directory.
-// The S4A21 runtime installs this during adapter initialization.
+// The selected adapter installs this during runtime initialization.
 func (m *RobotManager) SetRobotStateDirectory(directory robotstate.Directory) {
 	if m == nil {
 		return

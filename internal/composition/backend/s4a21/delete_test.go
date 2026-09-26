@@ -68,7 +68,7 @@ func TestCharacterDeleterResolvesCurrentSlotAndChecksAck(t *testing.T) {
 	}()
 
 	deleted, err := (CharacterDeleter{Address: listener.Addr().String(), Timeout: time.Second}).DeleteCharacter(context.Background(), robotstate.Identity{
-		Backend: shared.BackendS4A21, Account: "robot1", CharacterName: "robot01",
+		Backend: BackendID, Account: "robot1", CharacterName: "robot01",
 	})
 	if err != nil || !deleted {
 		t.Fatalf("deleted=%t err=%v", deleted, err)
@@ -99,8 +99,8 @@ func (c *recordingSessionCloser) Close(uid int) error {
 func TestRobotCleanerDeletesThroughProtocolThenRemovesRobotState(t *testing.T) {
 	state := robotstate.NewMemoryStore([]robotcap.Info{{UID: 7, Name: "robot07"}, {UID: 8, Name: "robot08"}})
 	if err := state.RegisterIdentities(context.Background(), []robotstate.Identity{
-		{Backend: shared.BackendS4A21, Account: "acct07", CharacterName: "robot07"},
-		{Backend: shared.BackendS4A21, Account: "acct08", CharacterName: "robot08"},
+		{Backend: BackendID, Account: "acct07", CharacterName: "robot07"},
+		{Backend: BackendID, Account: "acct08", CharacterName: "robot08"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestRobotCleanerDeletesThroughProtocolThenRemovesRobotState(t *testing.T) {
 
 func TestRobotCleanerDryRunDoesNotSendDelete(t *testing.T) {
 	state := robotstate.NewMemoryStore([]robotcap.Info{{UID: 7, Name: "robot07"}})
-	if err := state.RegisterIdentity(context.Background(), robotstate.Identity{Backend: shared.BackendS4A21, Account: "acct07", CharacterName: "robot07"}); err != nil {
+	if err := state.RegisterIdentity(context.Background(), robotstate.Identity{Backend: BackendID, Account: "acct07", CharacterName: "robot07"}); err != nil {
 		t.Fatal(err)
 	}
 	protocolDelete := &recordingDeleteProtocol{}
@@ -134,7 +134,7 @@ func TestRobotCleanerDryRunDoesNotSendDelete(t *testing.T) {
 
 func TestRobotCleanerKeepsStateWhenProtocolDoesNotConfirmDelete(t *testing.T) {
 	state := robotstate.NewMemoryStore([]robotcap.Info{{UID: 7, Name: "robot07"}})
-	if err := state.RegisterIdentity(context.Background(), robotstate.Identity{Backend: shared.BackendS4A21, Account: "acct07", CharacterName: "robot07"}); err != nil {
+	if err := state.RegisterIdentity(context.Background(), robotstate.Identity{Backend: BackendID, Account: "acct07", CharacterName: "robot07"}); err != nil {
 		t.Fatal(err)
 	}
 	result, err := (RobotCleaner{Protocol: &recordingDeleteProtocol{unconfirmed: true}, State: state}).CleanupRobots(
@@ -203,7 +203,7 @@ func TestCharacterDeleterClearsRosterFromHighestSlot(t *testing.T) {
 	}()
 
 	deleted, err := (CharacterDeleter{Address: listener.Addr().String(), Timeout: time.Second}).DeleteCharacter(
-		context.Background(), robotstate.Identity{Backend: shared.BackendS4A21, Account: "robot1", CharacterName: "robot01"})
+		context.Background(), robotstate.Identity{Backend: BackendID, Account: "robot1", CharacterName: "robot01"})
 	if err != nil || !deleted {
 		t.Fatalf("deleted=%t err=%v", deleted, err)
 	}
@@ -226,7 +226,7 @@ func TestLiveDeleteCharacterThroughProtocol(t *testing.T) {
 		t.Fatalf("create result=%+v err=%v", created, err)
 	}
 	deleter := CharacterDeleter{Address: address}
-	identity := robotstate.Identity{Backend: shared.BackendS4A21, Account: account, CharacterName: name}
+	identity := robotstate.Identity{Backend: BackendID, Account: account, CharacterName: name}
 	state := robotstate.NewMemoryStore([]robotcap.Info{{UID: 99000001, Name: name}})
 	if err := state.RegisterIdentity(context.Background(), identity); err != nil {
 		t.Fatal(err)

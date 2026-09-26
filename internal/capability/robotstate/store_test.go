@@ -43,14 +43,14 @@ func TestMemoryStoreHonorsCanceledContext(t *testing.T) {
 func TestMemoryStoreRegistersBackendNeutralIdentity(t *testing.T) {
 	store := NewMemoryStore(nil)
 	slot := uint16(4)
-	identity := Identity{Backend: shared.BackendS4A21, Account: "acct", CharacterName: "robot", Slot: &slot}
+	identity := Identity{Backend: shared.BackendID("test"), Account: "acct", CharacterName: "robot", Slot: &slot}
 	if err := store.RegisterIdentity(context.Background(), identity); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RegisterIdentity(context.Background(), identity); !errors.Is(err, ErrDuplicateIdentity) {
 		t.Fatalf("duplicate error = %v", err)
 	}
-	identities, err := store.Identities(context.Background(), shared.BackendS4A21)
+	identities, err := store.Identities(context.Background(), shared.BackendID("test"))
 	if err != nil || len(identities) != 1 || identities[0].Slot == nil || *identities[0].Slot != slot {
 		t.Fatalf("identities = %+v, err=%v", identities, err)
 	}
@@ -59,8 +59,8 @@ func TestMemoryStoreRegistersBackendNeutralIdentity(t *testing.T) {
 func TestMemoryStoreRemovesRobotOwnedStateAndIdentity(t *testing.T) {
 	store := NewMemoryStore([]robotcap.Info{{UID: 7, Name: "robot"}, {UID: 8, Name: "keep"}})
 	if err := store.RegisterIdentities(context.Background(), []Identity{
-		{Backend: shared.BackendS4A21, Account: "acct7", CharacterName: "robot"},
-		{Backend: shared.BackendS4A21, Account: "acct8", CharacterName: "keep"},
+		{Backend: shared.BackendID("test"), Account: "acct7", CharacterName: "robot"},
+		{Backend: shared.BackendID("test"), Account: "acct8", CharacterName: "keep"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestMemoryStoreRemovesRobotOwnedStateAndIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	robots, _ := store.SelectRobots(context.Background(), robotcap.CommandRequest{Count: 10})
-	identities, _ := store.Identities(context.Background(), shared.BackendS4A21)
+	identities, _ := store.Identities(context.Background(), shared.BackendID("test"))
 	if len(robots) != 1 || robots[0].UID != 8 || len(identities) != 1 || identities[0].CharacterName != "keep" {
 		t.Fatalf("robots=%+v identities=%+v", robots, identities)
 	}
@@ -87,7 +87,7 @@ func TestMemoryStoreSelectRobotsUsesStableUIDOrder(t *testing.T) {
 
 func TestMemoryStoreTracksAndRecoversCreateBatch(t *testing.T) {
 	store := NewMemoryStore(nil)
-	batch := CreateBatch{ID: "batch-1", Backend: shared.BackendS4A21}
+	batch := CreateBatch{ID: "batch-1", Backend: shared.BackendID("test")}
 	if err := store.BeginCreateBatch(context.Background(), batch); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestMemoryStoreTracksAndRecoversCreateBatch(t *testing.T) {
 	if err := store.CompleteCreateBatch(context.Background(), batch.ID); err == nil {
 		t.Fatal("completed interrupted batch")
 	}
-	if err := store.BeginCreateBatch(context.Background(), CreateBatch{ID: "batch-2", Backend: shared.BackendS4A21}); err != nil {
+	if err := store.BeginCreateBatch(context.Background(), CreateBatch{ID: "batch-2", Backend: shared.BackendID("test")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RollbackCreateBatch(context.Background(), "batch-2"); err != nil {

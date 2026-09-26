@@ -3,7 +3,7 @@ package shared
 // RuntimeOnlineUser is the protocol-independent login command exchanged
 // between scheduler and the DNF runtime.
 type RuntimeOnlineUser struct {
-	// IP is the actual df_game_r connection host.
+	// IP is the adapter game-service connection host.
 	IP string
 	// LoginIP is the stable client identity used by the selected adapter.
 	// Empty keeps compatibility with older callers by falling back to IP.
@@ -16,9 +16,9 @@ type RuntimeOnlineUser struct {
 	AccountName  string
 	PasswordHash string
 
-	// CID is the database character identity (taiwan_cain.charac_info.charac_no).
+	// CID is the adapter's persistent character identity when one is exposed.
 	CID int
-	// GuildID is the persistent taiwan_cain.charac_info guild membership.
+	// GuildID is the adapter's persistent guild membership identity.
 	GuildID int
 	// CharacterSlot is the one-byte character-list index used by CMD 4/12.
 	CharacterSlot int

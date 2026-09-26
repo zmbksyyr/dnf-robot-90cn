@@ -8,7 +8,7 @@ import (
 
 func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 	info := Info()
-	if info.ID != shared.BackendS4A21 || !info.Selectable {
+	if info.ID != BackendID || !info.Selectable {
 		t.Fatalf("S4A21 metadata = %+v", info)
 	}
 	for _, capability := range []shared.BackendCapability{
@@ -27,9 +27,9 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 	}
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityDungeonMove, shared.CapabilityWorldShout,
-		shared.CapabilityPartyCompatibility, shared.CapabilityPartyDebug,
+		shared.CapabilityPartyDebug,
 		shared.CapabilitySkill, shared.CapabilityStore, shared.CapabilityMarket,
-		shared.CapabilityMailboxGuard, shared.CapabilityDiagnostics,
+		shared.CapabilityDiagnostics,
 		shared.CapabilityMailNotification,
 		shared.CapabilitySystemAnnouncement, shared.CapabilityServiceControl,
 	} {

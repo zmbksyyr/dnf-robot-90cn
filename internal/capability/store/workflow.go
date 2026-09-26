@@ -502,7 +502,7 @@ func (w Workflow) waitDisplay(uid int, rc robotconfig.RuntimeConfig, shouldStop 
 }
 
 func StoreErrReason(err byte) string {
-	// df_game_r CMD 88 (CreatePrivateStore) error classification, verified from
+	// CreatePrivateStore error classification, verified from
 	// server-side branches rather than inferred from robot success rates:
 	//   0x38: village object registration failed. Usually a point collision or an
 	//         invalid object position, so changing coordinates is appropriate.

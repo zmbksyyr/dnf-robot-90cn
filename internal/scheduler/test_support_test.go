@@ -21,7 +21,7 @@ func testS4BackendInfo() shared.BackendInfo {
 	} {
 		capabilities[capability] = shared.CapabilityStatus{Enabled: true}
 	}
-	return shared.BackendInfo{ID: shared.BackendS4A21, Capabilities: capabilities, MaxOnline: 10000}
+	return shared.BackendInfo{ID: shared.BackendID("test"), Capabilities: capabilities, MaxOnline: 10000}
 }
 
 func newRobotActor(slotID int, mode actormodel.Mode, runtime actormodel.RobotRuntime) *actormodel.Actor {

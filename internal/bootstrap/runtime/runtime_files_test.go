@@ -31,9 +31,9 @@ func TestInitConfigForS4A21ReleasesOnlySupportedFiles(t *testing.T) {
 			t.Fatalf("S4A21 runtime file was not released: %s: %v", path, err)
 		}
 	}
-	for _, path := range []string{paths.PrivateKey(), paths.PublicKey(), paths.PartySkills(), paths.MailboxGuard(), paths.PartyCompatibility(), paths.StoreTitles()} {
+	for _, path := range []string{paths.PartySkills(), paths.StoreTitles()} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("native or unsupported runtime file was released: %s", path)
+			t.Fatalf("unsupported runtime file was released: %s", path)
 		}
 	}
 	rc, err := robotconfig.LoadFile(paths.RobotConfig())
@@ -46,5 +46,5 @@ func TestInitConfigForS4A21ReleasesOnlySupportedFiles(t *testing.T) {
 }
 
 func backendInfoForTest() (info shared.BackendInfo) {
-	return shared.BackendInfo{ID: shared.DefaultBackendID()}
+	return shared.BackendInfo{ID: shared.BackendID("test")}
 }

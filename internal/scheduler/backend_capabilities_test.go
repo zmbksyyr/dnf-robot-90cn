@@ -73,7 +73,7 @@ func TestSimulatorStoreIsRejectedWithStableCapabilityError(t *testing.T) {
 		t.Fatal("simulator store unexpectedly entered actor workflow")
 	}
 	var unsupported shared.UnsupportedCapabilityError
-	if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendS4A21 || unsupported.Operation != shared.CapabilityStore {
+	if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendID("test") || unsupported.Operation != shared.CapabilityStore {
 		t.Fatalf("error = %v, want S4A21 store unsupported", err)
 	}
 	if !strings.Contains(err.Error(), shared.CodeBackendCapabilityUnsupported) {
@@ -96,7 +96,7 @@ func TestSimulatorPartyAndSkillEntrypointsAreRejectedWithStableCapabilityError(t
 		t.Run(check.name, func(t *testing.T) {
 			err := check.run()
 			var unsupported shared.UnsupportedCapabilityError
-			if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendS4A21 || unsupported.Operation != check.want {
+			if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendID("test") || unsupported.Operation != check.want {
 				t.Fatalf("error = %v, want %s unsupported", err, check.want)
 			}
 			if !strings.Contains(err.Error(), shared.CodeBackendCapabilityUnsupported) {
@@ -175,7 +175,7 @@ func TestSimulatorCleanupRoutesToProtocolAdapter(t *testing.T) {
 	}
 }
 
-func TestSimulatorCleanupNeverFallsBackToNativeRepository(t *testing.T) {
+func TestBackendCleanupNeverBypassesAdapterProtocol(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	m.SetBackendRobotCreator(testS4BackendInfo(), nil)
 	if _, err := m.CleanupRobots(robotcap.CleanupRequest{UIDs: []int{7}}); err == nil || !strings.Contains(err.Error(), "cleanup adapter is not configured") {

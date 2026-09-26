@@ -95,7 +95,7 @@ func runMain() int {
 func loadBackendSelection(path string) (shared.BackendSelection, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return shared.BackendSelection{BackendID: shared.BackendS4A21}, nil
+		return shared.BackendSelection{BackendID: backendregistry.DefaultID()}, nil
 	}
 	if err != nil {
 		return shared.BackendSelection{}, err

@@ -47,7 +47,7 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 		return 1
 	}
 	defer transports.close()
-	pvfPath, err := s4a21PVFPath(cfg.DFGameR)
+	pvfPath, err := s4a21PVFPath(cfg.ServerDirectory)
 	if err != nil {
 		foundationlog.Robotf("ADAPTER_TOWN_MAP_FAILED err=%v\n", err)
 		return 1
@@ -62,7 +62,7 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 		foundationlog.Robotf("ADAPTER_ITEM_CATALOG_FAILED err=%v\n", err)
 		return 1
 	}
-	loadoutDB, err := s4a21DatabasePath(cfg.DFGameR, backendSetting(selection, "database_path"))
+	loadoutDB, err := s4a21DatabasePath(cfg.ServerDirectory, backendSetting(selection, "database_path"))
 	if err != nil {
 		foundationlog.Robotf("ADAPTER_LOADOUT_DATABASE_FAILED err=%v\n", err)
 		return 1

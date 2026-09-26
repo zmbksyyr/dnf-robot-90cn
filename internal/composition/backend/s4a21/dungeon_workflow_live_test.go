@@ -127,7 +127,7 @@ func provisionLiveCharacter(t *testing.T, provisioner Provisioner, account, name
 func deleteLiveCharacter(t *testing.T, deleter CharacterDeleter, account, name string) {
 	t.Helper()
 	deleted, err := deleter.DeleteCharacter(context.Background(), robotstate.Identity{
-		Backend: shared.BackendS4A21, Account: account, CharacterName: name,
+		Backend: BackendID, Account: account, CharacterName: name,
 	})
 	if err != nil || !deleted {
 		t.Errorf("delete %s: deleted=%t err=%v", account, deleted, err)

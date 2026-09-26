@@ -128,8 +128,8 @@ func restartConfigView(cfg *config.SysConfig) map[string]interface{} {
 	return map[string]interface{}{
 		"robot_port": cfg.RobotPort, "web_port": cfg.WebPort,
 		"game_port": cfg.RobotGamePort, "party_route0_port": cfg.PartyRoute0Port,
-		"df_game_r": cfg.DFGameR, "game_server_group": cfg.GameServerGroup,
-		"connect_ip": cfg.RobotConnectIP, "connect_setting": cfg.RobotConnectIPSetting, "inner_ip": cfg.RobotInnerIP,
+		"server_directory": cfg.ServerDirectory,
+		"connect_ip":       cfg.RobotConnectIP, "connect_setting": cfg.RobotConnectIPSetting, "inner_ip": cfg.RobotInnerIP,
 		"web_password_set": cfg.WebPassword != "",
 		"log_max_size_mb":  cfg.LogMaxSizeMB, "log_max_backups": cfg.LogMaxBackups,
 		"max_response_bytes": cfg.MaxResponseBytes,
@@ -147,7 +147,7 @@ func restartConfigDiff(running, disk *config.SysConfig) []string {
 	}{
 		{"robot_port", running.RobotPort != disk.RobotPort}, {"web_port", running.WebPort != disk.WebPort},
 		{"game_port", running.RobotGamePort != disk.RobotGamePort}, {"party_route0_port", running.PartyRoute0Port != disk.PartyRoute0Port},
-		{"df_game_r", running.DFGameR != disk.DFGameR}, {"game_server_group", running.GameServerGroup != disk.GameServerGroup},
+		{"server_directory", running.ServerDirectory != disk.ServerDirectory},
 		{"robot_connect_ip", running.RobotConnectIP != disk.RobotConnectIP}, {"robot_inner_ip", running.RobotInnerIP != disk.RobotInnerIP},
 		{"robot_connect_setting", running.RobotConnectIPSetting != disk.RobotConnectIPSetting},
 		{"web_password", running.WebPassword != disk.WebPassword},

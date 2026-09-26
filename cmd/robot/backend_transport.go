@@ -20,9 +20,6 @@ func composeBackendTransports(info shared.BackendInfo, cfg *config.SysConfig) (b
 	if cfg == nil {
 		return backendTransportBundle{}, fmt.Errorf("backend transport requires config")
 	}
-	if info.ID != shared.BackendS4A21 {
-		return backendTransportBundle{}, fmt.Errorf("backend %s is not supported by this build", info.ID)
-	}
 	if cfg.RobotConnectIP == "" || cfg.RobotGamePort <= 0 {
 		return backendTransportBundle{}, fmt.Errorf("S4A21 game address is incomplete")
 	}

@@ -12,7 +12,6 @@ import (
 	"robot/internal/capability/robotstate"
 	"robot/internal/foundation/charset"
 	protocol "robot/internal/protocol/s4a21"
-	"robot/internal/shared"
 )
 
 type deleteProtocol interface {
@@ -43,7 +42,7 @@ func (c RobotCleaner) CleanupRobots(ctx context.Context, request robotcap.Cleanu
 	if err != nil {
 		return robotcap.CleanupResult{}, err
 	}
-	identities, err := c.State.Identities(ctx, shared.BackendS4A21)
+	identities, err := c.State.Identities(ctx, BackendID)
 	if err != nil {
 		return robotcap.CleanupResult{}, err
 	}

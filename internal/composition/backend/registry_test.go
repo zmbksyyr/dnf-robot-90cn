@@ -11,7 +11,7 @@ func TestSelectS4A21AcrossSupportedPlatforms(t *testing.T) {
 		t.Fatal("unknown backend must fail closed")
 	}
 	for _, platform := range []string{"linux", "windows"} {
-		if info, err := Select(shared.BackendS4A21, platform); err != nil || !info.Selectable {
+		if info, err := Select(DefaultID(), platform); err != nil || !info.Selectable {
 			t.Fatalf("S4A21 on %s = %+v, %v", platform, info, err)
 		}
 	}
@@ -27,12 +27,10 @@ func TestAvailableBackendsExposeCompleteCapabilityMatrix(t *testing.T) {
 		shared.CapabilityStore,
 		shared.CapabilityParty,
 		shared.CapabilityGuildInvite,
-		shared.CapabilityPartyCompatibility,
 		shared.CapabilityPartyDebug,
 		shared.CapabilitySkill,
 		shared.CapabilityMarket,
 		shared.CapabilityCleanup,
-		shared.CapabilityMailboxGuard,
 		shared.CapabilityMailNotification,
 		shared.CapabilityDatabase,
 	}

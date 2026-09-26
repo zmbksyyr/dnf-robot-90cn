@@ -2,6 +2,8 @@ package s4a21
 
 import "robot/internal/shared"
 
+const BackendID shared.BackendID = "sim_a21"
+
 func Info() shared.BackendInfo {
 	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "S4A21 protocol operation is not implemented yet"})
 	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true}
@@ -13,10 +15,8 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
 	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
 	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Reason: "S4A21 supports protected protocol cleanup only"}
-	capabilities[shared.CapabilityPartyCompatibility] = shared.CapabilityStatus{Reason: "S4A21 party compatibility patch is not implemented"}
 	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "S4A21 party diagnostics are not implemented"}
-	capabilities[shared.CapabilityMailboxGuard] = shared.CapabilityStatus{Reason: "S4A21 mailbox guard is not implemented"}
-	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "S4A21 mailbox notification is not implemented"}
+	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "S4A21 mail notification is not implemented"}
 	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "S4A21 diagnostics are not implemented"}
 	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}
@@ -24,7 +24,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
 	capabilities[shared.CapabilityMarket] = shared.CapabilityStatus{Reason: "S4A21 exposes auction opcode enums only; no verified auction or gold-consignment handler/service is present"}
 	return shared.BackendInfo{
-		ID: shared.BackendS4A21, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true,
+		ID: BackendID, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true,
 		Capabilities: capabilities, MaxOnline: 10000,
 		Settings: []shared.BackendSetting{
 			{Key: "server_directory", Label: "Server dir", LabelZH: "服务目录", Hint: "Directory containing Script.pvf; also provides the default database path.", HintZH: "包含 Script.pvf 的目录，同时用于推导默认数据库路径。", InputType: "path", Required: true, RuntimeSource: "server_directory"},

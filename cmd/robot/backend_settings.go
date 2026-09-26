@@ -10,7 +10,7 @@ import (
 )
 
 func applyBackendSelectionSettings(cfg *config.SysConfig, selection shared.BackendSelection) error {
-	if cfg == nil || selection.BackendID != shared.BackendS4A21 || len(selection.Settings) == 0 {
+	if cfg == nil || len(selection.Settings) == 0 {
 		return nil
 	}
 	serverDir := strings.TrimSpace(selection.Settings["server_directory"])
@@ -23,7 +23,7 @@ func applyBackendSelectionSettings(cfg *config.SysConfig, selection shared.Backe
 	if err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("S4A21 game port must be between 1 and 65535")
 	}
-	cfg.DFGameR = serverDir
+	cfg.ServerDirectory = serverDir
 	cfg.RobotConnectIPSetting = host
 	cfg.RobotConnectIP = host
 	cfg.RobotGamePort = port

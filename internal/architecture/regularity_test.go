@@ -31,7 +31,6 @@ var sqlImportAllowedDirs = []string{
 	"cmd/robot",
 	"internal/foundation/sql",
 	"internal/composition/backend/s4a21",
-	"internal/protocol/dnf",
 }
 
 var actionResultStateDirs = []string{
@@ -336,6 +335,37 @@ func TestSchedulerDoesNotReferenceConcreteBackends(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk scheduler: %v", err)
+	}
+}
+
+func TestPublicLayersDoNotReferenceConcreteBackendNames(t *testing.T) {
+	root := repoRoot(t)
+	for _, rel := range []string{
+		"internal/actor", "internal/bootstrap", "internal/capability", "internal/entry",
+		"internal/foundation", "internal/scheduler", "internal/shared",
+	} {
+		dir := filepath.Join(root, filepath.FromSlash(rel))
+		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for _, token := range []string{"S4A21", "sim_a21", "protocol/s4a21", "composition/backend/s4a21"} {
+				if strings.Contains(string(data), token) {
+					t.Errorf("%s references concrete backend token %q", path, token)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", dir, err)
+		}
 	}
 }
 

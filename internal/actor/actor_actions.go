@@ -76,7 +76,7 @@ func (a *Actor) handleCommand(cmd Command) robotcap.ActionResult {
 	case CommandStore:
 		// The store workflow prepares inventory while offline and performs its
 		// own confirmed login. A preliminary login here makes the workflow log
-		// straight back out and can leave some DFGamer variants reusing the old
+		// straight back out and can leave some server variants reusing the old
 		// inventory snapshot on the second login.
 		res := a.runtime.Store(uid)
 		if res.OK {

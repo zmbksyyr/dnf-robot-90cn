@@ -216,7 +216,7 @@ func (t *ActionTransport) MoveTown(ctx context.Context, command shared.RuntimeMo
 			MoveTownArea(context.Context, shared.TownAreaMoveIntent) error
 		})
 		if !ok {
-			return shared.UnsupportedCapabilityError{Backend: shared.BackendS4A21, Operation: shared.CapabilityTownMove, Reason: "S4A21 area transition protocol is not available on this session"}
+			return shared.UnsupportedCapabilityError{Backend: BackendID, Operation: shared.CapabilityTownMove, Reason: "S4A21 area transition protocol is not available on this session"}
 		}
 		if err := areaMover.MoveTownArea(ctx, shared.TownAreaMoveIntent{Village: command.Village, Area: command.Area, X: int16(command.X), Y: int16(command.Y)}); err != nil {
 			return err

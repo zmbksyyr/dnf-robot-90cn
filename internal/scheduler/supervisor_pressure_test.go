@@ -110,7 +110,7 @@ func TestSupervisorBreakerPreservesHealthyActorCapacity(t *testing.T) {
 	defer listener.Close()
 
 	manager := testRobotManagerWithConfig(t, "")
-	manager.cfg.DFGameR = filepath.Join(t.TempDir(), "df_game_r")
+	manager.cfg.ServerDirectory = filepath.Join(t.TempDir(), "game_server")
 	manager.cfg.RobotConnectIP = "127.0.0.1"
 	manager.cfg.RobotGamePort = listener.Addr().(*net.TCPAddr).Port
 	now := time.Now()
@@ -156,7 +156,7 @@ func TestSupervisorBreakerStillConvergesDownToTarget(t *testing.T) {
 	defer listener.Close()
 
 	manager := testRobotManagerWithConfig(t, "")
-	manager.cfg.DFGameR = filepath.Join(t.TempDir(), "df_game_r")
+	manager.cfg.ServerDirectory = filepath.Join(t.TempDir(), "game_server")
 	manager.cfg.RobotConnectIP = "127.0.0.1"
 	manager.cfg.RobotGamePort = listener.Addr().(*net.TCPAddr).Port
 	now := time.Now()

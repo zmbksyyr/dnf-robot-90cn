@@ -111,17 +111,16 @@ func TestShellQuoteEscapesSingleQuotes(t *testing.T) {
 
 func TestRestartConfigDiffIncludesStartupOnlyFields(t *testing.T) {
 	running := &config.SysConfig{
-		DFGameR: "/home/neople/game/df_game_r", GameServerGroup: 3,
-		LogMaxSizeMB: 100, MaxResponseBytes: 4 * 1024 * 1024,
+		ServerDirectory: "/srv/s4a21/DfoServer",
+		LogMaxSizeMB:    100, MaxResponseBytes: 4 * 1024 * 1024,
 	}
 	disk := *running
-	disk.DFGameR = "/srv/game/df_game_r"
-	disk.GameServerGroup = 4
+	disk.ServerDirectory = "/srv/s4a21-next/DfoServer"
 	disk.LogMaxSizeMB = 200
 	disk.MaxResponseBytes = 8 * 1024 * 1024
 
 	got := restartConfigDiff(running, &disk)
-	for _, want := range []string{"df_game_r", "game_server_group", "log_max_size_mb", "max_response_bytes"} {
+	for _, want := range []string{"server_directory", "log_max_size_mb", "max_response_bytes"} {
 		if !containsString(got, want) {
 			t.Fatalf("restart diff missing %q: %v", want, got)
 		}

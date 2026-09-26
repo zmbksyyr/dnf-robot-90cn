@@ -3,8 +3,8 @@ package shared
 const GuildAgitVillage = 8
 
 // GenericAreaAllowed reports whether CMD 38 may be used for a destination.
-// Guild agit entry requires its dedicated protocol because df_game_r maps the
-// logical area to a guild instance that cannot be represented by generic CMD 38.
+// Guild agit entry requires an adapter-specific protocol because its logical
+// area maps to a guild instance that generic town movement cannot represent.
 func GenericAreaAllowed(guildID, village int) bool {
 	return guildID == 0 || village != GuildAgitVillage
 }

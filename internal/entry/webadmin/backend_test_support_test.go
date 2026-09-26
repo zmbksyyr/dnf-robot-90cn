@@ -16,7 +16,7 @@ func testBackendCatalog() []shared.BackendInfo {
 	simulatorCapabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Enabled: true, Mode: "toggle"}
 	simulatorCapabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health"}
 	return []shared.BackendInfo{
-		{ID: shared.BackendS4A21, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true, Capabilities: simulatorCapabilities, Settings: []shared.BackendSetting{
+		{ID: shared.BackendID("test"), DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true, Capabilities: simulatorCapabilities, Settings: []shared.BackendSetting{
 			{Key: "server_directory", Label: "Server directory", InputType: "path", Required: true},
 			{Key: "server_host", Label: "Host", InputType: "text", Required: true, Default: "127.0.0.1"},
 			{Key: "game_port", Label: "Port", InputType: "number", Required: true, Default: "10011"},
