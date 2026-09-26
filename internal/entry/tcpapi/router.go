@@ -1,6 +1,8 @@
 package tcpapi
 
 import (
+	"strings"
+
 	"robot/internal/scheduler"
 	"robot/internal/shared"
 )
@@ -12,11 +14,12 @@ func HandlePacket(clientID, pkt string, manager *scheduler.RobotManager) (respon
 			response = wrapResult(map[string]interface{}{"ok": false, "error": "internal robot command failure"})
 		}
 	}()
-	if err := validateRequestPacket(pkt); err != nil {
+	fields, err := parseRequestPacket(pkt)
+	if err != nil {
 		return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()})
 	}
 
-	cmd := extractTagContent(pkt, "c")
+	cmd := strings.TrimSpace(fields["c"])
 	if capabilities := commandCapabilities(cmd); len(capabilities) > 0 {
 		var capabilityErr error
 		for _, capability := range capabilities {

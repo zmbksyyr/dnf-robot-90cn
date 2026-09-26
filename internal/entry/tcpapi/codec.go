@@ -13,21 +13,24 @@ import (
 
 var commandPattern = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)
 
-func validateRequestPacket(pkt string) error {
+// parseRequestPacket validates a request frame and returns the parsed fields.
+// Callers must route and decode exclusively from the returned fields: the
+// parsed view is the authoritative one, unlike a raw substring search.
+func parseRequestPacket(pkt string) (map[string]string, error) {
 	fields, err := parseXMLFrame(pkt, map[string]bool{"c": true, "json": true, "key": true})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cmd := strings.TrimSpace(fields["c"])
 	if !commandPattern.MatchString(cmd) {
-		return fmt.Errorf("invalid command")
+		return nil, fmt.Errorf("invalid command")
 	}
 	if _, hasJSON := fields["json"]; hasJSON {
 		if _, hasKey := fields["key"]; hasKey {
-			return fmt.Errorf("request must not contain both json and key payloads")
+			return nil, fmt.Errorf("request must not contain both json and key payloads")
 		}
 	}
-	return nil
+	return fields, nil
 }
 
 func parseXMLFrame(raw string, allowed map[string]bool) (map[string]string, error) {
@@ -65,6 +68,12 @@ func parseXMLFrame(raw string, allowed map[string]bool) (map[string]string, erro
 				return nil, err
 			}
 			fields[name] = text
+		case xml.Comment, xml.ProcInst, xml.Directive:
+			// Comments and processing instructions are not part of the
+			// protocol. Rejecting them keeps the validated view identical to
+			// the executed view; silently skipping them once allowed a
+			// <c>cleanup</c> inside a comment to bypass command validation.
+			return nil, fmt.Errorf("unexpected frame token %T", value)
 		case xml.EndElement:
 			if value.Name != start.Name {
 				return nil, fmt.Errorf("unexpected closing tag %q", value.Name.Local)
@@ -97,12 +106,21 @@ func decodeFlatElement(decoder *xml.Decoder, start xml.StartElement) (string, er
 				return "", fmt.Errorf("unexpected closing tag %q", value.Name.Local)
 			}
 			return text.String(), nil
+		default:
+			return "", fmt.Errorf("unexpected frame token %T in field %q", value, start.Name.Local)
 		}
 	}
 }
 
 func decodePayload(pkt string, dst interface{}) error {
-	payload := strings.TrimSpace(extractPayload(pkt))
+	fields, err := parseXMLFrame(pkt, map[string]bool{"c": true, "json": true, "key": true})
+	if err != nil {
+		return fmt.Errorf("invalid json payload: %w", err)
+	}
+	payload := strings.TrimSpace(fields["json"])
+	if payload == "" {
+		payload = strings.TrimSpace(fields["key"])
+	}
 	if payload == "" {
 		payload = "{}"
 	}
@@ -112,18 +130,11 @@ func decodePayload(pkt string, dst interface{}) error {
 	return nil
 }
 
-func extractPayload(pkt string) string {
-	if v := extractTagContent(pkt, "json"); v != "" {
-		return v
-	}
-	if v := extractTagContent(pkt, "key"); v != "" {
-		return v
-	}
-	return "{}"
-}
-
 func wrapResult(v interface{}) string {
-	data, _ := json.Marshal(v)
+	data, err := json.Marshal(v)
+	if err != nil {
+		data, _ = json.Marshal(map[string]interface{}{"ok": false, "error": "encode response: " + err.Error()})
+	}
 	return "<tw><result>" + string(data) + "</result></tw>"
 }
 
@@ -132,19 +143,4 @@ func errString(err error) string {
 		return ""
 	}
 	return err.Error()
-}
-
-func extractTagContent(pkt, tag string) string {
-	open := "<" + tag + ">"
-	closeTag := "</" + tag + ">"
-	start := strings.Index(pkt, open)
-	if start < 0 {
-		return ""
-	}
-	start += len(open)
-	end := strings.Index(pkt[start:], closeTag)
-	if end < 0 {
-		return ""
-	}
-	return pkt[start : start+end]
 }

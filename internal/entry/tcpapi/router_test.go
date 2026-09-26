@@ -27,13 +27,41 @@ func TestRequiresGameRuntime(t *testing.T) {
 	}
 }
 
-func TestExtractTagContent(t *testing.T) {
+func TestParseRequestPacketIsAuthoritative(t *testing.T) {
 	pkt := `<tw><c>sys</c><json>{"ok":true}</json></tw>`
-	if got := extractTagContent(pkt, "c"); got != "sys" {
+	fields, err := parseRequestPacket(pkt)
+	if err != nil {
+		t.Fatalf("parseRequestPacket(%s) error: %v", pkt, err)
+	}
+	if got := fields["c"]; got != "sys" {
 		t.Fatalf("command=%q, want sys", got)
 	}
-	if got := extractPayload(pkt); got != `{"ok":true}` {
+	if got := fields["json"]; got != `{"ok":true}` {
 		t.Fatalf("payload=%q", got)
+	}
+}
+
+func TestParseRequestPacketRejectsCommentInjection(t *testing.T) {
+	tests := []string{
+		`<tw><!-- <c>cleanupRobotsAsync</c> --><c>sys</c></tw>`,
+		`<tw><c>sys<!-- <c>cleanupRobotsAsync</c> --></c></tw>`,
+		`<tw><?target cleanupRobotsAsync?><c>sys</c></tw>`,
+		`<tw><!DOCTYPE x><c>sys</c></tw>`,
+	}
+	for _, packet := range tests {
+		if _, err := parseRequestPacket(packet); err == nil {
+			t.Fatalf("parseRequestPacket accepted comment/injection packet %s", packet)
+		}
+	}
+}
+
+func TestDecodePayloadIgnoresCommentPayload(t *testing.T) {
+	var target struct {
+		Count int `json:"count"`
+	}
+	packet := `<tw><c>sys</c><json>{"count":1}</json><!-- <json>{"count":9}</json> --></tw>`
+	if err := decodePayload(packet, &target); err == nil {
+		t.Fatal("decodePayload accepted a comment-carrying packet")
 	}
 }
 
