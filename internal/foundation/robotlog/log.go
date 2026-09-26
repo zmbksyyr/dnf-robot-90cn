@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"robot/internal/foundation/lockhub"
+	foundationlog "robot/internal/foundation/log"
 	"robot/internal/foundation/logfile"
 )
 
@@ -234,27 +235,27 @@ func startLogFlusherLocked() {
 }
 
 func PrintfGreen(format string, args ...interface{}) {
-	if colorsEnabled() {
-		fmt.Printf("\033[1;32m"+format+"\033[0m", args...)
-		return
-	}
-	fmt.Printf(format, args...)
+	writeConsoleColor("\033[1;32m", format, args...)
 }
 
 func PrintfRed(format string, args ...interface{}) {
-	if colorsEnabled() {
-		fmt.Printf("\033[1;31m"+format+"\033[0m", args...)
-		return
-	}
-	fmt.Printf(format, args...)
+	writeConsoleColor("\033[1;31m", format, args...)
 }
 
 func PrintfBlue(format string, args ...interface{}) {
+	writeConsoleColor("\033[1;36m", format, args...)
+}
+
+// writeConsoleColor queues colored console output. Console writes must never
+// block the caller: a console held in QuickEdit selection mode would otherwise
+// freeze startup and Web request handling, so messages are dropped after the
+// bounded queue fills.
+func writeConsoleColor(color, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
 	if colorsEnabled() {
-		fmt.Printf("\033[1;36m"+format+"\033[0m", args...)
-		return
+		msg = color + msg + "\033[0m"
 	}
-	fmt.Printf(format, args...)
+	foundationlog.WriteConsole(msg)
 }
 
 var consoleColor struct {

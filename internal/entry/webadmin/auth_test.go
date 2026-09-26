@@ -70,6 +70,60 @@ func TestSameOriginRejectsForeignOrigin(t *testing.T) {
 	}
 }
 
+func TestSameOriginAllowsTrustedProxyForwardedHost(t *testing.T) {
+	server := &Server{cfg: &config.SysConfig{WebTrustedProxies: []string{"127.0.0.1"}}}
+	handler := server.requireSameOrigin(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	proxied := httptest.NewRequest(http.MethodPost, "/api/call", nil)
+	proxied.Host = "127.0.0.1:8112"
+	proxied.RemoteAddr = "127.0.0.1:51515"
+	proxied.Header.Set("Origin", "https://panel.example.com")
+	proxied.Header.Set("X-Forwarded-Host", "panel.example.com")
+	rec := httptest.NewRecorder()
+	handler(rec, proxied)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("trusted proxy forwarded host status = %d, want pass-through", rec.Code)
+	}
+
+	untrusted := httptest.NewRequest(http.MethodPost, "/api/call", nil)
+	untrusted.Host = "127.0.0.1:8112"
+	untrusted.RemoteAddr = "198.51.100.9:51515"
+	untrusted.Header.Set("Origin", "https://panel.example.com")
+	untrusted.Header.Set("X-Forwarded-Host", "panel.example.com")
+	rec = httptest.NewRecorder()
+	handler(rec, untrusted)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("untrusted forwarded host status = %d, want 403", rec.Code)
+	}
+}
+
+func TestSameOriginAllowsConfiguredOrigin(t *testing.T) {
+	server := &Server{cfg: &config.SysConfig{WebAllowedOrigins: []string{"https://panel.example.com"}}}
+	handler := server.requireSameOrigin(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	allowed := httptest.NewRequest(http.MethodPost, "/api/call", nil)
+	allowed.Host = "127.0.0.1:8112"
+	allowed.Header.Set("Origin", "https://PANEL.example.com")
+	rec := httptest.NewRecorder()
+	handler(rec, allowed)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("configured origin status = %d, want pass-through", rec.Code)
+	}
+
+	other := httptest.NewRequest(http.MethodPost, "/api/call", nil)
+	other.Host = "127.0.0.1:8112"
+	other.Header.Set("Origin", "https://other.example.com")
+	rec = httptest.NewRecorder()
+	handler(rec, other)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("unconfigured origin status = %d, want 403", rec.Code)
+	}
+}
+
 func TestLogoutRequiresPost(t *testing.T) {
 	server := &Server{tokens: make(map[string]time.Time)}
 	get := httptest.NewRequest(http.MethodGet, "/logout", nil)

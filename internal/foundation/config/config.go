@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 
@@ -23,6 +24,7 @@ type SysConfig struct {
 	WebPassword           string
 	WebPasswordHash       string
 	WebTrustedProxies     []string
+	WebAllowedOrigins     []string
 	LogMaxSizeMB          int
 	LogMaxBackups         int
 	MaxResponseBytes      int
@@ -86,6 +88,11 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 		return nil, err
 	}
 	cfg.WebTrustedProxies = trustedProxies
+	allowedOrigins, err := parseAllowedOrigins(dec.String("Web", "AllowedOrigins", ""))
+	if err != nil {
+		return nil, err
+	}
+	cfg.WebAllowedOrigins = allowedOrigins
 
 	// [system] section
 	cfg.LogMaxSizeMB = dec.Int("system", "log_max_size_mb", 100)
@@ -176,6 +183,34 @@ func parseTrustedProxies(raw string) ([]string, error) {
 	return values, nil
 }
 
+// parseAllowedOrigins splits a comma-separated list of extra origins that may
+// call the state-changing Web endpoints, for example a reverse-proxy or tunnel
+// front end. Entries must be absolute http(s) origins without a path, query, or
+// fragment; invalid entries fail the configuration load instead of being
+// silently dropped.
+func parseAllowedOrigins(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	values := make([]string, 0)
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		parsed, err := url.Parse(entry)
+		if err != nil || parsed.Host == "" || (!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) {
+			return nil, fmt.Errorf("Web.AllowedOrigins entry %q must be an absolute http(s) origin", entry)
+		}
+		if (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return nil, fmt.Errorf("Web.AllowedOrigins entry %q must not contain a path, query, or fragment", entry)
+		}
+		values = append(values, strings.ToLower(parsed.Scheme)+"://"+strings.ToLower(parsed.Host))
+	}
+	return values, nil
+}
+
 func usableLocalIPv4(ip net.IP) bool {
 	ip = ip.To4()
 	return ip != nil && !ip.IsUnspecified() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.IsMulticast()
@@ -205,6 +240,10 @@ func generateDefaultConfig(path string) error {
 		"[Web]",
 		"# Web login password.",
 		"WebPassword = twadmin",
+		"# Reverse-proxy IPs or CIDR blocks trusted for X-Forwarded-For and X-Forwarded-Host.",
+		"#TrustedProxies = 127.0.0.1",
+		"# Extra origins allowed for state-changing Web requests (reverse proxy or tunnel front ends).",
+		"#AllowedOrigins = https://panel.example.com",
 		"",
 		"[system]",
 		"log_max_size_mb = 100",

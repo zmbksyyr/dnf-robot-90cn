@@ -235,15 +235,43 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // requireSameOrigin rejects state-changing requests whose Origin header names a
 // different host. Requests without Origin (non-browser clients) still rely on
 // the SameSite cookie policy, which already blocks cross-site cookie delivery.
+// Configured Web.AllowedOrigins entries are accepted as-is, and a configured
+// trusted reverse proxy may supply the original host through X-Forwarded-Host
+// when it rewrites the Host header.
 func (s *Server) requireSameOrigin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
-		if origin != "" && !sameOriginHost(origin, r.Host) {
+		if origin != "" && !s.originAllowed(origin, r) {
+			foundationlog.Robotf("WEB_ORIGIN_REJECTED origin=%q host=%q forwarded_host=%q peer=%s\n",
+				origin, r.Host, strings.TrimSpace(r.Header.Get("X-Forwarded-Host")), r.RemoteAddr)
 			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 			return
 		}
 		next(w, r)
 	}
+}
+
+func (s *Server) originAllowed(origin string, r *http.Request) bool {
+	if sameOriginHost(origin, r.Host) {
+		return true
+	}
+	if s == nil || s.cfg == nil {
+		return false
+	}
+	for _, allowed := range s.cfg.WebAllowedOrigins {
+		if sameConfiguredOrigin(origin, allowed) {
+			return true
+		}
+	}
+	if !trustedProxy(remoteHost(r.RemoteAddr), s.cfg.WebTrustedProxies) {
+		return false
+	}
+	for _, forwarded := range splitForwardedHost(r.Header.Get("X-Forwarded-Host")) {
+		if sameOriginHost(origin, forwarded) {
+			return true
+		}
+	}
+	return false
 }
 
 func sameOriginHost(origin, host string) bool {
@@ -252,6 +280,39 @@ func sameOriginHost(origin, host string) bool {
 		return false
 	}
 	return strings.EqualFold(parsed.Host, host)
+}
+
+// sameConfiguredOrigin compares a browser Origin with a configured origin.
+// Both carry a scheme and host; the comparison is case-insensitive and ignores
+// a trailing slash on the configured value.
+func sameConfiguredOrigin(origin, allowed string) bool {
+	parsedOrigin, err := url.Parse(strings.TrimSpace(origin))
+	if err != nil || parsedOrigin.Host == "" {
+		return false
+	}
+	parsedAllowed, err := url.Parse(strings.TrimSpace(allowed))
+	if err != nil || parsedAllowed.Host == "" {
+		return false
+	}
+	return strings.EqualFold(parsedOrigin.Scheme, parsedAllowed.Scheme) &&
+		strings.EqualFold(parsedOrigin.Host, parsedAllowed.Host)
+}
+
+func splitForwardedHost(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
 }
 
 func (s *Server) writeLogin(w http.ResponseWriter, errText string) {

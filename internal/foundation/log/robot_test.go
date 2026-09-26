@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestRobotfUsesSinkWithoutDuplicatingStdout(t *testing.T) {
@@ -70,5 +71,30 @@ func TestRobotSinkCanBeReplacedWhileLogging(t *testing.T) {
 
 	if got := calls.Load(); got != iterations {
 		t.Fatalf("sink calls = %d, want %d", got, iterations)
+	}
+}
+
+// A console paused by QuickEdit selection or a pipe without a reader must never
+// block the caller: the queue fills and drops instead.
+func TestConsoleQueueDropsInsteadOfBlockingCallers(t *testing.T) {
+	blocked := make(chan struct{})
+	queue := newConsoleQueue()
+	queue.print = func(string) { <-blocked }
+	defer close(blocked)
+
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < consoleQueueSize*4; i++ {
+			queue.Write("line\n")
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("console writes blocked after the console stopped consuming")
+	}
+	if queue.dropped.Load() == 0 {
+		t.Fatal("expected dropped console lines while the console was blocked")
 	}
 }
