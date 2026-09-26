@@ -2,6 +2,7 @@ package s4a21
 
 import (
 	"encoding/binary"
+	"fmt"
 	"testing"
 )
 
@@ -30,6 +31,25 @@ func TestPartyUDPHandshakeReplies(t *testing.T) {
 	partyUDPReplies(partyUDPAck(1, sequence), peer, 1, true)
 	if peer.pending != nil {
 		t.Fatal("state2 ACK did not clear pending reply")
+	}
+}
+
+func TestPartyUDPPeerTableIsBounded(t *testing.T) {
+	client := NewClient(nil)
+	for i := 0; i < partyUDPMaxPeers+64; i++ {
+		client.udpMu.Lock()
+		client.partyUDPPeerLocked(fmt.Sprintf("10.0.0.1:%d", 40000+i))
+		client.udpMu.Unlock()
+	}
+	client.udpMu.Lock()
+	count := len(client.udpPeers)
+	overflow := client.partyUDPPeerLocked("10.0.0.2:1")
+	client.udpMu.Unlock()
+	if count != partyUDPMaxPeers {
+		t.Fatalf("peer table size = %d, want %d", count, partyUDPMaxPeers)
+	}
+	if overflow != nil {
+		t.Fatal("peer table accepted a peer beyond the limit")
 	}
 }
 

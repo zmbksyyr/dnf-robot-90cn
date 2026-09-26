@@ -33,7 +33,26 @@ type partyUDPPeer struct {
 	epochRoute       [2]bool
 }
 
+// partyUDPMaxPeers bounds the per-session peer table. Party UDP endpoints are
+// announced by the server, but any host on the network can send a datagram to
+// the registered port, so the table must not grow without limit.
+const partyUDPMaxPeers = 256
+
 var partyUDPCRCTable = crc32.MakeTable(0x4db89129)
+
+// partyUDPPeerLocked returns the tracked peer for remote, creating one while
+// the peer budget allows. Callers must hold c.udpMu.
+func (c *Client) partyUDPPeerLocked(remote string) *partyUDPPeer {
+	if peer := c.udpPeers[remote]; peer != nil {
+		return peer
+	}
+	if len(c.udpPeers) >= partyUDPMaxPeers {
+		return nil
+	}
+	peer := &partyUDPPeer{}
+	c.udpPeers[remote] = peer
+	return peer
+}
 
 func (c *Client) servePartyUDP(conn *net.UDPConn) {
 	buffer := make([]byte, 2048)
@@ -46,10 +65,14 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			continue
 		}
 		c.udpMu.Lock()
-		peer := c.udpPeers[remote.String()]
+		peer := c.partyUDPPeerLocked(remote.String())
 		if peer == nil {
-			peer = &partyUDPPeer{}
-			c.udpPeers[remote.String()] = peer
+			if c.udpPeerDrops == 0 {
+				c.udpPeerDrops++
+				foundationlog.Robotf("S4A21_PARTY_UDP_PEER_LIMIT uid=%d limit=%d remote=%s\n", c.selfUID, partyUDPMaxPeers, remote)
+			}
+			c.udpMu.Unlock()
+			continue
 		}
 		selfSlot, slotKnown := c.selfSlot, c.slotKnown
 		beforePending := peer.pending != nil || peer.pendingRoute[0] != nil || peer.pendingRoute[1] != nil

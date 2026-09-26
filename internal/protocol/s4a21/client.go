@@ -13,15 +13,16 @@ import (
 const DefaultMaxPacketLength = 1024 * 1024
 
 type Client struct {
-	conn      net.Conn
-	udpConn   *net.UDPConn
-	sendMu    lockhub.Locker
-	udpMu     lockhub.Locker
-	udpPeers  map[string]*partyUDPPeer
-	selfUID   uint16
-	selfSlot  byte
-	slotKnown bool
-	maxSize   int
+	conn         net.Conn
+	udpConn      *net.UDPConn
+	sendMu       lockhub.Locker
+	udpMu        lockhub.Locker
+	udpPeers     map[string]*partyUDPPeer
+	udpPeerDrops int
+	selfUID      uint16
+	selfSlot     byte
+	slotKnown    bool
+	maxSize      int
 }
 
 func Dial(ctx context.Context, address string) (*Client, error) {
@@ -47,6 +48,7 @@ func (c *Client) SetPartyIdentity(uid uint16) {
 	c.selfSlot = 0
 	c.slotKnown = false
 	c.udpPeers = make(map[string]*partyUDPPeer)
+	c.udpPeerDrops = 0
 	c.udpMu.Unlock()
 }
 
