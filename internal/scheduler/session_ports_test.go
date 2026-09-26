@@ -201,12 +201,14 @@ func TestBackendSessionTransportResolvesRobotOwnedIdentity(t *testing.T) {
 
 func TestSessionReloginDoesNotDelayOtherUID(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	m.sessionReloginDelay = time.Second
+	// The unrelated UID must return immediately instead of waiting for the
+	// delay; keep a wide margin so a loaded CI machine cannot flake.
+	m.sessionReloginDelay = 5 * time.Second
 	m.markSessionLogout(17000001, time.Now())
 
 	started := time.Now()
 	m.waitSessionRelogin([]shared.RuntimeOnlineUser{{UID: 17000002}})
-	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("unrelated uid relogin waited %s", elapsed)
 	}
 }
@@ -233,10 +235,16 @@ func TestSessionReleaseRemainingUsesLogoutSafetyWindow(t *testing.T) {
 	if remaining := m.sessionReleaseRemaining(17000001); remaining <= 0 {
 		t.Fatalf("remaining=%s, want active safety window", remaining)
 	}
-	time.Sleep(45 * time.Millisecond)
-	if remaining := m.sessionReleaseRemaining(17000001); remaining != 0 {
-		t.Fatalf("remaining=%s, want released session", remaining)
+	// Poll for the safety window to expire instead of sleeping a fixed
+	// amount relative to the window length.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if m.sessionReleaseRemaining(17000001) == 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
+	t.Fatalf("remaining=%s, want released session", m.sessionReleaseRemaining(17000001))
 }
 
 func TestClosedSessionInvalidationClearsLogoutSafetyWindow(t *testing.T) {

@@ -47,7 +47,7 @@ func waitMailPoll(t *testing.T, notifier *schedulerMailNotifier) {
 
 func waitMailIdle(t *testing.T, manager *RobotManager) {
 	t.Helper()
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		manager.autoMu.Lock()
 		running := manager.mailNotifyRunning

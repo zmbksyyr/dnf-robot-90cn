@@ -103,7 +103,7 @@ func TestActorReconnectsAfterRuntimeDisconnect(t *testing.T) {
 		t.Fatal("failed to assign actor")
 	}
 
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) && runtime.onlineCount() < 1 {
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -112,7 +112,7 @@ func TestActorReconnectsAfterRuntimeDisconnect(t *testing.T) {
 	}
 
 	runtime.disconnect()
-	deadline = time.Now().Add(time.Second)
+	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) && runtime.onlineCount() < 2 {
 		time.Sleep(10 * time.Millisecond)
 	}

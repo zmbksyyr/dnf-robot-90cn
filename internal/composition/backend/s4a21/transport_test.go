@@ -273,9 +273,11 @@ func TestActionTransportReconnectStartsWithFreshTownSnapshot(t *testing.T) {
 	if status := transport.RuntimeStatusMap()[7]; status.StateName != shared.RuntimeStateRunning || status.Village != 0 || status.Area != 0 || status.X != 0 || status.Y != 0 {
 		t.Fatalf("reconnected status = %+v, want fresh running snapshot", status)
 	}
-	close(first.done)
-	time.Sleep(10 * time.Millisecond)
+	// Simulate the stale session watcher deterministically instead of racing
+	// it with a sleep: the identity check must ignore the old session.
+	transport.reapSession(7, first)
 	if status := transport.RuntimeStatusMap()[7]; status.StateName != shared.RuntimeStateRunning {
 		t.Fatalf("stale session watcher changed new status = %+v", status)
 	}
+	close(first.done)
 }
