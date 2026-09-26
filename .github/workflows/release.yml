@@ -102,8 +102,10 @@ jobs:
           Compress-Archive -Path dist/package/* -DestinationPath "dist/$archive" -Force
           Remove-Item -LiteralPath dist/package -Recurse -Force
           $hash = (Get-FileHash -Algorithm SHA256 "dist/$archive").Hash.ToLowerInvariant()
-          "$hash  $archive" | Out-File -FilePath "dist/SHA256SUMS.txt" -Encoding ascii
+          $checksum = "$archive.sha256"
+          "$hash  $archive" | Out-File -FilePath "dist/$checksum" -Encoding ascii
           "RELEASE_ZIP=$archive" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_CHECKSUM=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_COMMIT=$commit" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Publish latest release
@@ -114,11 +116,6 @@ jobs:
           $tag = "latest"
           $notes = "Auto-built from main branch commit $env:RELEASE_COMMIT"
 
-          # Point the tag at this build first; the release itself is only
-          # touched after the archive exists.
-          git tag -f $tag
-          git push -f origin $tag
-
           $releaseExists = $false
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
@@ -126,6 +123,11 @@ jobs:
           }
 
           if (-not $releaseExists) {
+            git tag -f $tag
+            git push -f origin $tag
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to push release tag $tag"
+            }
             for ($attempt = 1; $attempt -le 3; $attempt++) {
               gh release create $tag --verify-tag --title "Latest Build" --notes $notes
               if ($LASTEXITCODE -eq 0) {
@@ -145,15 +147,14 @@ jobs:
             }
           }
 
-          # Uploading with --clobber replaces the single asset in place; the
-          # previous release is never deleted, so a failed upload cannot leave
-          # the latest release empty.
+          # Versioned assets can be uploaded while the existing latest tag
+          # still points to the last successful build.
           $assetsUploaded = $false
           for ($attempt = 1; $attempt -le 3; $attempt++) {
             gh release upload $tag `
               --clobber `
               "dist/$env:RELEASE_ZIP" `
-              "dist/SHA256SUMS.txt"
+              "dist/$env:RELEASE_CHECKSUM"
             if ($LASTEXITCODE -eq 0) {
               $assetsUploaded = $true
               break
@@ -166,4 +167,14 @@ jobs:
             throw "Failed to upload release assets after 3 attempts"
           }
 
+          if ($releaseExists) {
+            git tag -f $tag
+            git push -f origin $tag
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to update release tag $tag"
+            }
+          }
           gh release edit $tag --notes $notes
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to update release notes for $tag"
+          }

@@ -78,9 +78,22 @@ func TestRobotSinkCanBeReplacedWhileLogging(t *testing.T) {
 // block the caller: the queue fills and drops instead.
 func TestConsoleQueueDropsInsteadOfBlockingCallers(t *testing.T) {
 	blocked := make(chan struct{})
+	entered := make(chan struct{}, 1)
 	queue := newConsoleQueue()
-	queue.print = func(string) { <-blocked }
+	queue.print = func(string) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-blocked
+	}
 	defer close(blocked)
+	queue.Write("first line\n")
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("console writer did not enter the blocked print")
+	}
 
 	done := make(chan struct{})
 	go func() {
