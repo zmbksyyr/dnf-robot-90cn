@@ -26,9 +26,6 @@ func (s *Session) EnableDungeonFollower(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	prepareCtx, cancel := followerPrepareContext(ctx)
-	defer cancel()
-
 	events := make(chan protocol.Packet, 64)
 	s.followerGuard.Lock()
 	if s.followerDone != nil || s.followerStarting {
@@ -42,16 +39,6 @@ func (s *Session) EnableDungeonFollower(ctx context.Context) error {
 	s.followerEvents = events
 	s.followerGuard.Unlock()
 
-	if err := s.prepareDungeonFollower(prepareCtx); err != nil {
-		s.followerGuard.Lock()
-		s.followerStarting = false
-		if s.followerEvents == events {
-			s.followerEvents = nil
-		}
-		s.followerGuard.Unlock()
-		return err
-	}
-
 	followerCtx, followerCancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	s.followerGuard.Lock()
@@ -61,7 +48,29 @@ func (s *Session) EnableDungeonFollower(ctx context.Context) error {
 	s.followerDone = done
 	s.followerGuard.Unlock()
 	go s.followerLoop(followerCtx, events, done)
+	// Party invitations must be handled immediately. Tutorial preparation is
+	// only needed for dungeon entry and can be delayed by a busy server, so it
+	// runs independently without blocking the invitation consumer.
+	go s.prepareDungeonFollowerEventually(followerCtx)
 	return nil
+}
+
+func (s *Session) prepareDungeonFollowerEventually(ctx context.Context) {
+	for attempt := 1; attempt <= 3; attempt++ {
+		prepareCtx, cancel := followerPrepareContext(ctx)
+		err := s.prepareDungeonFollower(prepareCtx)
+		cancel()
+		if err == nil {
+			return
+		} else if attempt == 3 {
+			foundationlog.Robotf("S4A21_PARTY_PREPARE_DEFERRED uid=%d attempts=%d err=%v\n", s.selfUID, attempt, err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 // DisableDungeonFollower removes the opt-in packet consumer. It is useful to

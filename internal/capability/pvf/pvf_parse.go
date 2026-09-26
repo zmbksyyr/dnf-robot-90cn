@@ -19,11 +19,11 @@ func deriveItemSetKey(path, body string, item shared.EquipmentCatalogItem) strin
 	if key := explicitPVFSetKey(body); key != "" {
 		return "pvf_" + shortHash(key)
 	}
-	if key := nameSetKey(body, item.ItemType); key != "" {
-		return "name_" + shortHash(key)
-	}
 	if key := pathSetKey(path, item.ItemType); key != "" {
 		return "path_" + shortHash(key)
+	}
+	if key := nameSetKey(body, item.ItemType); key != "" {
+		return "name_" + shortHash(key)
 	}
 	return ""
 }
