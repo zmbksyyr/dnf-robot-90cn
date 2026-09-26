@@ -20,7 +20,7 @@ func Default() RuntimeConfig {
 		StoreEquipmentLevelWeight: 35, StoreEquipmentRarityWeight: 40, StoreEquipmentIntensifyWeight: 25,
 		StoreConfirmTimeoutSec: 30,
 		FollowRadiusX:          120, FollowRadiusY: 30, ShoutDelayMS: 1000, ShoutSendEnabled: true,
-		AutoActions: true, AutoMailNotify: true, AutoTargetOnlineCount: 20,
+		AutoActions: true, AutoMailNotify: true, AutoSystemAnnouncement: true, AutoTargetOnlineCount: 20,
 		AutoMoveIntervalMinSec: 6, AutoMoveIntervalMaxSec: 18, AutoShoutIntervalMinSec: 45, AutoShoutIntervalMaxSec: 120,
 		AutoStoreProbabilityPercent: 5, AutoStoreIntervalMinSec: 120, AutoStoreIntervalMaxSec: 180, AutoStoreDurationSec: 120, AutoStoreTickSec: 10, AutoStoreMaxPositionTries: 10, AutoStoreFailCooldownSec: 60,
 		AutoGamePortStableSec: 15, AutoGamePortCheckTimeoutMS: 800,

@@ -43,7 +43,7 @@ func TestPortsDialogOnlyEditsGamePort(t *testing.T) {
 }
 
 func TestAutoDialogUsesBackendCapacityAndCapabilities(t *testing.T) {
-	for _, want := range []string{"backendMaxOnline||10000", "backendCapabilities.mail_notification", "backendCapabilities.dungeon_follow", "auto.auto_target_online_count", "auto.auto_shout_interval_min_sec", "auto.auto_shout_interval_max_sec"} {
+	for _, want := range []string{"backendMaxOnline||10000", "backendCapabilities.mail_notification", "backendCapabilities.system_announcement", "backendCapabilities.dungeon_follow", "auto.auto_target_online_count", "auto.auto_shout_interval_min_sec", "auto.auto_shout_interval_max_sec", "auto.auto_system_announcement"} {
 		if !strings.Contains(appJS, want) {
 			t.Errorf("auto boundary is missing %q", want)
 		}

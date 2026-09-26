@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/shared"
 )
 
@@ -43,8 +44,8 @@ func (m *RobotManager) MonitorAnnouncement(kind, message string) (AnnouncementRe
 	})
 }
 
-func (s *RobotSupervisor) sendSystemAnnouncementIfDue(now time.Time) {
-	if !s.manager.supportsBackendCapability(shared.CapabilitySystemAnnouncement) {
+func (s *RobotSupervisor) sendSystemAnnouncementIfDue(now time.Time, rc robotconfig.RuntimeConfig) {
+	if !rc.AutoSystemAnnouncement || !s.manager.supportsBackendCapability(shared.CapabilitySystemAnnouncement) {
 		return
 	}
 	if s.nextAnnouncement.IsZero() {
