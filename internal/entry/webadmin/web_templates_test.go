@@ -115,10 +115,23 @@ func TestI18nLocalesHaveMatchingKeys(t *testing.T) {
 	}
 }
 
-func TestSchedulerAndStoreRemainCompactEnglish(t *testing.T) {
+func TestSchedulerAndActorStoreStatusRemainCompactEnglish(t *testing.T) {
 	for _, want := range []string{`class="scheduler" data-i18n-skip`, "i18nEnglishFormat('scheduler.attach_value'", `<th data-i18n-skip>Store</th>`, "i18nEnglishFormat('status.'+store)"} {
 		if !strings.Contains(indexHTML+appJS, want) {
 			t.Errorf("compact English UI is missing %q", want)
+		}
+	}
+}
+
+func TestDashboardRenderingOnlyReferencesPresentElements(t *testing.T) {
+	for _, want := range []string{`id="mRobot"`, `id="mDB"`, `class="scheduler"`, `id="sMode"`, `id="sReason"`} {
+		if !strings.Contains(indexHTML, want) {
+			t.Errorf("dashboard element is missing %q", want)
+		}
+	}
+	for _, stale := range []string{"byId('mStore')", "byId('sStore')", `id="sStore"`} {
+		if strings.Contains(indexHTML+appJS, stale) {
+			t.Errorf("dashboard rendering still depends on removed element %q", stale)
 		}
 	}
 }
