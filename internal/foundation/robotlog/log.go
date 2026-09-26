@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"robot/internal/foundation/lockhub"
@@ -233,13 +234,38 @@ func startLogFlusherLocked() {
 }
 
 func PrintfGreen(format string, args ...interface{}) {
-	fmt.Printf("\033[1;32m"+format+"\033[0m", args...)
+	if colorsEnabled() {
+		fmt.Printf("\033[1;32m"+format+"\033[0m", args...)
+		return
+	}
+	fmt.Printf(format, args...)
 }
 
 func PrintfRed(format string, args ...interface{}) {
-	fmt.Printf("\033[1;31m"+format+"\033[0m", args...)
+	if colorsEnabled() {
+		fmt.Printf("\033[1;31m"+format+"\033[0m", args...)
+		return
+	}
+	fmt.Printf(format, args...)
 }
 
 func PrintfBlue(format string, args ...interface{}) {
-	fmt.Printf("\033[1;36m"+format+"\033[0m", args...)
+	if colorsEnabled() {
+		fmt.Printf("\033[1;36m"+format+"\033[0m", args...)
+		return
+	}
+	fmt.Printf(format, args...)
+}
+
+var consoleColor struct {
+	once    sync.Once
+	enabled bool
+}
+
+// colorsEnabled reports whether ANSI colors should be written. Escape
+// sequences are only emitted for a real terminal; pipes, redirected output
+// and service logs stay plain text.
+func colorsEnabled() bool {
+	consoleColor.once.Do(func() { consoleColor.enabled = colorSupported() })
+	return consoleColor.enabled
 }
