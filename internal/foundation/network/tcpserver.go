@@ -23,6 +23,10 @@ const (
 	defaultFirstPacketTimeout = 5 * time.Second
 	defaultMaxPendingPerIP    = 512
 	defaultMaxPending         = 512
+	// defaultCloseWaitTimeout bounds how long Close waits for in-flight
+	// synchronous command handlers. A handler can run up to the managed
+	// command budget (75s), but process shutdown must stay bounded.
+	defaultCloseWaitTimeout = 15 * time.Second
 )
 
 var (
@@ -36,25 +40,26 @@ type tcpClient struct {
 }
 
 type TCPServer struct {
-	lifecycleMu  lockhub.Locker
-	closed       bool
-	closeDone    chan struct{}
-	listener     net.Listener
-	addr         string
-	clients      map[string]*tcpClient
-	connCount    int
-	pendingCount int
-	pendingByIP  map[string]int
-	clientsMu    lockhub.RWLocker
-	onMessage    func(clientID string, data []byte)
-	running      atomic.Bool
-	wg           sync.WaitGroup
-	maxClients   int
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	firstTimeout time.Duration
-	maxPending   int
-	maxPendingIP int
+	lifecycleMu      lockhub.Locker
+	closed           bool
+	closeDone        chan struct{}
+	listener         net.Listener
+	addr             string
+	clients          map[string]*tcpClient
+	connCount        int
+	pendingCount     int
+	pendingByIP      map[string]int
+	clientsMu        lockhub.RWLocker
+	onMessage        func(clientID string, data []byte)
+	running          atomic.Bool
+	wg               sync.WaitGroup
+	maxClients       int
+	readTimeout      time.Duration
+	writeTimeout     time.Duration
+	firstTimeout     time.Duration
+	maxPending       int
+	maxPendingIP     int
+	closeWaitTimeout time.Duration
 }
 
 func NewTCPServer(addr string) *TCPServer {
@@ -403,7 +408,22 @@ func (s *TCPServer) Close() error {
 	}
 	s.clients = make(map[string]*tcpClient)
 	s.clientsMu.Unlock()
-	s.wg.Wait()
+	waitTimeout := defaultCloseWaitTimeout
+	if s.closeWaitTimeout > 0 {
+		waitTimeout = s.closeWaitTimeout
+	}
+	waited := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(waited)
+	}()
+	select {
+	case <-waited:
+	case <-time.After(waitTimeout):
+		// In-flight command handlers are bounded by the managed command
+		// budget; shutdown must not wait for them indefinitely.
+		foundationlog.Robotf("TCP_SERVER_CLOSE_TIMEOUT waited=%s\n", waitTimeout)
+	}
 	close(s.closeDone)
 	return nil
 }

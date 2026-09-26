@@ -122,6 +122,42 @@ func TestTCPServerRejectsDuplicateStartAndRestartAfterClose(t *testing.T) {
 	}
 }
 
+func TestTCPServerCloseIsBoundedWhenHandlerBlocks(t *testing.T) {
+	server := NewTCPServer("127.0.0.1:0")
+	server.closeWaitTimeout = 50 * time.Millisecond
+	release := make(chan struct{})
+	handlerStarted := make(chan struct{}, 1)
+	server.OnMessage(func(string, []byte) {
+		handlerStarted <- struct{}{}
+		<-release
+	})
+	if err := server.Start(); err != nil {
+		t.Fatal(err)
+	}
+	client, err := net.Dial("tcp", server.listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if _, err := client.Write([]byte("<tw><c>sys</c></tw>")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-handlerStarted:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start")
+	}
+
+	start := time.Now()
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("Close waited %v for a blocked handler", elapsed)
+	}
+	close(release)
+}
+
 func TestTCPServerZeroValueCanStartAndClose(t *testing.T) {
 	server := &TCPServer{addr: "127.0.0.1:0"}
 	if err := server.Start(); err != nil {
