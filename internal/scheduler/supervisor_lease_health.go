@@ -153,6 +153,30 @@ func (s *RobotSupervisor) recycleActorUID(actor *actormodel.Actor, status actorm
 	robotLogf("[RobotSupervisor] recycle_cleanup_done uid=%d deleted=%d skipped=%d\n", released, result.Deleted, result.Skipped)
 }
 
+// recycleDesiredOfflineAutoActors releases the lease of auto actors that an
+// operator logged out (onlineDesired=false while still holding a UID). Without
+// this sweep the slot keeps its UID forever and the target online count can
+// never recover without a process restart.
+func (s *RobotSupervisor) recycleDesiredOfflineAutoActors() {
+	for _, actor := range s.ledger.AutoActorPointers() {
+		snapshot := actor.Snapshot()
+		if snapshot.Mode != actormodel.ModeAuto || snapshot.UID <= 0 {
+			continue
+		}
+		if snapshot.OnlineDesired || snapshot.State != actormodel.StateOffline {
+			continue
+		}
+		robotLogf("[RobotSupervisor] recycle_offline_auto slot=%d uid=%d\n", snapshot.SlotID, snapshot.UID)
+		released := actor.ReleaseAndWait(10 * time.Second)
+		if released != snapshot.UID {
+			robotLogf("[RobotSupervisor] recycle_offline_auto_deferred slot=%d uid=%d released=%d\n",
+				snapshot.SlotID, snapshot.UID, released)
+			continue
+		}
+		s.ledger.RemoveLeaseIfActor(released, actor)
+	}
+}
+
 func (s *RobotSupervisor) recycleUnhealthyActors(now time.Time, rc robotconfig.RuntimeConfig) {
 	type recycleCandidate struct {
 		actor  *actormodel.Actor

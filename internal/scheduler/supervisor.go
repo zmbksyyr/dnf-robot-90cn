@@ -124,6 +124,7 @@ func (s *RobotSupervisor) tick(now time.Time) {
 	s.releaseBrokenLeases(now, rc)
 	s.cleanupBlockedUIDs(10)
 	s.recycleUnhealthyActors(now, rc)
+	s.recycleDesiredOfflineAutoActors()
 	s.assignIdleAutoActors(rc)
 	s.updateMetrics(rc, signals)
 }
