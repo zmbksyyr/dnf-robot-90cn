@@ -21,13 +21,8 @@ jobs:
           go-version: stable
           cache-dependency-path: |
             go.sum
-            tools/deploy-launcher/go.sum
 
       - name: Test main project
-        run: go test ./...
-
-      - name: Test deploy launcher
-        working-directory: tools/deploy-launcher
         run: go test ./...
 
       - name: Prepare package
@@ -42,18 +37,6 @@ jobs:
 
           $env:GOOS = "windows"
           go build -trimpath -buildvcs=false -ldflags="-s -w" -o dist/package/robot.exe ./cmd/robot
-
-      - name: Generate deploy launcher manifest resource
-        working-directory: tools/deploy-launcher
-        shell: pwsh
-        run: |
-          go install github.com/akavel/rsrc@latest
-          rsrc -manifest app.manifest -o rsrc.syso
-
-      - name: Build deploy launcher
-        working-directory: tools/deploy-launcher
-        shell: pwsh
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -H windowsgui" -o ../../dist/package/deploy-launcher.exe .
 
       - name: Package release archive
         shell: pwsh
