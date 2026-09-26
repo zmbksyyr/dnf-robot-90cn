@@ -94,7 +94,11 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 		return nil, err
 	}
 	cfg.WebAllowedOrigins = allowedOrigins
-	cfg.WebAllowNullOrigin = dec.Bool("Web", "AllowNullOrigin", false)
+	// Null origins come from embedded shells, WebView launchers and local
+	// proxy stacks that cannot send a real origin; they are accepted by
+	// default so a stock build works without extra configuration. Set the key
+	// to false to reject them for a stricter deployment.
+	cfg.WebAllowNullOrigin = dec.Bool("Web", "AllowNullOrigin", true)
 
 	// [system] section
 	cfg.LogMaxSizeMB = dec.Int("system", "log_max_size_mb", 100)
@@ -247,7 +251,8 @@ func generateDefaultConfig(path string) error {
 		"# Extra origins allowed for state-changing Web requests (reverse proxy or tunnel front ends).",
 		"#AllowedOrigins = https://panel.example.com",
 		"# Accept requests whose Origin header is null (embedded WebView or launcher shells).",
-		"#AllowNullOrigin = false",
+		"# Set to false to reject them for a stricter deployment.",
+		"#AllowNullOrigin = true",
 		"",
 		"[system]",
 		"log_max_size_mb = 100",

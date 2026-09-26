@@ -259,9 +259,11 @@ func (s *Server) originAllowed(origin string, r *http.Request) bool {
 		return false
 	}
 	// A null origin comes from sandboxed or embedded shells that cannot send a
-	// real origin. It is rejected unless the operator explicitly opts in: the
-	// SameSite=Lax session cookie remains the primary CSRF defence because it
-	// is not attached to cross-site POST requests.
+	// real origin. It is accepted by default so a stock build serves those
+	// clients without configuration; the SameSite=Lax session cookie remains
+	// the primary CSRF defence because it is not attached to cross-site POST
+	// requests. Deployments that want stricter behaviour set
+	// Web.AllowNullOrigin = false.
 	if origin == "null" {
 		return s.cfg.WebAllowNullOrigin
 	}

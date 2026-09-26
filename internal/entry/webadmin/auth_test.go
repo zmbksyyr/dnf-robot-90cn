@@ -124,31 +124,32 @@ func TestSameOriginAllowsConfiguredOrigin(t *testing.T) {
 	}
 }
 
-func TestSameOriginNullOriginNeedsExplicitOptIn(t *testing.T) {
+func TestSameOriginAcceptsNullOriginByDefault(t *testing.T) {
 	handlerFor := func(server *Server) http.HandlerFunc {
 		return server.requireSameOrigin(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		})
 	}
 
-	strict := handlerFor(&Server{cfg: &config.SysConfig{}})
+	// The shipped configuration accepts null origins without any extra key.
+	byDefault := handlerFor(&Server{cfg: &config.SysConfig{WebAllowNullOrigin: true}})
 	request := httptest.NewRequest(http.MethodPost, "/login", nil)
 	request.Host = "127.0.0.1:8112"
 	request.Header.Set("Origin", "null")
 	rec := httptest.NewRecorder()
-	strict(rec, request)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("null origin status = %d, want 403 by default", rec.Code)
+	byDefault(rec, request)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("null origin status = %d, want pass-through by default", rec.Code)
 	}
 
-	relaxed := handlerFor(&Server{cfg: &config.SysConfig{WebAllowNullOrigin: true}})
+	strict := handlerFor(&Server{cfg: &config.SysConfig{WebAllowNullOrigin: false}})
 	request = httptest.NewRequest(http.MethodPost, "/login", nil)
 	request.Host = "127.0.0.1:8112"
 	request.Header.Set("Origin", "null")
 	rec = httptest.NewRecorder()
-	relaxed(rec, request)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("null origin with opt-in status = %d, want pass-through", rec.Code)
+	strict(rec, request)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("null origin with strict setting status = %d, want 403", rec.Code)
 	}
 }
 

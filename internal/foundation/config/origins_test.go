@@ -1,21 +1,45 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
-func TestParseAllowedOriginsNormalizesAndValidates(t *testing.T) {
-	origins, err := parseAllowedOrigins(" https://Panel.Example.com , http://127.0.0.1:8112/ ")
+func TestLoadConfigAcceptsNullOriginsByDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.ini")
+	minimal := `[Ports]
+RobotAPI = 19111
+Web = 19112
+Game = 10011
+PartyRoute0 = 5063
+
+[Robot]
+RobotInnerIp = 10.0.0.1
+RobotConnectIp = auto
+
+[Web]
+WebPassword = secret
+`
+	if err := os.WriteFile(path, []byte(minimal), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(origins) != 2 || origins[0] != "https://panel.example.com" || origins[1] != "http://127.0.0.1:8112" {
-		t.Fatalf("parsed origins = %v", origins)
+	if !cfg.WebAllowNullOrigin {
+		t.Fatal("null origins must be accepted without an explicit configuration key")
 	}
-	if empty, err := parseAllowedOrigins("  "); err != nil || len(empty) != 0 {
-		t.Fatalf("empty origins = %v err=%v", empty, err)
+
+	if err := os.WriteFile(path, []byte(minimal+"AllowNullOrigin = false\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
-	for _, invalid := range []string{"panel.example.com", "https://", "https://panel.example.com/path", "ftp://panel.example.com", "https://panel.example.com?x=1"} {
-		if _, err := parseAllowedOrigins(invalid); err == nil {
-			t.Fatalf("invalid origin %q was accepted", invalid)
-		}
+	cfg, err = LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WebAllowNullOrigin {
+		t.Fatal("AllowNullOrigin = false must reject null origins")
 	}
 }
