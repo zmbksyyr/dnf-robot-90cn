@@ -545,6 +545,7 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 	equipmentCount, avatarCount := 0, 0
 	equipmentSetCounts := make(map[string]int)
 	avatarSetCounts := make(map[string]int)
+	artifactCores := make(map[int][]byte, 3)
 	for rows.Next() {
 		var slot int
 		var core []byte
@@ -553,6 +554,11 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 		}
 		if len(core) < 5 {
 			return false, nil
+		}
+		if slot >= a21ArtifactSlotBase && slot <= 28 {
+			if _, exists := artifactCores[slot]; !exists {
+				artifactCores[slot] = append([]byte(nil), core...)
+			}
 		}
 		item, ok := items[int(binary.LittleEndian.Uint32(core[1:5]))]
 		if !ok || item.ID <= 0 || item.Expire || !s4a21LoadoutCompatible(item) {
@@ -633,24 +639,8 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 		}
 		for itemType, item := range artifacts {
 			slot := a21ArtifactSlotBase + itemType - 31
-			core, err := db.QueryContext(ctx, `SELECT item_core FROM character_inventory_items WHERE character_id=? AND list_type=? AND slot_index=?`, characterID, a21ListTypeEquipment, slot)
-			if err != nil {
-				return false, err
-			}
-			valid := core.Next()
-			if valid {
-				var raw []byte
-				if err := core.Scan(&raw); err != nil {
-					core.Close()
-					return false, err
-				}
-				valid = len(raw) >= 5 && raw[0] == a21ItemKindArtifact && int(binary.LittleEndian.Uint32(raw[1:5])) == item.ID
-			}
-			if err := core.Err(); err != nil {
-				core.Close()
-				return false, err
-			}
-			core.Close()
+			raw, exists := artifactCores[slot]
+			valid := exists && len(raw) >= 5 && raw[0] == a21ItemKindArtifact && int(binary.LittleEndian.Uint32(raw[1:5])) == item.ID
 			if !valid {
 				return false, nil
 			}
