@@ -25,6 +25,7 @@ type SysConfig struct {
 	WebPasswordHash       string
 	WebTrustedProxies     []string
 	WebAllowedOrigins     []string
+	WebAllowNullOrigin    bool
 	LogMaxSizeMB          int
 	LogMaxBackups         int
 	MaxResponseBytes      int
@@ -93,6 +94,7 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 		return nil, err
 	}
 	cfg.WebAllowedOrigins = allowedOrigins
+	cfg.WebAllowNullOrigin = dec.Bool("Web", "AllowNullOrigin", false)
 
 	// [system] section
 	cfg.LogMaxSizeMB = dec.Int("system", "log_max_size_mb", 100)
@@ -244,6 +246,8 @@ func generateDefaultConfig(path string) error {
 		"#TrustedProxies = 127.0.0.1",
 		"# Extra origins allowed for state-changing Web requests (reverse proxy or tunnel front ends).",
 		"#AllowedOrigins = https://panel.example.com",
+		"# Accept requests whose Origin header is null (embedded WebView or launcher shells).",
+		"#AllowNullOrigin = false",
 		"",
 		"[system]",
 		"log_max_size_mb = 100",

@@ -124,6 +124,34 @@ func TestSameOriginAllowsConfiguredOrigin(t *testing.T) {
 	}
 }
 
+func TestSameOriginNullOriginNeedsExplicitOptIn(t *testing.T) {
+	handlerFor := func(server *Server) http.HandlerFunc {
+		return server.requireSameOrigin(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+
+	strict := handlerFor(&Server{cfg: &config.SysConfig{}})
+	request := httptest.NewRequest(http.MethodPost, "/login", nil)
+	request.Host = "127.0.0.1:8112"
+	request.Header.Set("Origin", "null")
+	rec := httptest.NewRecorder()
+	strict(rec, request)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("null origin status = %d, want 403 by default", rec.Code)
+	}
+
+	relaxed := handlerFor(&Server{cfg: &config.SysConfig{WebAllowNullOrigin: true}})
+	request = httptest.NewRequest(http.MethodPost, "/login", nil)
+	request.Host = "127.0.0.1:8112"
+	request.Header.Set("Origin", "null")
+	rec = httptest.NewRecorder()
+	relaxed(rec, request)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("null origin with opt-in status = %d, want pass-through", rec.Code)
+	}
+}
+
 func TestLogoutRequiresPost(t *testing.T) {
 	server := &Server{tokens: make(map[string]time.Time)}
 	get := httptest.NewRequest(http.MethodGet, "/logout", nil)
