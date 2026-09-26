@@ -9,6 +9,8 @@ import (
 	robotconfig "robot/internal/capability/robotconfig"
 )
 
+const quarantineLogInterval = 5 * time.Minute
+
 func (s *RobotSupervisor) releaseBrokenLeases(now time.Time, rc robotconfig.RuntimeConfig) {
 	if !s.nextLeaseHealth.IsZero() && now.Before(s.nextLeaseHealth) {
 		return
@@ -67,14 +69,18 @@ func (s *RobotSupervisor) cleanupBrokenUID(uid int) {
 		robotLogf("[RobotSupervisor] broken_cleanup_skipped uid=%d requested=%d skipped=%d\n", uid, result.Requested, result.Skipped)
 		return
 	}
-	s.ledger.UnblockUID(uid)
+	if s.ledger.ClearQuarantine(uid) {
+		robotLogf("[RobotSupervisor] broken_cleanup_released uid=%d deleted=%d\n", uid, result.Deleted)
+	} else {
+		s.ledger.UnblockUID(uid)
+	}
 	robotLogf("[RobotSupervisor] broken_cleanup_done uid=%d deleted=%d skipped=%d\n", uid, result.Deleted, result.Skipped)
 }
 
 func (s *RobotSupervisor) cleanupBlockedUIDs(limit int) {
 	for _, uid := range s.ledger.BlockedUIDs(limit) {
 		if s.ledger.IsQuarantinedUID(uid) {
-			robotLogf("[RobotSupervisor] blocked_cleanup_deferred uid=%d reason=logout_quarantine\n", uid)
+			s.logQuarantineDeferred(uid)
 			continue
 		}
 		if s.actorOwnsUID(uid) {
@@ -94,6 +100,20 @@ func (s *RobotSupervisor) cleanupBlockedUIDs(limit int) {
 
 func (s *RobotSupervisor) actorOwnsUID(uid int) bool {
 	return s.ledger.ActorOwnsUID(uid)
+}
+
+// logQuarantineDeferred throttles the per-UID quarantine notice; the cleanup
+// loop runs every second and a stuck UID would otherwise flood the log.
+func (s *RobotSupervisor) logQuarantineDeferred(uid int) {
+	if s.quarantineLogAt == nil {
+		s.quarantineLogAt = make(map[int]time.Time)
+	}
+	now := time.Now()
+	if loggedAt, ok := s.quarantineLogAt[uid]; ok && now.Sub(loggedAt) < quarantineLogInterval {
+		return
+	}
+	s.quarantineLogAt[uid] = now
+	robotLogf("[RobotSupervisor] blocked_cleanup_deferred uid=%d reason=logout_quarantine\n", uid)
 }
 
 func (m *RobotManager) aliveRobotUIDs(uids []int) (map[int]bool, error) {

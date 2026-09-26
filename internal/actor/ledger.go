@@ -135,6 +135,20 @@ func (l *Ledger) UnblockUID(uid int) {
 	l.indexMu.Unlock()
 }
 
+// ClearQuarantine releases a quarantined UID once its runtime session has been
+// confirmed closed and its robot data cleaned up, allowing the UID to be
+// reused again. Quarantine is never cleared implicitly.
+func (l *Ledger) ClearQuarantine(uid int) bool {
+	l.indexMu.Lock()
+	defer l.indexMu.Unlock()
+	if _, quarantined := l.quarantine[uid]; !quarantined {
+		return false
+	}
+	delete(l.quarantine, uid)
+	delete(l.blockedUID, uid)
+	return true
+}
+
 func (l *Ledger) IsQuarantinedUID(uid int) bool {
 	l.indexMu.RLock()
 	_, ok := l.quarantine[uid]

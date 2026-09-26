@@ -194,6 +194,31 @@ func TestLedgerKeepsQuarantinedUIDBlocked(t *testing.T) {
 	}
 }
 
+func TestLedgerClearQuarantineAllowsReuse(t *testing.T) {
+	l := NewLedger()
+	a := NewActor(1, ModeAuto, &partyWaitRuntime{})
+	a.resetForUID(101)
+	a.quarantineCurrentUID()
+	l.actors[1] = a
+	l.uidActors[101] = a
+	l.draining[1] = a
+	close(a.done)
+	l.reapActorLocked(a)
+
+	if !l.ClearQuarantine(101) {
+		t.Fatal("ClearQuarantine reported nothing to clear")
+	}
+	if l.IsQuarantinedUID(101) {
+		t.Fatal("quarantine entry survived ClearQuarantine")
+	}
+	if l.BlockedCount() != 0 {
+		t.Fatalf("blocked count = %d after clearing", l.BlockedCount())
+	}
+	if l.ClearQuarantine(101) {
+		t.Fatal("ClearQuarantine on an unquarantined UID reported success")
+	}
+}
+
 func TestActorCommandPanicReleasesUIDAndKeepsLoopUsable(t *testing.T) {
 	runtime := &panicCommandRuntime{
 		partyWaitRuntime: &partyWaitRuntime{
