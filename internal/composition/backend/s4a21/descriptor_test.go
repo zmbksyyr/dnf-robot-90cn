@@ -13,7 +13,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 	}
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityProvision, shared.CapabilityTownMove, shared.CapabilityDungeonFollow, shared.CapabilityParty, shared.CapabilityGuildInvite,
-		shared.CapabilityShout, shared.CapabilityDatabase, shared.CapabilityCleanup,
+		shared.CapabilityShout, shared.CapabilityDatabase, shared.CapabilityCleanup, shared.CapabilityDangerousDelete,
 	} {
 		if !info.Supports(capability) {
 			t.Fatalf("verified capability %s is disabled", capability)

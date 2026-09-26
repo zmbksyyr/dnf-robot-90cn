@@ -32,6 +32,7 @@ type RobotManager struct {
 	sessions                        sessionDriver
 	backendRobotCreator             BackendRobotCreator
 	backendRobotCleaner             BackendRobotCleaner
+	backendRobotPurger              BackendRobotPurger
 	backendInfo                     shared.BackendInfo
 	backendLifecycleOwned           bool
 	persistenceInspector            shared.PersistenceInspector
@@ -142,6 +143,13 @@ type BackendRobotCleaner interface {
 	CleanupRobots(context.Context, robotcap.CleanupRequest) (robotcap.CleanupResult, error)
 }
 
+// BackendRobotPurger owns backend identifier resolution and durable deletion.
+// The scheduler only coordinates lifecycle state around the returned plan.
+type BackendRobotPurger interface {
+	PlanDangerousDelete(context.Context, robotcap.DangerousDeleteRequest) (robotcap.DangerousDeletePlan, error)
+	ExecuteDangerousDelete(context.Context, robotcap.DangerousDeletePlan) (robotcap.DangerousDeleteResult, error)
+}
+
 func (m *RobotManager) SetBackendRobotCreator(info shared.BackendInfo, creator BackendRobotCreator) {
 	if m != nil {
 		m.backendInfo = info
@@ -164,6 +172,12 @@ func (m *RobotManager) ConfigureBackendRuntime(info shared.BackendInfo, persiste
 func (m *RobotManager) SetBackendRobotCleaner(cleaner BackendRobotCleaner) {
 	if m != nil {
 		m.backendRobotCleaner = cleaner
+	}
+}
+
+func (m *RobotManager) SetBackendRobotPurger(purger BackendRobotPurger) {
+	if m != nil {
+		m.backendRobotPurger = purger
 	}
 }
 
@@ -375,10 +389,7 @@ type SchemaRepository interface {
 	RobotStatusRows(req robotcap.CommandRequest) ([]robotcap.StatusItem, int, error)
 	RobotLocations() ([]shared.MapLocation, error)
 	CleanupCandidates(req robotcap.CleanupRequest) ([]robotcap.CleanupCandidate, error)
-	DangerousDeletePlan(req robotcap.DangerousDeleteRequest) (robotcap.DangerousDeletePlan, error)
 	BatchDeleteRobotData(uids, cids []int) error
-	BatchDeleteCharacterData(cids []int) error
-	DeleteCharacterAtomic(uid, cid int, deleteRobotMetadata bool) error
 	BatchDeleteRobotMetadata(uids []int) error
 	UpsertDummy(info robotcap.Info, innerIP string) error
 	RegisterRobot(info robotcap.Info) error
@@ -590,19 +601,7 @@ func (missingSchemaRepository) CleanupCandidates(robotcap.CleanupRequest) ([]rob
 	return nil, errors.New("scheduler schema repository is not configured")
 }
 
-func (missingSchemaRepository) DangerousDeletePlan(robotcap.DangerousDeleteRequest) (robotcap.DangerousDeletePlan, error) {
-	return robotcap.DangerousDeletePlan{}, errors.New("scheduler schema repository is not configured")
-}
-
 func (missingSchemaRepository) BatchDeleteRobotData([]int, []int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) BatchDeleteCharacterData([]int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) DeleteCharacterAtomic(int, int, bool) error {
 	return errors.New("scheduler schema repository is not configured")
 }
 

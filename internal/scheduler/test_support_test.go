@@ -17,7 +17,7 @@ func testS4BackendInfo() shared.BackendInfo {
 	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "unsupported in test backend"})
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityProvision, shared.CapabilityTownMove, shared.CapabilityDungeonFollow,
-		shared.CapabilityShout, shared.CapabilityCleanup, shared.CapabilityDatabase,
+		shared.CapabilityShout, shared.CapabilityCleanup, shared.CapabilityDangerousDelete, shared.CapabilityDatabase,
 	} {
 		capabilities[capability] = shared.CapabilityStatus{Enabled: true}
 	}

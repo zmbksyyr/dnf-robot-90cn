@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	robotcap "robot/internal/capability/robot"
 	"robot/internal/shared"
@@ -24,12 +25,19 @@ func (m *RobotManager) DangerousDelete(req robotcap.DangerousDeleteRequest) (rob
 	defer func() {
 		finishOperation(fmt.Sprintf("accounts=%d characters=%d registry=%d deleted=%v", result.AccountCount, result.CharacterCount, result.RegistryCount, result.Deleted), opErr)
 	}()
-	plan, err := m.schemaRepo().DangerousDeletePlan(req)
+	if m.backendRobotPurger == nil {
+		opErr = fmt.Errorf("backend %s dangerous delete adapter is not configured", m.backendInfo.ID)
+		return result, opErr
+	}
+	plan, err := m.backendRobotPurger.PlanDangerousDelete(context.Background(), req)
 	if err != nil {
 		opErr = err
 		return robotcap.DangerousDeleteResult{}, err
 	}
-	result = dangerousDeleteResult(plan)
+	result = robotcap.DangerousDeleteResult{
+		Mode: plan.Mode, UID: plan.UID, CID: plan.CID, MinUID: plan.MinUID, MaxUID: plan.MaxUID,
+		AccountCount: plan.AccountCount, CharacterCount: plan.CharacterCount, RegistryCount: plan.RegistryCount,
+	}
 	if len(plan.RegistryUIDs) > 0 {
 		if _, err := m.SetAutoEnabled(false); err != nil {
 			opErr = fmt.Errorf("disable automatic actions before dangerous delete: %w", err)
@@ -40,24 +48,15 @@ func (m *RobotManager) DangerousDelete(req robotcap.DangerousDeleteRequest) (rob
 			defer finishDelete()
 		}
 	}
-	if plan.Mode == robotcap.DangerousDeleteModeCID {
-		if err := m.schemaRepo().DeleteCharacterAtomic(plan.UID, plan.CID, len(plan.RegistryUIDs) > 0); err != nil {
-			opErr = err
-			return result, err
-		}
-		m.worldHornCache.Invalidate(plan.CID)
-		m.invalidateLoginRepairs([]int{plan.UID})
-	} else {
-		if err := m.schemaRepo().BatchDeleteRobotData(plan.UIDs, plan.CIDs); err != nil {
-			opErr = err
-			return result, err
-		}
-		for _, cid := range plan.CIDs {
-			m.worldHornCache.Invalidate(cid)
-		}
-		m.invalidateLoginRepairs(plan.UIDs)
+	result, err = m.backendRobotPurger.ExecuteDangerousDelete(context.Background(), plan)
+	if err != nil {
+		opErr = err
+		return result, err
 	}
-	result.Deleted = true
+	for _, cid := range plan.CIDs {
+		m.worldHornCache.Invalidate(cid)
+	}
+	m.invalidateLoginRepairs(plan.UIDs)
 	return result, nil
 }
 
@@ -69,23 +68,5 @@ func dangerousDeleteRequestScope(req robotcap.DangerousDeleteRequest) string {
 		return fmt.Sprintf("uid=%d", req.UID)
 	default:
 		return fmt.Sprintf("range=%d-%d", req.MinUID, req.MaxUID)
-	}
-}
-
-func dangerousDeleteResult(plan robotcap.DangerousDeletePlan) robotcap.DangerousDeleteResult {
-	return robotcap.DangerousDeleteResult{
-		Mode: plan.Mode, UID: plan.UID, CID: plan.CID, MinUID: plan.MinUID, MaxUID: plan.MaxUID,
-		AccountCount: plan.AccountCount, CharacterCount: plan.CharacterCount, RegistryCount: plan.RegistryCount,
-	}
-}
-
-func dangerousDeleteScope(plan robotcap.DangerousDeletePlan) string {
-	switch plan.Mode {
-	case robotcap.DangerousDeleteModeCID:
-		return fmt.Sprintf("cid=%d", plan.CID)
-	case robotcap.DangerousDeleteModeUID:
-		return fmt.Sprintf("uid=%d", plan.UID)
-	default:
-		return fmt.Sprintf("range=%d-%d", plan.MinUID, plan.MaxUID)
 	}
 }

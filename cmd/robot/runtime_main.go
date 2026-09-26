@@ -114,6 +114,9 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 		Protocol: s4a21backend.CharacterDeleter{Address: fmt.Sprintf("%s:%d", cfg.RobotConnectIP, cfg.RobotGamePort)},
 		State:    state, Sessions: transports.sessions,
 	})
+	manager.SetBackendRobotPurger(s4a21backend.SQLiteRobotPurger{
+		DatabasePath: loadoutDB, AccountPrefix: "robot", State: state, Sessions: transports.sessions,
+	})
 	defer func() {
 		if err := manager.Shutdown(); err != nil {
 			foundationlog.Robotf("ADAPTER_MANAGER_SHUTDOWN_FAILED err=%v\n", err)
