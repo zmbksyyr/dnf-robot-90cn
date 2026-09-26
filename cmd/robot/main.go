@@ -21,23 +21,20 @@ import (
 )
 
 func main() {
-	restartHelper := webadmin.RestartHelperRequested(os.Args[1:])
-	code := runMain()
-	if code != 0 && !restartHelper {
+	code := 0
+	for {
+		code = runMain()
+		if code != 2 {
+			break
+		}
+	}
+	if code != 0 {
 		waitForFatalExit()
 	}
 	os.Exit(code)
 }
 
 func runMain() int {
-	if webadmin.RestartHelperRequested(os.Args[1:]) {
-		if err := webadmin.RunRestartHelper(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "restart helper failed: %v\n", err)
-			return 1
-		}
-		return 0
-	}
-
 	robotlog.PrintfGreen("robot starting...\n")
 
 	configPath, configDir, err := runtimeConfigPaths()
@@ -89,7 +86,38 @@ func runMain() int {
 	if backendReinitialized {
 		robotlog.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
 	}
-	return runBackend(cfg, paths, backendInfo, backendSelection)
+	for {
+		code := runBackend(cfg, paths, backendInfo, backendSelection)
+		if code != 2 {
+			return code
+		}
+		cfg, err = config.LoadConfig(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "reload config error: %v\n", err)
+			return 1
+		}
+		cfg.ConfigDir = configDir
+		backendSelection, err = loadBackendSelection(paths.BackendSelection())
+		if err != nil {
+			return runRecoveryWeb(cfg, shared.BackendID(""), fmt.Sprintf("reload backend selection: %v", err))
+		}
+		backendInfo, err = backendregistry.Select(backendSelection.BackendID, runtime.GOOS)
+		if err != nil {
+			return runRecoveryWeb(cfg, backendSelection.BackendID, fmt.Sprintf("reload backend selection: %v", err))
+		}
+		if err := applyBackendSelectionSettings(cfg, backendSelection); err != nil {
+			return runRecoveryWeb(cfg, backendSelection.BackendID, fmt.Sprintf("reload backend settings: %v", err))
+		}
+		backendReinitialized, err = runtimeinit.PrepareBackendRuntime(paths, backendSelection)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "backend runtime preparation error: %v\n", err)
+			return 1
+		}
+		robotlog.LogString(fmt.Sprintf("BACKEND_SELECTED id=%s generation=%d selected_at=%s capabilities=%d\n", backendInfo.ID, backendSelection.ConfigGeneration, backendSelection.SelectedAt.UTC().Format(time.RFC3339), len(backendInfo.Capabilities)))
+		if backendReinitialized {
+			robotlog.LogString(fmt.Sprintf("BACKEND_RUNTIME_REINITIALIZED id=%s generation=%d\n", backendInfo.ID, backendSelection.ConfigGeneration))
+		}
+	}
 }
 
 func loadBackendSelection(path string) (shared.BackendSelection, error) {
@@ -137,11 +165,23 @@ func runRecoveryWeb(cfg *config.SysConfig, selected shared.BackendID, reason str
 	server := webadmin.NewRecoveryWithCatalog(
 		cfg, "", fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), selected, backendregistry.Available(), reason,
 	)
+	lifecycle := make(chan webadmin.LifecycleAction, 1)
+	server.SetLifecycleHandler(func(action webadmin.LifecycleAction) {
+		select {
+		case lifecycle <- action:
+		default:
+		}
+	})
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(ctx) }()
 	fmt.Printf("Robot setup is available at %s\n", recoveryWebURL(cfg.WebPort))
 	select {
 	case <-ctx.Done():
+		return 0
+	case action := <-lifecycle:
+		if action == webadmin.LifecycleReinitialize {
+			return 2
+		}
 		return 0
 	case err := <-errCh:
 		if err != nil {

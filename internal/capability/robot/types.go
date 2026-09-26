@@ -240,6 +240,45 @@ type DangerousDeleteResult struct {
 	Deleted        bool   `json:"deleted"`
 }
 
+type PopulationBucket struct {
+	Key     string  `json:"key"`
+	Count   int     `json:"count"`
+	Percent float64 `json:"percent"`
+}
+
+type PopulationArea struct {
+	Village     int     `json:"village"`
+	VillageName string  `json:"village_name,omitempty"`
+	Area        int     `json:"area"`
+	Count       int     `json:"count"`
+	Percent     float64 `json:"percent"`
+}
+
+type PopulationLoadout struct {
+	ExpectedSlots       int     `json:"expected_slots"`
+	FilledSlots         int     `json:"filled_slots"`
+	SlotCoveragePercent float64 `json:"slot_coverage_percent"`
+	FullCharacters      int     `json:"full_characters"`
+	FullPercent         float64 `json:"full_percent"`
+	SetCharacters       int     `json:"set_characters"`
+	SetPercent          float64 `json:"set_percent"`
+}
+
+type PopulationReport struct {
+	Accounts              int                `json:"accounts"`
+	Characters            int                `json:"characters"`
+	Genders               []PopulationBucket `json:"genders"`
+	Jobs                  []PopulationBucket `json:"jobs"`
+	Equipment             PopulationLoadout  `json:"equipment"`
+	Avatars               PopulationLoadout  `json:"avatars"`
+	AvailableAreas        int                `json:"available_areas"`
+	OccupiedAreas         int                `json:"occupied_areas"`
+	AreaCoveragePercent   float64            `json:"area_coverage_percent"`
+	UnknownAreaCharacters int                `json:"unknown_area_characters"`
+	Areas                 []PopulationArea   `json:"areas"`
+	GeneratedAt           time.Time          `json:"generated_at"`
+}
+
 func CleanupOperationSummary(res CleanupResult, err error) string {
 	if err != nil {
 		return err.Error()

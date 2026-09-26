@@ -130,7 +130,7 @@ func backupBackendRuntime(paths layout.Paths) (string, []backendRuntimeMove, err
 			return "", nil, err
 		}
 	}
-	for _, name := range []string{"robot_config.ini", "market_config.ini", "market_item_price_ranges.json", "compat.json", "party_compat.json"} {
+	for _, name := range []string{"robot_config.ini"} {
 		source := filepath.Join(paths.Conf, name)
 		target := filepath.Join(backup, "conf", name)
 		if err := move(source, target); err != nil {

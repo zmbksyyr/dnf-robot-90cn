@@ -13,7 +13,7 @@ func TestEmbeddedAssetsContainCoreS4A21UI(t *testing.T) {
 		required      []string
 	}{
 		{"index", indexHTML, []string{"openAutoDialog", "openBackendDialog", "runAction('robotsMove')", "runAction('robotsShout')"}},
-		{"javascript", appJS, []string{"robotsOnlineAsync", "robotsMove", "robotsShout", "robotsLogoutAsync", "cleanupRobotsAsync", "dangerousDeleteAsync", "backendCapabilities", "restartRobot"}},
+		{"javascript", appJS, []string{"robotsOnlineAsync", "robotsMove", "robotsShout", "robotsLogoutAsync", "cleanupRobotsAsync", "dangerousDeleteAsync", "backendCapabilities", "stopRobot"}},
 		{"i18n", i18nJS, []string{"I18N_MESSAGES", "toggleLanguage", "auto.target_online", "auto.shout_interval", "backend.recovery"}},
 	}
 	for _, check := range checks {
@@ -128,8 +128,8 @@ func TestDashboardRenderingOnlyReferencesPresentElements(t *testing.T) {
 	}
 }
 
-func TestBackendRecoveryAndExplicitRestartFlowRemainAvailable(t *testing.T) {
-	for _, want := range []string{"recovery_mode", "submitBackendSelection(true)", "restartRobot", "backendSettings", "backendCapabilities"} {
+func TestBackendRecoveryAndExplicitApplyFlowRemainAvailable(t *testing.T) {
+	for _, want := range []string{"recovery_mode", "submitBackendSettings", "backendSettings", "backendCapabilities"} {
 		if !strings.Contains(appJS, want) {
 			t.Errorf("backend recovery flow is missing %q", want)
 		}

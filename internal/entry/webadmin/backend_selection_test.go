@@ -118,7 +118,7 @@ func TestBackendSelectionPersistsSimulatorAndRequestsReinitialize(t *testing.T) 
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.OK || got.Selected != shared.BackendID("test") || !got.Persisted || !got.RestartRequired || !got.ReinitializeNeeded || got.ConfigGeneration != 1 {
+	if !got.OK || got.Selected != shared.BackendID("test") || !got.Persisted || got.RestartRequired || !got.ReinitializeNeeded || got.ConfigGeneration != 1 {
 		t.Fatalf("payload = %+v", got)
 	}
 	var simulator *shared.BackendInfo

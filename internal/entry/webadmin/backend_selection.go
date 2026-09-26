@@ -80,10 +80,11 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, backendSelectionPayload{OK: false, Platform: runtime.GOOS, Backends: backendCatalogForPlatform(s.backendCatalog, runtime.GOOS), Error: err.Error()})
 			return
 		}
-		payload := s.backendSelectionResponse(state, true, "backend selected; stop robot, back up and reinitialize runtime/config before restart")
-		payload.RestartRequired = true
+		payload := s.backendSelectionResponse(state, true, "settings saved; current runtime will finish and reinitialize")
+		payload.RestartRequired = false
 		payload.ReinitializeNeeded = true
 		writeJSON(w, payload)
+		go s.requestLifecycle(LifecycleReinitialize)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}

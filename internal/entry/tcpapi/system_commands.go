@@ -2,6 +2,7 @@ package tcpapi
 
 import (
 	"bytes"
+	"context"
 	"runtime"
 	"runtime/pprof"
 
@@ -53,6 +54,9 @@ func handleSystemCommand(cmd, pkt string, manager *scheduler.RobotManager) (stri
 	case "databaseStatus":
 		status := manager.DatabaseStatus()
 		return wrapResult(map[string]interface{}{"ok": status.Error == "", "error": status.Error, "result": status}), true
+	case "populationReport":
+		report, err := manager.PopulationReport(context.Background())
+		return wrapResult(map[string]interface{}{"ok": err == nil, "error": errString(err), "result": report}), true
 	default:
 		return "", false
 	}

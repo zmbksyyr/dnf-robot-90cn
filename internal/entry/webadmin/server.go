@@ -29,6 +29,26 @@ type Server struct {
 	backendCatalog     []shared.BackendInfo
 	recoveryMode       bool
 	recoveryReason     string
+	lifecycleHandler   func(LifecycleAction)
+}
+
+type LifecycleAction string
+
+const (
+	LifecycleReinitialize LifecycleAction = "reinitialize"
+	LifecycleStop         LifecycleAction = "stop"
+)
+
+func (s *Server) SetLifecycleHandler(handler func(LifecycleAction)) {
+	if s != nil {
+		s.lifecycleHandler = handler
+	}
+}
+
+func (s *Server) requestLifecycle(action LifecycleAction) {
+	if s != nil && s.lifecycleHandler != nil {
+		s.lifecycleHandler(action)
+	}
 }
 
 // NewRecovery creates the backend-neutral Web surface used when the persisted
@@ -137,7 +157,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	mux.HandleFunc("/logout", s.handleLogout)
 	mux.HandleFunc("/api/call", s.requireAuth(s.handleCall))
 	mux.HandleFunc("/api/game-port", s.requireAuth(s.handleGamePort))
-	mux.HandleFunc("/api/restart-robot", s.requireAuth(s.handleRestartRobot))
+	mux.HandleFunc("/api/stop-robot", s.requireAuth(s.handleStopRobot))
 	mux.HandleFunc("/api/backend", s.requireAuth(s.handleBackend))
 	server := &http.Server{
 		Addr:              s.webAddr,

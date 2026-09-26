@@ -16,7 +16,7 @@ func TestSimulatorDatabaseAccessIsIsolatedToPersistenceAdapter(t *testing.T) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
-		if entry.Name() == "loadout.go" || entry.Name() == "startup_inventory.go" || entry.Name() == "purge.go" || entry.Name() == "descriptor.go" {
+		if entry.Name() == "loadout.go" || entry.Name() == "startup_inventory.go" || entry.Name() == "purge.go" || entry.Name() == "population.go" || entry.Name() == "descriptor.go" {
 			continue
 		}
 		path := filepath.Join(".", entry.Name())

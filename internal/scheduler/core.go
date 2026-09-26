@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"net"
 	robotcap "robot/internal/capability/robot"
@@ -33,6 +34,7 @@ type RobotManager struct {
 	backendRobotCreator             BackendRobotCreator
 	backendRobotCleaner             BackendRobotCleaner
 	backendRobotPurger              BackendRobotPurger
+	backendPopulationInspector      BackendPopulationInspector
 	backendInfo                     shared.BackendInfo
 	backendLifecycleOwned           bool
 	persistenceInspector            shared.PersistenceInspector
@@ -150,6 +152,10 @@ type BackendRobotPurger interface {
 	ExecuteDangerousDelete(context.Context, robotcap.DangerousDeletePlan) (robotcap.DangerousDeleteResult, error)
 }
 
+type BackendPopulationInspector interface {
+	PopulationReport(context.Context) (robotcap.PopulationReport, error)
+}
+
 func (m *RobotManager) SetBackendRobotCreator(info shared.BackendInfo, creator BackendRobotCreator) {
 	if m != nil {
 		m.backendInfo = info
@@ -179,6 +185,22 @@ func (m *RobotManager) SetBackendRobotPurger(purger BackendRobotPurger) {
 	if m != nil {
 		m.backendRobotPurger = purger
 	}
+}
+
+func (m *RobotManager) SetBackendPopulationInspector(inspector BackendPopulationInspector) {
+	if m != nil {
+		m.backendPopulationInspector = inspector
+	}
+}
+
+func (m *RobotManager) PopulationReport(ctx context.Context) (robotcap.PopulationReport, error) {
+	if m == nil {
+		return robotcap.PopulationReport{}, fmt.Errorf("population inspector is not configured")
+	}
+	if m.backendPopulationInspector == nil {
+		return robotcap.PopulationReport{}, fmt.Errorf("backend %s population inspector is not configured", m.backendInfo.ID)
+	}
+	return m.backendPopulationInspector.PopulationReport(ctx)
 }
 
 func (m *RobotManager) SetBackendSessionTransport(transport BackendSessionTransport) {

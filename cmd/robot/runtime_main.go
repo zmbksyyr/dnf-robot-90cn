@@ -117,6 +117,9 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	manager.SetBackendRobotPurger(s4a21backend.SQLiteRobotPurger{
 		DatabasePath: loadoutDB, AccountPrefix: "robot", State: state, Sessions: transports.sessions,
 	})
+	manager.SetBackendPopulationInspector(s4a21backend.SQLitePopulationInspector{
+		DatabasePath: loadoutDB, AccountPrefix: "robot", Config: rc, Equipment: equipment, Maps: townMaps,
+	})
 	defer func() {
 		if err := manager.Shutdown(); err != nil {
 			foundationlog.Robotf("ADAPTER_MANAGER_SHUTDOWN_FAILED err=%v\n", err)
@@ -141,6 +144,13 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	defer tcpServer.Close()
 	webCtx, webCancel := context.WithCancel(context.Background())
 	webServer := webadmin.NewWithCatalog(cfg, fmt.Sprintf("127.0.0.1:%d", cfg.RobotPort), fmt.Sprintf("0.0.0.0:%d", cfg.WebPort), info.ID, backendregistry.Available())
+	lifecycle := make(chan webadmin.LifecycleAction, 1)
+	webServer.SetLifecycleHandler(func(action webadmin.LifecycleAction) {
+		select {
+		case lifecycle <- action:
+		default:
+		}
+	})
 	webDone := make(chan error, 1)
 	go func() { webDone <- webServer.Serve(webCtx) }()
 	defer func() {
@@ -160,9 +170,17 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
-	<-sigCh
-	foundationlog.Robotf("ROBOT_STOPPING backend=%s\n", info.ID)
-	return 0
+	select {
+	case action := <-lifecycle:
+		foundationlog.Robotf("ROBOT_CYCLE_END backend=%s action=%s\n", info.ID, action)
+		if action == webadmin.LifecycleReinitialize {
+			return 2
+		}
+		return 0
+	case <-sigCh:
+		foundationlog.Robotf("ROBOT_STOPPING backend=%s\n", info.ID)
+		return 0
+	}
 }
 
 func backendSetting(selection shared.BackendSelection, key string) string {
