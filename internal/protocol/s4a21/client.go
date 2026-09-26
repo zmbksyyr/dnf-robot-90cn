@@ -289,6 +289,9 @@ func (c *Client) readFrame() (Packet, error) {
 }
 
 func (c *Client) Run(ctx context.Context, onPacket func(Packet) error) error {
+	if c == nil || c.conn == nil {
+		return fmt.Errorf("s4a21 client is closed")
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}

@@ -36,4 +36,11 @@ func TestSendRejectsClosedClient(t *testing.T) {
 	if err := NewClient(nil).send(context.Background(), nil); err == nil {
 		t.Fatal("client without connection send succeeded")
 	}
+	if err := NewClient(nil).Run(context.Background(), nil); err == nil {
+		t.Fatal("client without connection Run succeeded")
+	}
+	var nilClient *Client
+	if err := nilClient.Run(context.Background(), nil); err == nil {
+		t.Fatal("nil client Run succeeded")
+	}
 }
