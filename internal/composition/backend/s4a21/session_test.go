@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"robot/internal/capability/robotstate"
 	protocol "robot/internal/protocol/s4a21"
 	"robot/internal/shared"
 )
@@ -55,6 +56,14 @@ func TestLiveSessionTownMoveAndShout(t *testing.T) {
 	if _, err := (Provisioner{Address: address}).ProvisionCharacter(context.Background(), shared.ProvisionCharacterRequest{AccountName: account, CharacterName: name, Job: 2}); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		deleted, err := (CharacterDeleter{Address: address}).DeleteCharacter(context.Background(), robotstate.Identity{
+			Backend: BackendID, Account: account, CharacterName: name,
+		})
+		if err != nil || !deleted {
+			t.Errorf("cleanup live session character: deleted=%t err=%v", deleted, err)
+		}
+	}()
 	session, err := (SessionFactory{Address: address}).OpenSession(context.Background(), shared.OpenSessionRequest{
 		AccountName: account, InitialTownKnown: true,
 		InitialVillage: 1, InitialArea: 0, InitialX: 480, InitialY: 240,
