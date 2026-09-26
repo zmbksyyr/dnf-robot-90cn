@@ -19,14 +19,28 @@ const robotOnlineConfirmBudget = 75 * time.Second
 const logoutBatchConcurrency = 32
 
 func (m *RobotManager) OnlineManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
+	result, err := m.dispatchOnlineUnderLock(req)
+	if err != nil || result.Requested == 0 {
+		return result, err
+	}
+	// Confirmation only reads runtime state. Waiting outside the structural
+	// lock keeps create/cleanup/dangerous-delete from stalling behind the
+	// full online confirmation budget.
+	m.waitManagedConfirm(&result, robotOnlineConfirmBudget)
+	return result, nil
+}
+
+// dispatchOnlineUnderLock selects and dispatches online commands while the
+// structural read lock is held. Commands are enqueued without waiting so the
+// lock is released as soon as the actor container is stable.
+func (m *RobotManager) dispatchOnlineUnderLock(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
 	m.mutationMu.RLock()
 	defer m.mutationMu.RUnlock()
-	registry, robots, rc, early, err := m.prepareUserActorCommand(req, "online", true)
+	registry, robots, _, early, err := m.prepareUserActorCommand(req, "online", true)
 	if err != nil || early != nil {
 		return resultOrZero(early), err
 	}
 	result := robotcap.NewCommandResult(len(robots))
-	timeout := time.Duration(rc.SystemManualActionTimeoutSec) * time.Second
 	for _, robot := range robots {
 		if !registry.HasUID(robot.UID) {
 			if !registry.AttachUID(robot.UID, 10*time.Second) {
@@ -35,7 +49,7 @@ func (m *RobotManager) OnlineManaged(req robotcap.CommandRequest) (robotcap.Comm
 				continue
 			}
 		}
-		item, ok := registry.Command(robot.UID, actormodel.CommandOnline, timeout)
+		item, ok := registry.Command(robot.UID, actormodel.CommandOnline, 0)
 		item.CID = robot.CID
 		if ok && (item.OK || item.State == robotcap.ActionStateAccepted || item.State == robotcap.ActionStateRunning) {
 			result.Accepted++
@@ -45,7 +59,6 @@ func (m *RobotManager) OnlineManaged(req robotcap.CommandRequest) (robotcap.Comm
 			result.Robots = append(result.Robots, failedActorResult(robot, item, "online actor command failed"))
 		}
 	}
-	m.waitManagedConfirm(&result, robotOnlineConfirmBudget)
 	return result, nil
 }
 

@@ -33,6 +33,11 @@ func (l *RWLocker) Lock() {
 	l.mu.Lock()
 }
 
+// TryLock reports whether the write lock was acquired without blocking.
+func (l *RWLocker) TryLock() bool {
+	return l.mu.TryLock()
+}
+
 func (l *RWLocker) Unlock() {
 	l.mu.Unlock()
 }

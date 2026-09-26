@@ -7,12 +7,15 @@ import (
 	actormodel "robot/internal/actor"
 	robotcap "robot/internal/capability/robot"
 	"robot/internal/capability/robotstate"
+	"robot/internal/shared"
 )
 
 type slowLogoutRuntime struct {
 	noopRuntime
-	delay    time.Duration
-	statuses map[int]robotcap.RuntimeStatus
+	delay         time.Duration
+	statuses      map[int]robotcap.RuntimeStatus
+	statusBlock   chan struct{}
+	statusEntered chan struct{}
 }
 
 func (r *slowLogoutRuntime) Logout(uid int) error {
@@ -20,9 +23,20 @@ func (r *slowLogoutRuntime) Logout(uid int) error {
 	return nil
 }
 
+func (r *slowLogoutRuntime) Online([]shared.RuntimeOnlineUser) error { return nil }
+
 func (r *slowLogoutRuntime) ForceClose(int) bool { return true }
 
 func (r *slowLogoutRuntime) RuntimeStatusMap() map[int]robotcap.RuntimeStatus {
+	if r.statusBlock != nil {
+		if r.statusEntered != nil {
+			select {
+			case r.statusEntered <- struct{}{}:
+			default:
+			}
+		}
+		<-r.statusBlock
+	}
 	return r.statuses
 }
 
