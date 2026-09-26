@@ -17,19 +17,22 @@ import (
 )
 
 type Server struct {
-	cfg                *config.SysConfig
-	robotAddr          string
-	webAddr            string
-	tokenMu            lockhub.RWLocker
-	tokens             map[string]time.Time
-	loginFailures      map[string]loginFailure
-	backendSelectionMu lockhub.Locker
-	backend            shared.BackendID
-	backendInfo        shared.BackendInfo
-	backendCatalog     []shared.BackendInfo
-	recoveryMode       bool
-	recoveryReason     string
-	lifecycleHandler   func(LifecycleAction)
+	cfg                     *config.SysConfig
+	robotAddr               string
+	webAddr                 string
+	tokenMu                 lockhub.RWLocker
+	tokens                  map[string]time.Time
+	loginFailures           map[string]loginFailure
+	loginGlobalCount        int
+	loginGlobalWindow       time.Time
+	loginGlobalBlockedUntil time.Time
+	backendSelectionMu      lockhub.Locker
+	backend                 shared.BackendID
+	backendInfo             shared.BackendInfo
+	backendCatalog          []shared.BackendInfo
+	recoveryMode            bool
+	recoveryReason          string
+	lifecycleHandler        func(LifecycleAction)
 }
 
 type LifecycleAction string
@@ -136,12 +139,12 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
-	mux.HandleFunc("/login", s.handleLogin)
-	mux.HandleFunc("/logout", s.handleLogout)
-	mux.HandleFunc("/api/call", s.requireAuth(s.handleCall))
+	mux.HandleFunc("/login", s.requireSameOrigin(s.handleLogin))
+	mux.HandleFunc("/logout", s.requireSameOrigin(s.handleLogout))
+	mux.HandleFunc("/api/call", s.requireAuth(s.requireSameOrigin(s.handleCall)))
 	mux.HandleFunc("/api/game-port", s.requireAuth(s.handleGamePort))
-	mux.HandleFunc("/api/stop-robot", s.requireAuth(s.handleStopRobot))
-	mux.HandleFunc("/api/backend", s.requireAuth(s.handleBackend))
+	mux.HandleFunc("/api/stop-robot", s.requireAuth(s.requireSameOrigin(s.handleStopRobot)))
+	mux.HandleFunc("/api/backend", s.requireAuth(s.requireSameOrigin(s.handleBackend)))
 	server := &http.Server{
 		Addr:              s.webAddr,
 		Handler:           s.withSecurityHeaders(s.withDiagnostics(mux)),

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -21,6 +22,9 @@ const (
 	loginBlockDuration = time.Minute
 	maxLoginFailures   = 5
 	maxLoginPeers      = 1024
+	// maxGlobalLoginFailures bounds total failures per window so source-address
+	// rotation cannot raise the effective guessing rate without limit.
+	maxGlobalLoginFailures = 30
 )
 
 type loginFailure struct {
@@ -53,7 +57,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
-	peer := loginPeer(r)
+	peer := s.loginPeer(r)
 	if retryAfter, blocked := s.loginBlocked(peer, time.Now()); blocked {
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", max(1, int(retryAfter.Seconds()))))
 		http.Error(w, "too many login failures", http.StatusTooManyRequests)
@@ -82,18 +86,71 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.writeLogin(w, "password error")
 }
 
-func loginPeer(r *http.Request) string {
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+// loginPeer resolves the client address used for login rate limiting. When the
+// direct peer is a configured trusted proxy, the rightmost untrusted address
+// from X-Forwarded-For is used so a reverse proxy does not collapse every
+// client into one rate-limit bucket.
+func (s *Server) loginPeer(r *http.Request) string {
+	host := remoteHost(r.RemoteAddr)
+	if s == nil || s.cfg == nil || len(s.cfg.WebTrustedProxies) == 0 || !trustedProxy(host, s.cfg.WebTrustedProxies) {
+		return host
+	}
+	for _, candidate := range splitForwardedFor(r.Header.Get("X-Forwarded-For")) {
+		if candidate == "" || trustedProxy(candidate, s.cfg.WebTrustedProxies) {
+			continue
+		}
+		return candidate
+	}
+	return host
+}
+
+func remoteHost(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
 	if err == nil && host != "" {
 		return host
 	}
-	return strings.TrimSpace(r.RemoteAddr)
+	return strings.TrimSpace(remoteAddr)
+}
+
+func splitForwardedFor(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		out = append(out, strings.TrimSpace(part))
+	}
+	return out
+}
+
+func trustedProxy(host string, trusted []string) bool {
+	ip := net.ParseIP(strings.TrimSpace(host))
+	if ip == nil {
+		return false
+	}
+	for _, entry := range trusted {
+		if candidate := net.ParseIP(entry); candidate != nil {
+			if candidate.Equal(ip) {
+				return true
+			}
+			continue
+		}
+		if _, network, err := net.ParseCIDR(entry); err == nil && network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) loginBlocked(peer string, now time.Time) (time.Duration, bool) {
 	s.tokenMu.Lock()
 	defer s.tokenMu.Unlock()
 	s.cleanupLoginFailuresLocked(now)
+	if now.Before(s.loginGlobalBlockedUntil) {
+		return s.loginGlobalBlockedUntil.Sub(now), true
+	}
 	failure, ok := s.loginFailures[peer]
 	if !ok || !now.Before(failure.blockedUntil) {
 		return 0, false
@@ -105,6 +162,16 @@ func (s *Server) recordLoginFailure(peer string, now time.Time) {
 	s.tokenMu.Lock()
 	defer s.tokenMu.Unlock()
 	s.cleanupLoginFailuresLocked(now)
+	if s.loginGlobalWindow.IsZero() || now.Sub(s.loginGlobalWindow) >= loginFailureWindow {
+		s.loginGlobalWindow = now
+		s.loginGlobalCount = 0
+	}
+	s.loginGlobalCount++
+	if s.loginGlobalCount >= maxGlobalLoginFailures {
+		s.loginGlobalBlockedUntil = now.Add(loginBlockDuration)
+		s.loginGlobalCount = 0
+		s.loginGlobalWindow = time.Time{}
+	}
 	failure := s.loginFailures[peer]
 	if failure.windowStart.IsZero() || now.Sub(failure.windowStart) >= loginFailureWindow {
 		failure = loginFailure{windowStart: now}
@@ -152,6 +219,10 @@ func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if c, err := r.Cookie("tw_web_token"); err == nil {
 		s.tokenMu.Lock()
 		delete(s.tokens, c.Value)
@@ -159,6 +230,28 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: "tw_web_token", Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// requireSameOrigin rejects state-changing requests whose Origin header names a
+// different host. Requests without Origin (non-browser clients) still rely on
+// the SameSite cookie policy, which already blocks cross-site cookie delivery.
+func (s *Server) requireSameOrigin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" && !sameOriginHost(origin, r.Host) {
+			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func sameOriginHost(origin, host string) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return strings.EqualFold(parsed.Host, host)
 }
 
 func (s *Server) writeLogin(w http.ResponseWriter, errText string) {
@@ -179,7 +272,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) authed(r *http.Request) bool {
-	if strings.TrimSpace(s.cfg.WebPassword) == "" {
+	if strings.TrimSpace(s.cfg.WebPassword) == "" && strings.TrimSpace(s.cfg.WebPasswordHash) == "" {
 		return false
 	}
 	c, err := r.Cookie("tw_web_token")

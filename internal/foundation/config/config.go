@@ -22,6 +22,7 @@ type SysConfig struct {
 	WebPort               int
 	WebPassword           string
 	WebPasswordHash       string
+	WebTrustedProxies     []string
 	LogMaxSizeMB          int
 	LogMaxBackups         int
 	MaxResponseBytes      int
@@ -80,6 +81,11 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 	// [Web] section
 	cfg.WebPassword = dec.String("Web", "WebPassword", "twadmin")
 	cfg.WebPasswordHash = strings.TrimSpace(dec.String("Web", "WebPasswordHash", ""))
+	trustedProxies, err := parseTrustedProxies(dec.String("Web", "TrustedProxies", ""))
+	if err != nil {
+		return nil, err
+	}
+	cfg.WebTrustedProxies = trustedProxies
 
 	// [system] section
 	cfg.LogMaxSizeMB = dec.Int("system", "log_max_size_mb", 100)
@@ -141,6 +147,33 @@ func preferredLocalIPv4() string {
 		}
 	}
 	return "127.0.0.1"
+}
+
+// parseTrustedProxies splits a comma-separated list of IPs or CIDR blocks that
+// may supply X-Forwarded-For. Empty entries are ignored; invalid entries fail
+// the configuration load instead of being silently dropped.
+func parseTrustedProxies(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	values := make([]string, 0)
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if net.ParseIP(entry) != nil {
+			values = append(values, entry)
+			continue
+		}
+		if _, _, err := net.ParseCIDR(entry); err == nil {
+			values = append(values, entry)
+			continue
+		}
+		return nil, fmt.Errorf("Web.TrustedProxies entry %q is not an IP or CIDR block", entry)
+	}
+	return values, nil
 }
 
 func usableLocalIPv4(ip net.IP) bool {
