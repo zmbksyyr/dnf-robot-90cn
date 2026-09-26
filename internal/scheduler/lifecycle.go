@@ -351,23 +351,41 @@ func (m *RobotManager) BeginOperationGuarded(typ, scope string, structural bool)
 	return op, err
 }
 
-func (m *RobotManager) beginTrackedStructuralOperation(typ, scope string) (robotcap.OperationStatus, func(string, error) robotcap.OperationStatus, error) {
+func (m *RobotManager) beginTrackedStructuralOperation(typ, scope string) (op robotcap.OperationStatus, finish func(string, error) robotcap.OperationStatus, err error) {
 	m.mutationMu.Lock()
-	op, err := m.BeginOperationGuarded(typ, scope, true)
+	locked := true
+	releaseLock := func() {
+		if locked {
+			locked = false
+			m.mutationMu.Unlock()
+		}
+	}
+	// A panic between Lock and the caller's deferred finish must not leave the
+	// structural write lock held forever.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			releaseLock()
+			op = robotcap.OperationStatus{}
+			finish = nil
+			err = fmt.Errorf("begin %s operation: %v", typ, recovered)
+		}
+	}()
+	op, err = m.BeginOperationGuarded(typ, scope, true)
 	if err != nil {
-		m.mutationMu.Unlock()
+		releaseLock()
 		return robotcap.OperationStatus{}, nil, err
 	}
 	done := m.beginStructuralOp(typ)
 	var finishOnce sync.Once
-	return op, func(summary string, opErr error) robotcap.OperationStatus {
+	finish = func(summary string, opErr error) robotcap.OperationStatus {
 		status := m.CompleteOperation(op.ID, summary, opErr)
 		finishOnce.Do(func() {
 			done()
-			m.mutationMu.Unlock()
+			releaseLock()
 		})
 		return status
-	}, nil
+	}
+	return op, finish, nil
 }
 
 func (m *RobotManager) CompleteOperation(id int64, summary string, err error) robotcap.OperationStatus {
