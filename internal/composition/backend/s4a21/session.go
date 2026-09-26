@@ -25,6 +25,12 @@ const sessionKeepaliveInterval = 5 * time.Second
 const townAreaTransitionTimeout = 5 * time.Second
 const guildInviteQueueSize = 4
 
+// sessionKeepaliveAckTimeout is how long the server may stop answering
+// CHECK_CONNECTION before the session is treated as half-open. Enforcement
+// only starts after at least one keepalive ACK has been observed, so a server
+// that answers only the login probe never triggers reconnect churn.
+var sessionKeepaliveAckTimeout = 6 * sessionKeepaliveInterval
+
 type Session struct {
 	client             *protocol.Client
 	cancel             context.CancelFunc
@@ -46,6 +52,9 @@ type Session struct {
 	partyID            uint16
 	partyLeaderUID     uint16
 	partyActive        bool
+	keepaliveGuard     lockhub.Locker
+	lastCheckAck       time.Time
+	checkAckSeen       bool
 }
 
 type packetObserverRegistration struct {
@@ -330,6 +339,9 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 	if s == nil {
 		return
 	}
+	if packet.Type == protocol.CmdCheckConnection {
+		s.recordCheckAck(time.Now())
+	}
 	s.followerGuard.Lock()
 	followerEvents := s.followerEvents
 	s.followerGuard.Unlock()
@@ -407,6 +419,11 @@ func (s *Session) keepalive(ctx context.Context) {
 				return
 			}
 		case <-ticker.C:
+			if s.keepaliveStalled(time.Now()) {
+				foundationlog.Robotf("S4A21_KEEPALIVE_STALLED uid=%d timeout=%s\n", s.selfUID, sessionKeepaliveAckTimeout)
+				s.abort()
+				return
+			}
 			pingCtx, cancel := context.WithTimeout(ctx, sessionKeepaliveInterval/2)
 			err := s.client.CheckConnection(pingCtx)
 			cancel()
@@ -416,6 +433,32 @@ func (s *Session) keepalive(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// recordCheckAck notes a CHECK_CONNECTION response. Enforcement of the
+// half-open timeout only starts after the first observed response.
+func (s *Session) recordCheckAck(now time.Time) {
+	if s == nil {
+		return
+	}
+	s.keepaliveGuard.Lock()
+	s.lastCheckAck = now
+	s.checkAckSeen = true
+	s.keepaliveGuard.Unlock()
+}
+
+// keepaliveStalled reports whether the server stopped answering keepalives for
+// longer than the configured timeout after having answered at least once.
+func (s *Session) keepaliveStalled(now time.Time) bool {
+	if s == nil {
+		return false
+	}
+	s.keepaliveGuard.Lock()
+	defer s.keepaliveGuard.Unlock()
+	if !s.checkAckSeen {
+		return false
+	}
+	return now.Sub(s.lastCheckAck) > sessionKeepaliveAckTimeout
 }
 
 func (s *Session) abort() {
