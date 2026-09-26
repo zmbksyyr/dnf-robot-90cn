@@ -101,6 +101,7 @@ type RobotManager struct {
 	shoutTemplateSnapshot           atomic.Pointer[robottemplate.ShoutTemplates]
 	nameTemplateSnapshot            atomic.Pointer[robottemplate.NameTemplates]
 	supervisor                      *RobotSupervisor
+	storePolicy                     shared.BackendStorePolicy
 	storePointsCoord                *storecap.PointCoordinator
 	worldHornCache                  *storecap.WorldHornCache
 	storePoolLock                   lockhub.Locker
@@ -247,6 +248,52 @@ func (m *RobotManager) SetTownMapCatalog(maps []shared.MapCatalogItem) {
 
 type storeTitlePathValue struct {
 	path string
+}
+
+// SetBackendStorePolicy installs the selected adapter's store semantics. The
+// scheduler keeps the orchestration; wire codes and shop constants stay in the
+// adapter.
+func (m *RobotManager) SetBackendStorePolicy(policy shared.BackendStorePolicy) {
+	if m == nil {
+		return
+	}
+	m.storePolicy = policy
+}
+
+// disjointStoreCost returns the adapter-declared disjoint-store gold cost.
+func (m *RobotManager) disjointStoreCost() uint32 {
+	if m == nil || m.storePolicy == nil {
+		return 0
+	}
+	return m.storePolicy.DisjointStoreCost()
+}
+
+// disjointFailure maps an adapter failure code to a stable reason string and
+// whether the same session may retry at another coordinate.
+func (m *RobotManager) disjointFailure(errCode byte) (string, bool) {
+	if m != nil && m.storePolicy != nil {
+		return m.storePolicy.DisjointFailure(errCode)
+	}
+	if errCode == 0 {
+		return "disjoint_failed", false
+	}
+	return fmt.Sprintf("disjoint_err_0x%02x", errCode), false
+}
+
+// disjointReasonRetryable decides whether a failure reason allows an in-session
+// coordinate retry. Scheduler-owned reasons keep their meaning; adapter-owned
+// reasons are classified by the adapter.
+func (m *RobotManager) disjointReasonRetryable(reason string) bool {
+	switch reason {
+	case "set_area_failed", "ack_timeout":
+		return true
+	}
+	if m != nil && m.storePolicy != nil {
+		if retry, known := m.storePolicy.DisjointReasonRetryable(reason); known {
+			return retry
+		}
+	}
+	return false
 }
 
 var errSchedulerStorageUnavailable = errors.New("scheduler robot state directory is not configured")

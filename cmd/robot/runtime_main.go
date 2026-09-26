@@ -92,6 +92,7 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	}
 	manager := scheduler.NewRobotManager(nil, cfg, nil)
 	manager.ConfigureBackendRuntime(info, s4a21backend.NewPersistenceInspector(loadoutDB), nil)
+	manager.SetBackendStorePolicy(s4a21backend.StorePolicy{})
 	manager.SetBackendRobotCreator(info, nil)
 	manager.SetRobotStateDirectory(state)
 	manager.SetBackendActionTransport(transports.actions)

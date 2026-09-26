@@ -43,16 +43,62 @@ func TestSetAutoEnabledReportsConfigPersistenceFailure(t *testing.T) {
 }
 
 func TestRetryDisjointInCurrentSessionOnlyForTransientPositionState(t *testing.T) {
+	// The adapter classifies its own wire codes; the scheduler keeps the
+	// semantics of its local reasons.
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendStorePolicy(s4a21TestStorePolicy{})
 	for _, reason := range []string{"set_area_failed", "ack_timeout", "disjoint_err_0x14", "disjoint_err_0x3e", "disjoint_err_0x52", "disjoint_err_0xbe"} {
-		if !retryDisjointInCurrentSession(reason) {
+		if !m.disjointReasonRetryable(reason) {
 			t.Fatalf("reason %q should retry in current session", reason)
 		}
 	}
 	for _, reason := range []string{"disjoint_err_0x0a", "disjoint_err_0x13", "disjoint_err_0x15", "disjoint_err_0x16", "runtime_stopped", "online_failed", "profession_failed"} {
-		if retryDisjointInCurrentSession(reason) {
+		if m.disjointReasonRetryable(reason) {
 			t.Fatalf("reason %q should stop current uid", reason)
 		}
 	}
+}
+
+func TestDisjointFailureClassificationFollowsAdapterPolicy(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	if reason, retry := m.disjointFailure(0x14); reason != "disjoint_err_0x14" || retry {
+		t.Fatalf("default classification = %q retry=%t, want neutral", reason, retry)
+	}
+	m.SetBackendStorePolicy(s4a21TestStorePolicy{})
+	if reason, retry := m.disjointFailure(0x14); reason != "disjoint_err_0x14" || !retry {
+		t.Fatalf("adapter classification = %q retry=%t, want retryable", reason, retry)
+	}
+	if m.disjointStoreCost() != 500 {
+		t.Fatalf("disjoint store cost = %d, want 500", m.disjointStoreCost())
+	}
+}
+
+// s4a21TestStorePolicy mirrors the adapter policy matrix without importing the
+// adapter package (scheduler must stay backend-neutral).
+type s4a21TestStorePolicy struct{}
+
+func (s4a21TestStorePolicy) DisjointStoreCost() uint32 { return 500 }
+
+func (s4a21TestStorePolicy) DisjointFailure(errCode byte) (string, bool) {
+	reason := "disjoint_failed"
+	if errCode != 0 {
+		reason = fmt.Sprintf("disjoint_err_0x%02x", errCode)
+	}
+	switch errCode {
+	case 0x14, 0x3e, 0x52, 0xbe:
+		return reason, true
+	}
+	return reason, false
+}
+
+func (s4a21TestStorePolicy) DisjointReasonRetryable(reason string) (bool, bool) {
+	switch reason {
+	case "disjoint_err_0x14", "disjoint_err_0x3e", "disjoint_err_0x52", "disjoint_err_0xbe":
+		return true, true
+	case "disjoint_failed":
+		return false, true
+	}
+	return false, false
 }
 
 func TestBeginAdaptiveStoreTypeBalancesPlannedStores(t *testing.T) {

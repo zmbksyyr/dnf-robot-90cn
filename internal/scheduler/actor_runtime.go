@@ -1,7 +1,6 @@
 package scheduler
 
 import (
-	"fmt"
 	actormodel "robot/internal/actor"
 	robotcap "robot/internal/capability/robot"
 	robotaction "robot/internal/capability/robotaction"
@@ -220,8 +219,6 @@ func (r *RobotRuntime) autoItemStore(st robotcap.RuntimeStatus, shouldStop func(
 	return robotcap.ActionResult{UID: st.UID, CID: st.CID, OK: false, State: robotcap.ActionStateStoreFailed}
 }
 
-const disjointStoreCostGold = 500
-
 func (r *RobotRuntime) autoDisjointStore(uid int, st robotcap.RuntimeStatus, shouldStop func() bool) robotcap.ActionResult {
 	rc := r.Config()
 	info := robotcap.Info{UID: uid, CID: st.CID, Village: st.Village, Area: st.Area, X: st.X, Y: st.Y, Port: r.manager.cfg.RobotGamePort}
@@ -294,7 +291,7 @@ func (r *RobotRuntime) autoDisjointStore(uid int, st robotcap.RuntimeStatus, sho
 				uid, info.CID, try, tries, pos.PointID, reason)
 			break
 		}
-		reuseSession = retryDisjointInCurrentSession(reason)
+		reuseSession = r.manager.disjointReasonRetryable(reason)
 		if !reuseSession {
 			break
 		}
@@ -340,7 +337,7 @@ func (r *RobotRuntime) tryDisjointPosition(info robotcap.Info, rc robotconfig.Ru
 		robotLogf("[DISJOINT_PROFESSION_ERROR] uid=%d cid=%d err=%v\n", info.UID, info.CID, err)
 		return false, "profession_failed"
 	}
-	if err := r.manager.schemaRepo().PrepareDisjointPosition(info, disjointStoreCostGold); err != nil {
+	if err := r.manager.schemaRepo().PrepareDisjointPosition(info, int(r.manager.disjointStoreCost())); err != nil {
 		robotLogf("[DISJOINT_POSITION_ERROR] uid=%d err=%v\n", info.UID, err)
 		return false, "prepare_failed"
 	}
@@ -355,7 +352,7 @@ func (r *RobotRuntime) tryDisjointPosition(info robotcap.Info, rc robotconfig.Ru
 	// The original high-success implementation queued CMD 238 on the login
 	// session. Sending it later from scheduler polling introduced a race with
 	// server-driven reconnects and turned them into runtime_stopped failures.
-	online, err := r.manager.sessionService().OnlineDisjoint(robotcap.CommandRequest{UIDs: []int{info.UID}}, disjointStoreCostGold, rc)
+	online, err := r.manager.sessionService().OnlineDisjoint(robotcap.CommandRequest{UIDs: []int{info.UID}}, r.manager.disjointStoreCost(), rc)
 	if err != nil || online.Accepted != 1 {
 		robotLogf("[DISJOINT_ONLINE_ERROR] uid=%d confirmed=%d failed=%d err=%v\n", info.UID, online.Confirmed, online.Failed, err)
 		return false, "online_failed"
@@ -377,7 +374,7 @@ func (r *RobotRuntime) tryDisjointPositionInCurrentSession(info robotcap.Info, s
 	if storecap.SleepWithStop(1800*time.Millisecond, shouldStop) {
 		return false, "cancelled"
 	}
-	if !r.manager.doll.StartDisjointStore(info.UID, disjointStoreCostGold) {
+	if !r.manager.doll.StartDisjointStore(info.UID, r.manager.disjointStoreCost()) {
 		return false, "start_failed"
 	}
 	r.manager.invalidateRuntimeStatusCache()
@@ -423,11 +420,12 @@ func (r *RobotRuntime) waitDisjointPositionResult(info robotcap.Info, shouldStop
 			if st.LastDisjointError != 0 {
 				robotLogf("[DISJOINT_ACK_ERROR] uid=%d type=%d sent=%t direct_ack=%t active=%t last_error=%d pos=%d/%d/%d/%d\n",
 					info.UID, st.RobotType, st.DisjointCreateSent, st.DisjointDirectAck, st.DisjointActive, st.LastDisjointError, st.Village, st.Area, st.X, st.Y)
-				return false, disjointErrorReason(st.LastDisjointError)
+				reason, _ := r.manager.disjointFailure(st.LastDisjointError)
+				return false, reason
 			}
 			if !compatibilitySendTried && !st.DisjointCreateSent && st.RobotType != 3 && time.Since(runningSince) >= 500*time.Millisecond {
 				compatibilitySendTried = true
-				if r.manager.doll.StartDisjointStore(info.UID, disjointStoreCostGold) {
+				if r.manager.doll.StartDisjointStore(info.UID, r.manager.disjointStoreCost()) {
 					robotLogf("[DISJOINT_LOGIN_FALLBACK_SENT] uid=%d cid=%d pos=%d/%d/%d/%d\n",
 						info.UID, info.CID, st.Village, st.Area, st.X, st.Y)
 				} else {
@@ -447,34 +445,6 @@ func (r *RobotRuntime) waitDisjointPositionResult(info robotcap.Info, shouldStop
 		robotLogf("[DISJOINT_ACK_TIMEOUT] uid=%d runtime_status=missing target=%d/%d/%d/%d\n", info.UID, info.Village, info.Area, info.X, info.Y)
 	}
 	return false, "ack_timeout"
-}
-
-func retryDisjointInCurrentSession(reason string) bool {
-	// Derived from the established server disjoint-store dispatcher and
-	// CDisjointer::OnCreateDisjointStore:
-	//   0x13: not in town-run state, already has a disjoint object, or in party.
-	//   0x14: CVillageObjectMgr::register_object rejected the machine.
-	//   0x16: disjoint-machine endurance <= 0; coordinates cannot repair it.
-	//   0x3e: the current area does not permit commercial transactions.
-	//   0x52: the coordinate is inside a restrictive transaction zone.
-	//   0xbe: private store busy, village 7, or is_available_point rejected it.
-	//   0x0a: invalid disjoint cost; 0x15: expert-job object pool exhausted.
-	//   -1/-2 (wire 0xff/0xfe): invalid user state or profession mismatch.
-	// Only coordinate-dependent failures remain in this session. Structural and
-	// profession-data failures stop immediately instead of causing retry storms.
-	switch reason {
-	case "set_area_failed", "ack_timeout", "disjoint_err_0x14", "disjoint_err_0x3e", "disjoint_err_0x52", "disjoint_err_0xbe":
-		return true
-	default:
-		return false
-	}
-}
-
-func disjointErrorReason(err byte) string {
-	if err == 0 {
-		return "disjoint_failed"
-	}
-	return fmt.Sprintf("disjoint_err_0x%02x", err)
 }
 
 func (r *RobotRuntime) ExpireStore(uid int) robotcap.ActionResult {
