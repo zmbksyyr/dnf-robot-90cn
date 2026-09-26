@@ -444,11 +444,6 @@ func packetTypes(packets []Packet) map[uint16]bool {
 	return types
 }
 
-func hasType(packets []Packet, typ uint16) bool {
-	_, ok := packetOfType(packets, typ)
-	return ok
-}
-
 func packetOfType(packets []Packet, typ uint16) (Packet, bool) {
 	for _, packet := range packets {
 		if packet.Type == typ {
@@ -456,13 +451,4 @@ func packetOfType(packets []Packet, typ uint16) (Packet, bool) {
 		}
 	}
 	return Packet{}, false
-}
-
-func hasPacket(packets []Packet, typ uint16, command byte) bool {
-	for _, packet := range packets {
-		if packet.Type == typ && packet.Command == command {
-			return true
-		}
-	}
-	return false
 }

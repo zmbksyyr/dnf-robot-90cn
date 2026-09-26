@@ -22,7 +22,6 @@ type partyUDPPeer struct {
 	codecRoute       [2]partyUDPCodec
 	codecKnown       [2]bool
 	nextSeqRoute     [2]uint32
-	reliableSeq      uint32
 	reliableSeqRoute [2]uint32
 	pending          []byte
 	pendingSeq       uint32

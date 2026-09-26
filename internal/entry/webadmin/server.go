@@ -121,32 +121,6 @@ func newServer(cfg *config.SysConfig, robotAddr, webAddr string, backend shared.
 	}
 }
 
-func (s *Server) rejectUnsupportedCapability(w http.ResponseWriter, operation shared.BackendCapability) bool {
-	if s != nil && s.supportsBackendCapability(operation) {
-		return false
-	}
-	backend := shared.BackendID("")
-	reason := "Web operation is unavailable for the selected backend"
-	if s != nil {
-		backend = s.backend
-		if status, ok := s.backendInfo.Capabilities[operation]; ok && status.Reason != "" {
-			reason = status.Reason
-		}
-	}
-	writeJSON(w, map[string]interface{}{
-		"ok":    false,
-		"error": shared.UnsupportedCapabilityError{Backend: backend, Operation: operation, Reason: reason}.Error(),
-	})
-	return true
-}
-
-func (s *Server) supportsBackendCapability(operation shared.BackendCapability) bool {
-	if s == nil || s.recoveryMode {
-		return false
-	}
-	return s.backendInfo.Supports(operation)
-}
-
 const (
 	webReadHeaderTimeout = 5 * time.Second
 	webReadTimeout       = 15 * time.Second

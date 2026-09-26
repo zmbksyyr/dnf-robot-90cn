@@ -133,11 +133,6 @@ func decodeRobotResult(raw string) (interface{}, error) {
 	return out, nil
 }
 
-func parseRobotResult(raw string) interface{} {
-	result, _ := decodeRobotResult(raw)
-	return result
-}
-
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	reportResponseWriteError(w, json.NewEncoder(w).Encode(v))

@@ -15,16 +15,15 @@ const dungeonFollowerPrepareTimeout = 5 * time.Second
 // EnableDungeonFollower explicitly opts a session into the small party
 // follower workflow. It persists the tutorial-skip flag through the server
 // protocol, accepts ordinary party invitations, and follows server-projected
-// START_MAP notifications. It never sends MOVE_MAP or combat packets.
-func (s *Session) EnableDungeonFollower(ctx context.Context) error {
+// START_MAP notifications. It never sends MOVE_MAP or combat packets. The
+// follower lifetime is owned by the session, so the caller's context is not
+// used for cancellation.
+func (s *Session) EnableDungeonFollower(_ context.Context) error {
 	if s == nil || s.client == nil {
 		return fmt.Errorf("S4A21 session is not ready")
 	}
 	if s.selfUID == 0 || s.selfUID == 0xFFFF {
 		return fmt.Errorf("S4A21 dungeon follower identity is unavailable")
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	events := make(chan protocol.Packet, 64)
 	s.followerGuard.Lock()

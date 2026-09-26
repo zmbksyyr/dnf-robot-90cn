@@ -530,17 +530,6 @@ func isActionResultType(expr ast.Expr) bool {
 	}
 }
 
-func isLogEventType(expr ast.Expr) bool {
-	switch x := expr.(type) {
-	case *ast.SelectorExpr:
-		return x.Sel.Name == "LogEvent"
-	case *ast.Ident:
-		return x.Name == "LogEvent"
-	default:
-		return false
-	}
-}
-
 func identNamed(expr ast.Expr, name string) bool {
 	ident, ok := expr.(*ast.Ident)
 	return ok && ident.Name == name

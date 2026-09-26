@@ -205,7 +205,3 @@ func runRecoveryWeb(cfg *config.SysConfig, selected shared.BackendID, reason str
 		return 0
 	}
 }
-
-func logRobotActionf(format string, args ...interface{}) {
-	foundationlog.Robotf(format, args...)
-}

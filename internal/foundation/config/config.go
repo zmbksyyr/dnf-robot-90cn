@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"robot/internal/foundation/atomicfile"
@@ -145,11 +144,6 @@ func preferredLocalIPv4() string {
 func usableLocalIPv4(ip net.IP) bool {
 	ip = ip.To4()
 	return ip != nil && !ip.IsUnspecified() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.IsMulticast()
-}
-
-func absoluteConfigPath(path string) bool {
-	path = strings.TrimSpace(path)
-	return filepath.IsAbs(path) || strings.HasPrefix(path, "/")
 }
 
 func generateDefaultConfig(path string) error {

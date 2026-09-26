@@ -25,18 +25,6 @@ func loadBackendTownMapCatalog(ctx context.Context, _ shared.BackendInfo, cfg *c
 	return (s4a21backend.TownMapCatalogProvider{PVFPath: path}).TownMapCatalog(ctx)
 }
 
-func exportBackendItemCatalogs(_ shared.BackendInfo, cfg *config.SysConfig, paths layout.Paths) error {
-	pvfPath, err := s4a21PVFPath(cfg.ServerDirectory)
-	if err != nil {
-		return err
-	}
-	equipment, stackable, err := s4a21backend.ReadItemCatalogs(pvfPath)
-	if err != nil {
-		return err
-	}
-	return exportItemCatalogs(paths, equipment, stackable)
-}
-
 func exportItemCatalogs(paths layout.Paths, equipment, stackable []shared.EquipmentCatalogItem) error {
 	if err := capabilitypvf.WriteJSON(paths.PVFEquipment(), equipment); err != nil {
 		return fmt.Errorf("write S4A21 equipment catalog: %w", err)

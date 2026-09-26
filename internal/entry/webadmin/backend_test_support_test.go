@@ -1,7 +1,6 @@
 package webadmin
 
 import (
-	"robot/internal/foundation/config"
 	"robot/internal/shared"
 )
 
@@ -23,8 +22,4 @@ func testBackendCatalog() []shared.BackendInfo {
 			{Key: "database_path", Label: "Database", InputType: "path"},
 		}},
 	}
-}
-
-func newTestServerForBackend(cfg *config.SysConfig, backend shared.BackendID) *Server {
-	return NewWithCatalog(cfg, "", "", backend, testBackendCatalog())
 }
