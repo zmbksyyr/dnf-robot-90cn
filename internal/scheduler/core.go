@@ -249,6 +249,8 @@ type storeTitlePathValue struct {
 	path string
 }
 
+var errSchedulerStorageUnavailable = errors.New("scheduler robot state directory is not configured")
+
 func NewRobotManager(database any, cfg *config.SysConfig, doll Runtime) *RobotManager {
 	if doll == nil {
 		doll = noopRuntime{}
@@ -291,25 +293,18 @@ func (m *RobotManager) SetRobotStateDirectory(directory robotstate.Directory) {
 	}
 }
 
-func (m *RobotManager) repo() SchedulerRepository {
-	if repository, ok := m.database.(SchedulerRepository); ok {
-		return repository
-	}
-	return missingRepository{}
-}
-
 func (m *RobotManager) ensureSchedulerStorage() error {
 	if m != nil && m.robotState != nil {
 		return nil
 	}
-	return m.repo().EnsureSchema()
+	return errSchedulerStorageUnavailable
 }
 
 func (m *RobotManager) selectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
 	if m.robotState != nil {
 		return m.robotState.SelectRobots(context.Background(), req)
 	}
-	return m.repo().SelectRobots(req)
+	return nil, errSchedulerStorageUnavailable
 }
 
 func (m *RobotManager) robotLocations() ([]shared.MapLocation, error) {
@@ -319,6 +314,10 @@ func (m *RobotManager) robotLocations() ([]shared.MapLocation, error) {
 	return m.schemaRepo().RobotLocations()
 }
 
+// schemaRepo returns the legacy embedded-database seam. Production wiring never
+// supplies it: the adapter injects robotstate.Directory plus a backend creator,
+// and only tests use this interface to exercise create/store paths. See ARC-003
+// for the planned migration to adapter capability ports.
 func (m *RobotManager) schemaRepo() SchemaRepository {
 	if repository, ok := m.database.(SchemaRepository); ok {
 		return repository
@@ -374,11 +373,11 @@ func (m *RobotManager) stopAndWaitBackgroundWork() {
 	m.backgroundWG.Wait()
 }
 
-type SchedulerRepository interface {
-	SelectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error)
-	EnsureSchema() error
-}
-
+// SchemaRepository is the legacy embedded-database surface used by lifecycle,
+// store and status paths. It is not wired in production (the S4A21 adapter
+// supplies robotstate.Directory and a backend creator instead); tests use it as
+// a seam. Migrating these calls to adapter capability ports is tracked as
+// ARC-003.
 type SchemaRepository interface {
 	InsertIgnore(table string, values map[string]interface{}) error
 	InsertIgnoreIfTableExists(table string, values map[string]interface{}) error
@@ -464,16 +463,6 @@ type StoreRuntime interface {
 
 type AreaRuntime interface {
 	SetArea(uid int, village, area int, x, y int) bool
-}
-
-type missingRepository struct{}
-
-func (missingRepository) SelectRobots(robotcap.CommandRequest) ([]robotcap.Info, error) {
-	return nil, errors.New("scheduler repository is not configured")
-}
-
-func (missingRepository) EnsureSchema() error {
-	return errors.New("scheduler repository is not configured")
 }
 
 type missingSchemaRepository struct{}

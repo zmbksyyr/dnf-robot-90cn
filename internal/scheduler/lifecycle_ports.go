@@ -51,7 +51,7 @@ func (e lifecycleCreateEnv) EnsureWorldHornByCID(cid int) error {
 }
 
 func (e lifecycleCreateEnv) EnsureSchema() error {
-	return e.manager.repo().EnsureSchema()
+	return e.manager.ensureSchedulerStorage()
 }
 
 func (e lifecycleCreateEnv) RecoverIncompleteCreateBatches() error {
@@ -170,7 +170,7 @@ func (e lifecycleCleanupEnv) CleanupCandidates(req robotcap.CleanupRequest) ([]r
 }
 
 func (e lifecycleCleanupEnv) EnsureSchema() error {
-	return e.manager.repo().EnsureSchema()
+	return e.manager.ensureSchedulerStorage()
 }
 
 func (e lifecycleCleanupEnv) PrepareDelete(uids []int) func() {
