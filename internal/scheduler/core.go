@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	robotcap "robot/internal/capability/robot"
-	robotconfig "robot/internal/capability/robotconfig"
-	lifecyclecap "robot/internal/capability/robotlifecycle"
 	robotstate "robot/internal/capability/robotstate"
 	robottemplate "robot/internal/capability/robottemplate"
 	storecap "robot/internal/capability/store"
@@ -17,9 +19,6 @@ import (
 	"robot/internal/foundation/lockhub"
 	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 type RobotManager struct {
@@ -102,6 +101,8 @@ type RobotManager struct {
 	nameTemplateSnapshot            atomic.Pointer[robottemplate.NameTemplates]
 	supervisor                      *RobotSupervisor
 	storePolicy                     shared.BackendStorePolicy
+	followAccountLocator            shared.FollowAccountLocator
+	accountOnlineChecker            shared.AccountOnlineChecker
 	storePointsCoord                *storecap.PointCoordinator
 	worldHornCache                  *storecap.WorldHornCache
 	storePoolLock                   lockhub.Locker
@@ -260,6 +261,40 @@ func (m *RobotManager) SetBackendStorePolicy(policy shared.BackendStorePolicy) {
 	m.storePolicy = policy
 }
 
+// SetBackendFollowAccountLocator installs the adapter's follow-account lookup.
+func (m *RobotManager) SetBackendFollowAccountLocator(locator shared.FollowAccountLocator) {
+	if m == nil {
+		return
+	}
+	m.followAccountLocator = locator
+}
+
+// SetBackendAccountOnlineChecker installs the adapter's account-online probe.
+func (m *RobotManager) SetBackendAccountOnlineChecker(checker shared.AccountOnlineChecker) {
+	if m == nil {
+		return
+	}
+	m.accountOnlineChecker = checker
+}
+
+// lookupFollowAccountVillage queries the adapter for the follow account's last
+// played village. Without an adapter implementation the follow target is
+// unavailable.
+func (m *RobotManager) lookupFollowAccountVillage(account string) (int, bool, error) {
+	if m == nil || m.followAccountLocator == nil {
+		return 0, false, errSchedulerStorageUnavailable
+	}
+	return m.followAccountLocator.FollowAccountVillageLastPlayed(context.Background(), account)
+}
+
+// accountOnline asks the adapter whether the account still has a session.
+func (m *RobotManager) accountOnline(uid int) (bool, error) {
+	if m == nil || m.accountOnlineChecker == nil {
+		return false, errSchedulerStorageUnavailable
+	}
+	return m.accountOnlineChecker.AccountOnline(uid)
+}
+
 // disjointStoreCost returns the adapter-declared disjoint-store gold cost.
 func (m *RobotManager) disjointStoreCost() uint32 {
 	if m == nil || m.storePolicy == nil {
@@ -358,18 +393,7 @@ func (m *RobotManager) robotLocations() ([]shared.MapLocation, error) {
 	if m.robotState != nil {
 		return m.robotState.RobotLocations(context.Background())
 	}
-	return m.schemaRepo().RobotLocations()
-}
-
-// schemaRepo returns the legacy embedded-database seam. Production wiring never
-// supplies it: the adapter injects robotstate.Directory plus a backend creator,
-// and only tests use this interface to exercise create/store paths. See ARC-003
-// for the planned migration to adapter capability ports.
-func (m *RobotManager) schemaRepo() SchemaRepository {
-	if repository, ok := m.database.(SchemaRepository); ok {
-		return repository
-	}
-	return missingSchemaRepository{}
+	return nil, errSchedulerStorageUnavailable
 }
 
 func (m *RobotManager) positionRepo() robotPositionWriter {
@@ -420,60 +444,6 @@ func (m *RobotManager) stopAndWaitBackgroundWork() {
 	m.backgroundWG.Wait()
 }
 
-// SchemaRepository is the legacy embedded-database surface used by lifecycle,
-// store and status paths. It is not wired in production (the selected adapter
-// supplies a robot state directory and a backend creator instead); tests use it
-// as a seam. Migrating these calls to adapter capability ports is tracked as
-// ARC-003.
-type SchemaRepository interface {
-	InsertIgnore(table string, values map[string]interface{}) error
-	InsertIgnoreIfTableExists(table string, values map[string]interface{}) error
-	TableColumns(table string) (map[string]bool, error)
-	TableExists(table string) (bool, error)
-	DeleteByIntIfTableExists(table, col string, id int) error
-	NextInt(query string, fallback int) (int, error)
-	AvailableRobotUIDs(count, start, end int) ([]int, error)
-	AccountAutoIncrement() (int, error)
-	PrepareRobotUIDRange(uidStart, uidEnd, uidGuard int) error
-	AllocateRobotIDs(count, uidStart, uidEnd int) (lifecyclecap.RobotIDAllocation, error)
-	CharacterNameExists(dbName string) (bool, error)
-	EnsureAccount(uid int, innerIP string) error
-	ClearTradePunish(uid int) (int64, error)
-	CreateBaseCharacter(info robotcap.Info, rc robotconfig.RuntimeConfig) error
-	SaveEquipmentSlots(cid int, raw []byte) error
-	ReplaceAvatarItems(cid int, selected map[int]shared.EquipmentCatalogItem) error
-	ReplacePetItems(cid int, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) error
-	MarkStoreStarted(uid int) error
-	PrepareStorePosition(info robotcap.Info) error
-	PrepareDisjointPosition(info robotcap.Info, cost int) error
-	RestoreDummyNormal(info robotcap.Info) error
-	SyncCharacterVillage(cid int, village int) (int, error)
-	LoadInventory(cid int) ([]byte, error)
-	SaveInventory(cid int, capacity int, raw []byte) error
-	SaveInventoryRaw(cid int, raw []byte) error
-	ReplaceStoreStall(uid int, title string, items []storecap.StallItem) (storecap.StallResult, error)
-	EnsureStorePermission(uid, cid int) (storecap.PermissionStatus, error)
-	AccountOnline(uid int) (bool, error)
-	EnsureDisjointProfession(info robotcap.Info) error
-	RevokeStorePermission(uid, cid int) error
-	FollowAccountVillageLastPlayed(account string) (int, bool, error)
-	RobotCharacterName(uid int) (string, error)
-	AliveRobotUIDs(uids []int) (map[int]bool, error)
-	RobotStatusRows(req robotcap.CommandRequest) ([]robotcap.StatusItem, int, error)
-	RobotLocations() ([]shared.MapLocation, error)
-	CleanupCandidates(req robotcap.CleanupRequest) ([]robotcap.CleanupCandidate, error)
-	BatchDeleteRobotData(uids, cids []int) error
-	BatchDeleteRobotMetadata(uids []int) error
-	UpsertDummy(info robotcap.Info, innerIP string) error
-	RegisterRobot(info robotcap.Info) error
-	RebuildCharacView(uid int) error
-	CopyTemplateDefaults(cid int) error
-	RecoverIncompleteCreateBatches() error
-	BeginCreateBatch(batchID string, uids, cids []int) error
-	CompleteCreateBatch(batchID string) error
-	RollbackCreateBatch(batchID string) error
-}
-
 type Runtime interface {
 	SessionRuntime
 	MoveRuntime
@@ -512,193 +482,10 @@ type AreaRuntime interface {
 	SetArea(uid int, village, area int, x, y int) bool
 }
 
-type missingSchemaRepository struct{}
-
-func (missingSchemaRepository) InsertIgnore(string, map[string]interface{}) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) InsertIgnoreIfTableExists(string, map[string]interface{}) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) TableColumns(string) (map[string]bool, error) {
-	return nil, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) TableExists(string) (bool, error) {
-	return false, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) DeleteByIntIfTableExists(string, string, int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) NextInt(string, int) (int, error) {
-	return 0, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) AvailableRobotUIDs(int, int, int) ([]int, error) {
-	return nil, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) AccountAutoIncrement() (int, error) {
-	return 0, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) PrepareRobotUIDRange(int, int, int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) AllocateRobotIDs(int, int, int) (lifecyclecap.RobotIDAllocation, error) {
-	return lifecyclecap.RobotIDAllocation{}, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) CharacterNameExists(string) (bool, error) {
-	return false, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) EnsureAccount(int, string) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) ClearTradePunish(int) (int64, error) {
-	return 0, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) CreateBaseCharacter(robotcap.Info, robotconfig.RuntimeConfig) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) SaveEquipmentSlots(int, []byte) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) ReplaceAvatarItems(int, map[int]shared.EquipmentCatalogItem) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) ReplacePetItems(int, shared.EquipmentCatalogItem, map[int]shared.EquipmentCatalogItem) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) MarkStoreStarted(int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) PrepareStorePosition(robotcap.Info) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) PrepareDisjointPosition(robotcap.Info, int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) RestoreDummyNormal(robotcap.Info) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) SyncCharacterVillage(int, int) (int, error) {
-	return 0, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) LoadInventory(int) ([]byte, error) {
-	return nil, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) SaveInventory(int, int, []byte) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) SaveInventoryRaw(int, []byte) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) ReplaceStoreStall(int, string, []storecap.StallItem) (storecap.StallResult, error) {
-	return storecap.StallResult{}, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) EnsureStorePermission(int, int) (storecap.PermissionStatus, error) {
-	return storecap.PermissionStatus{}, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) AccountOnline(int) (bool, error) {
-	return false, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) EnsureDisjointProfession(robotcap.Info) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) RevokeStorePermission(int, int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
 type missingPositionRepository struct{}
 
 func (missingPositionRepository) UpdateRobotPositions(context.Context, []robotcap.PositionUpdate) error {
 	return errors.New("scheduler position repository is not configured")
-}
-
-func (missingSchemaRepository) FollowAccountVillageLastPlayed(string) (int, bool, error) {
-	return 0, false, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) RobotCharacterName(int) (string, error) {
-	return "", errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) AliveRobotUIDs([]int) (map[int]bool, error) {
-	return nil, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) RobotStatusRows(robotcap.CommandRequest) ([]robotcap.StatusItem, int, error) {
-	return nil, 0, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) RobotLocations() ([]shared.MapLocation, error) {
-	return nil, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) CleanupCandidates(robotcap.CleanupRequest) ([]robotcap.CleanupCandidate, error) {
-	return nil, errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) BatchDeleteRobotData([]int, []int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) BatchDeleteRobotMetadata([]int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) UpsertDummy(robotcap.Info, string) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) RegisterRobot(robotcap.Info) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) RebuildCharacView(int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) CopyTemplateDefaults(int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-
-func (missingSchemaRepository) RecoverIncompleteCreateBatches() error {
-	return errors.New("scheduler schema repository is not configured")
-}
-func (missingSchemaRepository) BeginCreateBatch(string, []int, []int) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-func (missingSchemaRepository) CompleteCreateBatch(string) error {
-	return errors.New("scheduler schema repository is not configured")
-}
-func (missingSchemaRepository) RollbackCreateBatch(string) error {
-	return errors.New("scheduler schema repository is not configured")
 }
 
 type noopRuntime struct{}

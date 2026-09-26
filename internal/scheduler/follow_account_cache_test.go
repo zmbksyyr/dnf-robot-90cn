@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"database/sql"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -10,36 +9,30 @@ import (
 	"robot/internal/foundation/config"
 )
 
-type followAccountTestRepository struct {
-	missingSchemaRepository
+type followAccountTestLocator struct {
 	village      int
 	villageCalls atomic.Int32
 	started      chan struct{}
 	release      chan struct{}
 }
 
-func (*followAccountTestRepository) Stats() sql.DBStats                { return sql.DBStats{} }
-func (*followAccountTestRepository) PingContext(context.Context) error { return nil }
-func (*followAccountTestRepository) QueryRowContext(context.Context, string, ...interface{}) *sql.Row {
-	return &sql.Row{}
-}
-
-func (r *followAccountTestRepository) FollowAccountVillageLastPlayed(string) (int, bool, error) {
-	if r.villageCalls.Add(1) == 1 && r.started != nil {
-		close(r.started)
+func (l *followAccountTestLocator) FollowAccountVillageLastPlayed(context.Context, string) (int, bool, error) {
+	if l.villageCalls.Add(1) == 1 && l.started != nil {
+		close(l.started)
 	}
-	if r.release != nil {
-		<-r.release
+	if l.release != nil {
+		<-l.release
 	}
-	return r.village, r.village > 0, nil
+	return l.village, l.village > 0, nil
 }
 
 func TestFollowAccountLookupCoalescesConcurrentMoves(t *testing.T) {
-	repo := &followAccountTestRepository{
+	locator := &followAccountTestLocator{
 		village: 3,
 		started: make(chan struct{}), release: make(chan struct{}),
 	}
-	manager := NewRobotManager(repo, &config.SysConfig{ConfigDir: t.TempDir()}, nil)
+	manager := NewRobotManager(nil, &config.SysConfig{ConfigDir: t.TempDir()}, nil)
+	manager.SetBackendFollowAccountLocator(locator)
 	t.Cleanup(func() { _ = manager.Shutdown() })
 
 	first := make(chan followAccountLookup, 1)
@@ -47,7 +40,7 @@ func TestFollowAccountLookupCoalescesConcurrentMoves(t *testing.T) {
 		lookup, _ := manager.loadFollowAccount("leader")
 		first <- lookup
 	}()
-	<-repo.started
+	<-locator.started
 
 	started := time.Now()
 	if _, ok := manager.loadFollowAccount("leader"); ok {
@@ -56,11 +49,11 @@ func TestFollowAccountLookupCoalescesConcurrentMoves(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
 		t.Fatalf("concurrent lookup blocked for %s", elapsed)
 	}
-	if repo.villageCalls.Load() != 1 {
-		t.Fatalf("village lookup calls during refresh = %d, want 1", repo.villageCalls.Load())
+	if locator.villageCalls.Load() != 1 {
+		t.Fatalf("village lookup calls during refresh = %d, want 1", locator.villageCalls.Load())
 	}
 
-	close(repo.release)
+	close(locator.release)
 	lookup := <-first
 	if !lookup.villageOK || lookup.village != 3 {
 		t.Fatalf("refreshed lookup = %+v", lookup)
@@ -70,7 +63,15 @@ func TestFollowAccountLookupCoalescesConcurrentMoves(t *testing.T) {
 			t.Fatal("fresh lookup was not cached")
 		}
 	}
-	if repo.villageCalls.Load() != 1 {
-		t.Fatalf("cached lookup queries village=%d, want 1", repo.villageCalls.Load())
+	if locator.villageCalls.Load() != 1 {
+		t.Fatalf("cached lookup queries village=%d, want 1", locator.villageCalls.Load())
+	}
+}
+
+func TestFollowAccountLookupReportsMissingLocator(t *testing.T) {
+	manager := NewRobotManager(nil, &config.SysConfig{ConfigDir: t.TempDir()}, nil)
+	t.Cleanup(func() { _ = manager.Shutdown() })
+	if _, ok := manager.loadFollowAccount("leader"); ok {
+		t.Fatal("lookup without an adapter locator reported success")
 	}
 }

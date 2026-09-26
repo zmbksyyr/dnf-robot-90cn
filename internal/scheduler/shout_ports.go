@@ -42,8 +42,9 @@ func (e shoutActionEnv) LookupRobotName(uid int) string {
 		}
 		return ""
 	}
-	name, _ := e.manager.schemaRepo().RobotCharacterName(uid)
-	return name
+	// Without the adapter robot state there is no name source; the shout falls
+	// back to the UID-only form.
+	return ""
 }
 
 func (e shoutActionEnv) RandBetween(min, max int) int {

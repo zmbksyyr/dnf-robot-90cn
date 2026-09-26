@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -51,22 +50,13 @@ func TestRobotRuntimeForceCloseUsesBackendSessionTransport(t *testing.T) {
 	}
 }
 
-type offlineSessionRepository struct {
-	missingSchemaRepository
+type offlineAccountChecker struct {
 	calls int
 }
 
-func (r *offlineSessionRepository) AccountOnline(int) (bool, error) {
-	r.calls++
+func (c *offlineAccountChecker) AccountOnline(int) (bool, error) {
+	c.calls++
 	return false, nil
-}
-
-func (*offlineSessionRepository) Stats() sql.DBStats { return sql.DBStats{} }
-
-func (*offlineSessionRepository) PingContext(context.Context) error { return nil }
-
-func (*offlineSessionRepository) QueryRowContext(context.Context, string, ...interface{}) *sql.Row {
-	return &sql.Row{}
 }
 
 func TestSessionReloginWaitsForSameUID(t *testing.T) {
@@ -340,9 +330,9 @@ func BenchmarkMarkSessionLogoutRateLimited(b *testing.B) {
 }
 
 func TestWaitAccountOfflineCompletesDelayedNoCacheBoundary(t *testing.T) {
-	repo := &offlineSessionRepository{}
+	checker := &offlineAccountChecker{}
 	m := testRobotManagerWithConfig(t, "")
-	m.database = repo
+	m.SetBackendAccountOnlineChecker(checker)
 	m.sessionReloginDelay = 10 * time.Second
 	m.markSessionLogout(17000001, time.Now())
 	invalidations := 0
@@ -362,8 +352,8 @@ func TestWaitAccountOfflineCompletesDelayedNoCacheBoundary(t *testing.T) {
 	if elapsed := time.Since(started); elapsed >= 3*time.Second {
 		t.Fatalf("offline boundary took %s, want NoCache fast path", elapsed)
 	}
-	if invalidations != 1 || repo.calls < 2 {
-		t.Fatalf("invalidations=%d account checks=%d, want one invalidation and stable offline confirmation", invalidations, repo.calls)
+	if invalidations != 1 || checker.calls < 2 {
+		t.Fatalf("invalidations=%d account checks=%d, want one invalidation and stable offline confirmation", invalidations, checker.calls)
 	}
 	if remaining := m.sessionReleaseRemaining(17000001); remaining != 0 {
 		t.Fatalf("remaining=%s, want cleared safety window", remaining)
@@ -371,9 +361,9 @@ func TestWaitAccountOfflineCompletesDelayedNoCacheBoundary(t *testing.T) {
 }
 
 func TestWaitAccountOfflineDoesNotRepeatCompletedNoCacheBoundary(t *testing.T) {
-	repo := &offlineSessionRepository{}
+	checker := &offlineAccountChecker{}
 	m := testRobotManagerWithConfig(t, "")
-	m.database = repo
+	m.SetBackendAccountOnlineChecker(checker)
 	m.sessionReloginDelay = 10 * time.Second
 	m.markSessionLogout(17000001, time.Now())
 	invalidations := 0
@@ -392,7 +382,7 @@ func TestWaitAccountOfflineDoesNotRepeatCompletedNoCacheBoundary(t *testing.T) {
 	if err != nil || cancelled {
 		t.Fatalf("waitAccountOffline cancelled=%v err=%v", cancelled, err)
 	}
-	if invalidations != 1 || repo.calls < 2 {
-		t.Fatalf("invalidations=%d account checks=%d, want no duplicate invalidation and stable offline confirmation", invalidations, repo.calls)
+	if invalidations != 1 || checker.calls < 2 {
+		t.Fatalf("invalidations=%d account checks=%d, want no duplicate invalidation and stable offline confirmation", invalidations, checker.calls)
 	}
 }

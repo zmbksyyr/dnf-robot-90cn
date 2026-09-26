@@ -38,8 +38,7 @@ func (m *RobotManager) loadFollowAccount(account string) (followAccountLookup, b
 }
 
 func (m *RobotManager) refreshFollowAccount(account string) {
-	repo := m.schemaRepo()
-	village, villageOK, villageErr := repo.FollowAccountVillageLastPlayed(account)
+	village, villageOK, villageErr := m.lookupFollowAccountVillage(account)
 	now := time.Now()
 
 	m.followLookupMu.Lock()

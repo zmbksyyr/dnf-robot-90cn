@@ -128,7 +128,7 @@ func (m *RobotManager) aliveRobotUIDs(uids []int) (map[int]bool, error) {
 		}
 		return alive, nil
 	}
-	return m.schemaRepo().AliveRobotUIDs(uids)
+	return nil, errSchedulerStorageUnavailable
 }
 
 func (s *RobotSupervisor) recycleActorUID(actor *actormodel.Actor, status actormodel.Status) {

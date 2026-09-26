@@ -29,7 +29,7 @@ func (m *RobotManager) waitAccountOffline(uid int, shouldStop func() bool) (bool
 		if shouldStop != nil && shouldStop() {
 			return true, nil
 		}
-		online, err := m.schemaRepo().AccountOnline(uid)
+		online, err := m.accountOnline(uid)
 		if err != nil {
 			return false, err
 		}

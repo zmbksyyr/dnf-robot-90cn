@@ -80,11 +80,7 @@ func (m *RobotManager) RobotsStatus(req robotcap.CommandRequest) (RobotStatusRes
 		}
 		total = len(items)
 	} else {
-		var err error
-		items, total, err = m.schemaRepo().RobotStatusRows(req)
-		if err != nil {
-			return RobotStatusResult{}, err
-		}
+		return RobotStatusResult{}, errSchedulerStorageUnavailable
 	}
 
 	out := RobotStatusResult{UpdatedAt: time.Now()}

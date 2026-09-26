@@ -21,17 +21,18 @@ import (
 // RuntimeBundle holds the assembled S4A21 runtime components. The composition
 // root installs them on the scheduler through the backend-neutral ports.
 type RuntimeBundle struct {
-	Inventory     StartupInventory
-	State         *robotstate.MemoryStore
-	Loadouts      *SQLiteLoadoutApplier
-	Transport     *ActionTransport
-	Creator       RobotCreator
-	Cleaner       RobotCleaner
-	Purger        SQLiteRobotPurger
-	Inspector     SQLitePopulationInspector
-	DatabasePath  string
-	TownMaps      []shared.MapCatalogItem
-	NameTemplates robottemplate.NameTemplates
+	Inventory      StartupInventory
+	State          *robotstate.MemoryStore
+	Loadouts       *SQLiteLoadoutApplier
+	Transport      *ActionTransport
+	Creator        RobotCreator
+	Cleaner        RobotCleaner
+	Purger         SQLiteRobotPurger
+	Inspector      SQLitePopulationInspector
+	DatabasePath   string
+	TownMaps       []shared.MapCatalogItem
+	NameTemplates  robottemplate.NameTemplates
+	FollowAccounts FollowAccountLocator
 }
 
 // Close releases the adapter-owned resources in shutdown order.
@@ -120,6 +121,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	bundle.Transport = transport
 	bundle.DatabasePath = databasePath
 	bundle.TownMaps = catalogs.TownMaps
+	bundle.FollowAccounts = FollowAccountLocator{DatabasePath: databasePath}
 	bundle.Creator = RobotCreator{
 		Provisioner: Provisioner{Address: address},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state,

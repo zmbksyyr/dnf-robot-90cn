@@ -16,9 +16,10 @@ func TestSimulatorDatabaseAccessIsIsolatedToPersistenceAdapter(t *testing.T) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
-		if entry.Name() == "loadout.go" || entry.Name() == "startup_inventory.go" || entry.Name() == "purge.go" || entry.Name() == "population.go" || entry.Name() == "descriptor.go" || entry.Name() == "runtime_assembly.go" {
+		if entry.Name() == "loadout.go" || entry.Name() == "startup_inventory.go" || entry.Name() == "purge.go" || entry.Name() == "population.go" || entry.Name() == "descriptor.go" || entry.Name() == "runtime_assembly.go" || entry.Name() == "follow_account.go" {
 			// runtime_assembly.go owns the database path derivation and the
-			// startup inventory composition; both are persistence concerns.
+			// startup inventory composition; follow_account.go is the adapter's
+			// read-only follow-account lookup. Both are persistence concerns.
 			continue
 		}
 		path := filepath.Join(".", entry.Name())

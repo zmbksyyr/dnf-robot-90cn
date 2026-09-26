@@ -14,9 +14,10 @@ import (
 )
 
 func (m *RobotManager) robotName(uid, job, grow int, used map[string]struct{}, rc robotconfig.RuntimeConfig) string {
-	return robottemplate.AllocateName(uid, job, grow, used, rc, m.loadNameTemplates(), func(dbName string) bool {
-		exists, _ := m.schemaRepo().CharacterNameExists(dbName)
-		return exists
+	return robottemplate.AllocateName(uid, job, grow, used, rc, m.loadNameTemplates(), func(string) bool {
+		// Legacy lifecycle name allocation has no database name source; the
+		// adapter creation path performs its own collision checks.
+		return false
 	}, m.randBetween)
 }
 
@@ -55,7 +56,7 @@ func (m *RobotManager) equipFromCatalog(cid int, level int, job int, rc robotcon
 	if equipcap.EquipmentSlotsNeedRepair(raw, equipmentCatalogByID(items), level, job, rc) {
 		return fmt.Errorf("generated equipment is incomplete or invalid for cid=%d level=%d job=%d", cid, level, job)
 	}
-	return m.schemaRepo().SaveEquipmentSlots(cid, raw)
+	return errSchedulerStorageUnavailable
 }
 
 func equipmentCatalogByID(items []shared.EquipmentCatalogItem) map[int]shared.EquipmentCatalogItem {
@@ -76,7 +77,7 @@ func (m *RobotManager) avatarFromCatalog(cid int, level int, job int, rc robotco
 	if rc.MinAvatarSlots > 0 && len(selected) < rc.MinAvatarSlots {
 		return nil
 	}
-	return m.schemaRepo().ReplaceAvatarItems(cid, selected)
+	return errSchedulerStorageUnavailable
 }
 
 func (m *RobotManager) petFromCatalog(cid int, rc robotconfig.RuntimeConfig, items []shared.EquipmentCatalogItem) error {
@@ -91,7 +92,7 @@ func (m *RobotManager) petFromCatalog(cid int, rc robotconfig.RuntimeConfig, ite
 	if rc.PetArtifactEnabled && len(artifacts) < rc.MinPetArtifactSlots {
 		robotLogf("[RobotCreate] optional pet artifacts below minimum cid=%d selected=%d minimum=%d\n", cid, len(artifacts), rc.MinPetArtifactSlots)
 	}
-	if err := m.schemaRepo().ReplacePetItems(cid, pet, artifacts); err != nil {
+	if err := errSchedulerStorageUnavailable; err != nil {
 		robotLogf("[RobotCreate] optional pet write skipped cid=%d pet_id=%d artifacts=%d err=%v\n", cid, pet.ID, len(artifacts), err)
 	}
 	return nil
@@ -127,7 +128,7 @@ type spawnEnv struct {
 }
 
 func (e spawnEnv) FollowAccountVillage(account string) (int, bool, error) {
-	return e.manager.schemaRepo().FollowAccountVillageLastPlayed(account)
+	return e.manager.lookupFollowAccountVillage(account)
 }
 
 func (e spawnEnv) RandBetween(min, max int) int {

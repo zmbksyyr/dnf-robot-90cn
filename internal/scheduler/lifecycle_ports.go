@@ -18,7 +18,7 @@ type lifecycleCreateEnv struct {
 }
 
 func (e lifecycleCreateEnv) AllocateRobotIDs(count, uidStart, uidEnd int) (lifecyclecap.RobotIDAllocation, error) {
-	return e.manager.schemaRepo().AllocateRobotIDs(count, uidStart, uidEnd)
+	return lifecyclecap.RobotIDAllocation{}, errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) AvatarFromCatalog(cid int, level int, job int, rc robotconfig.RuntimeConfig, items []shared.EquipmentCatalogItem) error {
@@ -34,16 +34,16 @@ func (e lifecycleCreateEnv) Config() robotconfig.RuntimeConfig {
 }
 
 func (e lifecycleCreateEnv) CopyTemplateDefaults(cid int) error {
-	return e.manager.schemaRepo().CopyTemplateDefaults(cid)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) CreateBaseCharacter(info robotcap.Info, rc robotconfig.RuntimeConfig) error {
-	return e.manager.schemaRepo().CreateBaseCharacter(info, rc)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) EnsureAccount(uid int, innerIP string) error {
 	e.manager.invalidateLoginRepairs([]int{uid})
-	return e.manager.schemaRepo().EnsureAccount(uid, innerIP)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) EnsureWorldHornByCID(cid int) error {
@@ -55,19 +55,19 @@ func (e lifecycleCreateEnv) EnsureSchema() error {
 }
 
 func (e lifecycleCreateEnv) RecoverIncompleteCreateBatches() error {
-	return e.manager.schemaRepo().RecoverIncompleteCreateBatches()
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) BeginCreateBatch(batchID string, uids, cids []int) error {
-	return e.manager.schemaRepo().BeginCreateBatch(batchID, uids, cids)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) CompleteCreateBatch(batchID string) error {
-	return e.manager.schemaRepo().CompleteCreateBatch(batchID)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) RollbackCreateBatch(batchID string) error {
-	return e.manager.schemaRepo().RollbackCreateBatch(batchID)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) EquipFromCatalog(cid int, level int, job int, rc robotconfig.RuntimeConfig, items []shared.EquipmentCatalogItem) error {
@@ -92,15 +92,15 @@ func (e lifecycleCreateEnv) RobotLocations() ([]shared.MapLocation, error) {
 }
 
 func (e lifecycleCreateEnv) PrepareRobotUIDRange(uidStart, uidEnd, uidGuard int) error {
-	return e.manager.schemaRepo().PrepareRobotUIDRange(uidStart, uidEnd, uidGuard)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) RebuildCharacView(uid int) error {
-	return e.manager.schemaRepo().RebuildCharacView(uid)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) RegisterRobot(info robotcap.Info) error {
-	return e.manager.schemaRepo().RegisterRobot(info)
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCreateEnv) RandomFrom(vals []int) int {
@@ -134,7 +134,7 @@ func (e lifecycleCreateEnv) RobotName(uid, job, grow int, used map[string]struct
 }
 
 func (e lifecycleCreateEnv) UpsertDummy(info robotcap.Info, innerIP string) error {
-	return e.manager.schemaRepo().UpsertDummy(info, innerIP)
+	return errSchedulerStorageUnavailable
 }
 
 func (m *RobotManager) lifecycleCleaner(req robotcap.CleanupRequest) lifecyclecap.Cleaner {
@@ -146,27 +146,23 @@ type lifecycleCleanupEnv struct {
 	request robotcap.CleanupRequest
 }
 
+// BatchDeleteRobotData reports the legacy cleanup boundary as unavailable.
+// Caches are dropped first so a later adapter-backed path starts fresh.
 func (e lifecycleCleanupEnv) BatchDeleteRobotData(uids, cids []int) error {
-	if err := e.manager.schemaRepo().BatchDeleteRobotData(uids, cids); err != nil {
-		return err
-	}
 	for _, cid := range cids {
 		e.manager.worldHornCache.Invalidate(cid)
 	}
 	e.manager.invalidateLoginRepairs(uids)
-	return nil
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCleanupEnv) BatchDeleteRobotMetadata(uids []int) error {
-	if err := e.manager.schemaRepo().BatchDeleteRobotMetadata(uids); err != nil {
-		return err
-	}
 	e.manager.invalidateLoginRepairs(uids)
-	return nil
+	return errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCleanupEnv) CleanupCandidates(req robotcap.CleanupRequest) ([]robotcap.CleanupCandidate, error) {
-	return e.manager.schemaRepo().CleanupCandidates(req)
+	return nil, errSchedulerStorageUnavailable
 }
 
 func (e lifecycleCleanupEnv) EnsureSchema() error {

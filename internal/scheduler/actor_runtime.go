@@ -333,31 +333,11 @@ func (r *RobotRuntime) tryDisjointPosition(info robotcap.Info, rc robotconfig.Ru
 	if cancelled {
 		return false, "cancelled"
 	}
-	if err := r.manager.schemaRepo().EnsureDisjointProfession(info); err != nil {
-		robotLogf("[DISJOINT_PROFESSION_ERROR] uid=%d cid=%d err=%v\n", info.UID, info.CID, err)
-		return false, "profession_failed"
-	}
-	if err := r.manager.schemaRepo().PrepareDisjointPosition(info, int(r.manager.disjointStoreCost())); err != nil {
-		robotLogf("[DISJOINT_POSITION_ERROR] uid=%d err=%v\n", info.UID, err)
-		return false, "prepare_failed"
-	}
-	if _, err := r.manager.schemaRepo().SyncCharacterVillage(info.CID, info.Village); err != nil {
-		robotLogf("[DISJOINT_VILLAGE_ERROR] uid=%d cid=%d village=%d err=%v\n", info.UID, info.CID, info.Village, err)
-		return false, "prepare_failed"
-	}
-	if err := r.manager.invalidateCharacterCache(info.UID); err != nil {
-		robotLogf("[DISJOINT_CACHE_INVALIDATION_ERROR] uid=%d cid=%d err=%v\n", info.UID, info.CID, err)
-		return false, "cache_invalidation_failed"
-	}
-	// The original high-success implementation queued CMD 238 on the login
-	// session. Sending it later from scheduler polling introduced a race with
-	// server-driven reconnects and turned them into runtime_stopped failures.
-	online, err := r.manager.sessionService().OnlineDisjoint(robotcap.CommandRequest{UIDs: []int{info.UID}}, r.manager.disjointStoreCost(), rc)
-	if err != nil || online.Accepted != 1 {
-		robotLogf("[DISJOINT_ONLINE_ERROR] uid=%d confirmed=%d failed=%d err=%v\n", info.UID, online.Confirmed, online.Failed, err)
-		return false, "online_failed"
-	}
-	return r.waitDisjointPositionResult(info, shouldStop, true)
+	// Disjoint-store persistence is adapter-owned. Without an installed
+	// persistence port the capability is disabled, so the profession and
+	// position writes must not be faked here.
+	robotLogf("[DISJOINT_PERSISTENCE_UNAVAILABLE] uid=%d cid=%d\n", info.UID, info.CID)
+	return false, "profession_failed"
 }
 
 func (r *RobotRuntime) tryDisjointPositionInCurrentSession(info robotcap.Info, shouldStop func() bool) (bool, string) {

@@ -57,7 +57,7 @@ func (e storeWorkflowEnv) Logout(req robotcap.CommandRequest) (robotcap.CommandR
 }
 
 func (e storeWorkflowEnv) MarkStoreStarted(uid int) error {
-	return e.manager.schemaRepo().MarkStoreStarted(uid)
+	return errSchedulerStorageUnavailable
 }
 
 func (e storeWorkflowEnv) Online(req robotcap.CommandRequest, confirm bool) (robotcap.CommandResult, error) {
@@ -65,7 +65,7 @@ func (e storeWorkflowEnv) Online(req robotcap.CommandRequest, confirm bool) (rob
 }
 
 func (e storeWorkflowEnv) PrepareStorePosition(info robotcap.Info) error {
-	return e.manager.schemaRepo().PrepareStorePosition(info)
+	return errSchedulerStorageUnavailable
 }
 
 func (e storeWorkflowEnv) RefreshCharacterForWrite(uid int, shouldStop func() bool) (bool, error) {
@@ -117,12 +117,7 @@ func (e storeWorkflowEnv) StorePoints() *storecap.PointCoordinator {
 }
 
 func (e storeWorkflowEnv) SyncRobotCharacterVillage(cid int, village int) error {
-	statPrev, err := e.manager.schemaRepo().SyncCharacterVillage(cid, village)
-	if err != nil {
-		return err
-	}
-	robotLogf("[AutoStore] cid=%d charac_village_synced village=%d stat_prev=%d\n", cid, village, statPrev)
-	return nil
+	return errSchedulerStorageUnavailable
 }
 
 func (e storeWorkflowEnv) WaitAccountOffline(uid int, shouldStop func() bool) (bool, error) {
@@ -186,11 +181,11 @@ type storePreparationEnv struct {
 }
 
 func (e storePreparationEnv) EnsureStorePermissionRecord(uid, cid int) (storecap.PermissionStatus, error) {
-	return e.manager.schemaRepo().EnsureStorePermission(uid, cid)
+	return storecap.PermissionStatus{}, errSchedulerStorageUnavailable
 }
 
 func (e storePreparationEnv) LoadInventory(cid int) ([]byte, error) {
-	return e.manager.schemaRepo().LoadInventory(cid)
+	return nil, errSchedulerStorageUnavailable
 }
 
 func (e storePreparationEnv) Logf(format string, args ...interface{}) {
@@ -202,7 +197,7 @@ func (e storePreparationEnv) RandBetween(min, max int) int {
 }
 
 func (e storePreparationEnv) ReplaceStoreStall(uid int, title string, items []storecap.StallItem) (storecap.StallResult, error) {
-	return e.manager.schemaRepo().ReplaceStoreStall(uid, title, items)
+	return storecap.StallResult{}, errSchedulerStorageUnavailable
 }
 
 func (e storePreparationEnv) StoreTitle(uid int, rc robotconfig.RuntimeConfig) string {
@@ -210,11 +205,11 @@ func (e storePreparationEnv) StoreTitle(uid int, rc robotconfig.RuntimeConfig) s
 }
 
 func (e storePreparationEnv) SaveInventory(cid int, capacity int, raw []byte) error {
-	return e.manager.schemaRepo().SaveInventory(cid, capacity, raw)
+	return errSchedulerStorageUnavailable
 }
 
 func (e storePreparationEnv) SaveInventoryRaw(cid int, raw []byte) error {
-	return e.manager.schemaRepo().SaveInventoryRaw(cid, raw)
+	return errSchedulerStorageUnavailable
 }
 
 func (m *RobotManager) storeMaintenance() storecap.Maintenance {
@@ -256,11 +251,11 @@ func (e storeMaintenanceEnv) ResetPrivateStore(uid int) {
 }
 
 func (e storeMaintenanceEnv) RestoreDummyNormal(info robotcap.Info) error {
-	return e.manager.schemaRepo().RestoreDummyNormal(info)
+	return errSchedulerStorageUnavailable
 }
 
 func (e storeMaintenanceEnv) RevokeStorePermission(uid, cid int) error {
-	return e.manager.schemaRepo().RevokeStorePermission(uid, cid)
+	return errSchedulerStorageUnavailable
 }
 
 func (e storeMaintenanceEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
@@ -268,5 +263,5 @@ func (e storeMaintenanceEnv) SelectRobots(req robotcap.CommandRequest) ([]robotc
 }
 
 func (e storeMaintenanceEnv) SyncCharacterVillage(cid int, village int) (int, error) {
-	return e.manager.schemaRepo().SyncCharacterVillage(cid, village)
+	return 0, errSchedulerStorageUnavailable
 }

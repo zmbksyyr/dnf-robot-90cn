@@ -77,6 +77,7 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	}
 	manager.ConfigureBackendRuntime(info, s4a21backend.NewPersistenceInspector(bundle.DatabasePath), nil)
 	manager.SetBackendStorePolicy(s4a21backend.StorePolicy{})
+	manager.SetBackendFollowAccountLocator(bundle.FollowAccounts)
 	manager.SetBackendRobotCreator(info, bundle.Creator)
 	manager.SetRobotStateDirectory(bundle.State)
 	manager.SetBackendActionTransport(bundle.Transport)
