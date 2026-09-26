@@ -1,17 +1,24 @@
 package webadmin
 
 import (
+	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	foundationconfig "robot/internal/foundation/config"
 	foundationnetwork "robot/internal/foundation/network"
 )
+
+// robotCommandPattern mirrors the TCP API command grammar. Validating here
+// keeps the Web boundary from forwarding malformed or injected frames.
+var robotCommandPattern = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)
 
 type callRequest struct {
 	Command string                 `json:"command"`
@@ -69,6 +76,10 @@ func robotCallTimeout(command string) time.Duration {
 }
 
 func callRobot(addr, command string, payload map[string]interface{}, timeout time.Duration, maxResponseBytes int) (string, error) {
+	command = strings.TrimSpace(command)
+	if !robotCommandPattern.MatchString(command) {
+		return "", fmt.Errorf("invalid robot command %q", command)
+	}
 	if payload == nil {
 		payload = map[string]interface{}{}
 	}
@@ -79,7 +90,11 @@ func callRobot(addr, command string, payload map[string]interface{}, timeout tim
 	if err != nil {
 		return "", err
 	}
-	packet := fmt.Sprintf("<tw><c>%s</c><json>%s</json></tw>", command, body)
+	var escaped bytes.Buffer
+	if err := xml.EscapeText(&escaped, body); err != nil {
+		return "", fmt.Errorf("encode robot payload: %w", err)
+	}
+	packet := fmt.Sprintf("<tw><c>%s</c><json>%s</json></tw>", command, escaped.String())
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		return "", err
