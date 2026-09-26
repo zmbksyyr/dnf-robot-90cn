@@ -54,7 +54,7 @@ func (s *Server) requestLifecycle(action LifecycleAction) {
 // NewRecovery creates the backend-neutral Web surface used when the persisted
 // backend cannot run on the current platform. It must not start any
 // backend-specific watcher or supervisor before the operator selects a valid
-// backend and restarts the process.
+// backend and starts a new runtime cycle.
 func NewRecovery(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID, reason ...string) *Server {
 	server := New(cfg, robotAddr, webAddr, selected)
 	server.recoveryMode = true

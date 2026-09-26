@@ -25,7 +25,6 @@ type backendSelectionPayload struct {
 	ConfigGeneration   uint64               `json:"config_generation"`
 	SelectedAt         time.Time            `json:"selected_at,omitempty"`
 	Persisted          bool                 `json:"persisted"`
-	RestartRequired    bool                 `json:"restart_required"`
 	ReinitializeNeeded bool                 `json:"reinitialize_needed"`
 	Platform           string               `json:"platform"`
 	Backends           []shared.BackendInfo `json:"backends"`
@@ -81,7 +80,6 @@ func (s *Server) handleBackend(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		payload := s.backendSelectionResponse(state, true, "settings saved; current runtime will finish and reinitialize")
-		payload.RestartRequired = false
 		payload.ReinitializeNeeded = true
 		writeJSON(w, payload)
 		go s.requestLifecycle(LifecycleReinitialize)
