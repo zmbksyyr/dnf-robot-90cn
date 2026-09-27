@@ -36,8 +36,6 @@ func validateRuntimeConfig(dec *foundationconfig.Decoder, rc RuntimeConfig) erro
 	dec.Check("create", "robot_uid_end", rc.RobotUIDEnd >= rc.RobotUIDStart && uint64(rc.RobotUIDEnd) <= uint64(^uint32(0)), "must be greater than or equal to robot_uid_start and at most 4294967295")
 	dec.Check("create", "robot_uid_guard", rc.RobotUIDGuard == 0 || (rc.RobotUIDGuard > rc.RobotUIDEnd && uint64(rc.RobotUIDGuard) <= uint64(^uint32(0))), "must be 0 or greater than robot_uid_end and at most 4294967295")
 	dec.Check("create", "name_ascii_prefix", !rc.NameASCIIFallback || strings.TrimSpace(rc.NameASCIIPrefix) != "", "must not be empty when name_ascii_fallback is true")
-	checkRange("create", "default_money", rc.DefaultMoney, 0, 2147483647)
-	checkRange("create", "default_coin", rc.DefaultCoin, 0, 2147483647)
 	checkRange("create", "inventory_capacity", rc.InventoryCapacity, 1, 255)
 
 	checkRange("spawn", "spawn_village", rc.SpawnVillage, 1, 255)

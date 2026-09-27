@@ -234,7 +234,7 @@ func (m *RobotManager) CleanupRobots(req robotcap.CleanupRequest) (robotcap.Clea
 	if err := m.requireBackendCapability(shared.CapabilityCleanup); err != nil {
 		return robotcap.CleanupResult{}, err
 	}
-	if m.backendLifecycleOwned && m.backendRobotCleaner == nil {
+	if m.backendRobotCleaner == nil {
 		return robotcap.CleanupResult{}, fmt.Errorf("backend %s cleanup adapter is not configured", m.backendInfo.ID)
 	}
 	return m.cleanupRobots(req)
@@ -256,28 +256,43 @@ func (m *RobotManager) cleanupRobots(req robotcap.CleanupRequest) (robotcap.Clea
 			}()
 		}
 	}
-	var result robotcap.CleanupResult
-	var err error
-	if m.backendRobotCleaner != nil {
-		var finishDelete func()
-		if req.Force {
-			uids, selectErr := m.backendCleanupUIDs(req)
-			if selectErr != nil {
-				opErr = selectErr
-				return robotcap.CleanupResult{}, selectErr
-			}
-			finishDelete = (lifecycleCleanupEnv{manager: m, request: req}).PrepareDelete(uids)
+	var finishDelete func()
+	if req.Force {
+		uids, selectErr := m.backendCleanupUIDs(req)
+		if selectErr != nil {
+			opErr = selectErr
+			return robotcap.CleanupResult{}, selectErr
 		}
-		if finishDelete != nil {
-			defer finishDelete()
-		}
-		result, err = m.backendRobotCleaner.CleanupRobots(context.Background(), req)
-	} else {
-		result, err = m.lifecycleCleaner(req).Cleanup(req)
+		finishDelete = m.prepareRobotDelete(uids, req.InternalConfirmedBroken)
 	}
+	if finishDelete != nil {
+		defer finishDelete()
+	}
+	result, err := m.backendRobotCleaner.CleanupRobots(context.Background(), req)
 	opErr = err
 	opResult = result
 	return result, err
+}
+
+// prepareRobotDelete stops the selected robots and waits until their actors are
+// quiet so the adapter can delete their rows. When no actor registry exists it
+// logs the robots out and keeps the legacy grace period unless the caller
+// already confirmed the robots are broken. The returned function clears the
+// cleanup-pending marks.
+func (m *RobotManager) prepareRobotDelete(uids []int, confirmedBroken bool) func() {
+	m.markCleanupPending(uids)
+	if registry := m.currentActorRegistry(); registry != nil {
+		registry.StopUIDs(uids, true)
+		m.waitCleanupQuiescence(uids, 30*time.Second)
+	} else {
+		_, _ = m.sessionService().Logout(robotcap.CommandRequest{UIDs: uids})
+		if !confirmedBroken {
+			time.Sleep(5 * time.Second)
+		}
+	}
+	return func() {
+		m.clearCleanupPending(uids)
+	}
 }
 
 func (m *RobotManager) backendCleanupUIDs(req robotcap.CleanupRequest) ([]int, error) {

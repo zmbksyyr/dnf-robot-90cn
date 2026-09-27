@@ -34,8 +34,6 @@ func decodeConfig(ini *config.INIConfig) (RuntimeConfig, error) {
 	rc.RobotUIDGuard = dec.Int("create", "robot_uid_guard", rc.RobotUIDGuard)
 	rc.NameASCIIFallback = dec.Bool("create", "name_ascii_fallback", rc.NameASCIIFallback)
 	rc.NameASCIIPrefix = dec.String("create", "name_ascii_prefix", rc.NameASCIIPrefix)
-	rc.DefaultMoney = dec.Int("create", "default_money", rc.DefaultMoney)
-	rc.DefaultCoin = dec.Int("create", "default_coin", rc.DefaultCoin)
 	rc.InventoryCapacity = dec.Int("create", "inventory_capacity", rc.InventoryCapacity)
 
 	rc.SpawnFixed = dec.Bool("spawn", "spawn_fixed", rc.SpawnFixed)

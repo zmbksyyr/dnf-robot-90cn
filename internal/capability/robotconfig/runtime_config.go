@@ -30,8 +30,6 @@ type RuntimeConfig struct {
 	MaxOnlinePerCommand           int    `json:"max_online_per_command"`
 	OnlineDispatchIntervalMS      int    `json:"online_dispatch_interval_ms"`
 	OnlineConfirmTimeoutMS        int    `json:"online_confirm_timeout_ms"`
-	DefaultMoney                  int    `json:"default_money"`
-	DefaultCoin                   int    `json:"default_coin"`
 	InventoryCapacity             int    `json:"inventory_capacity"`
 	EquipSlots                    []int  `json:"equip_slots"`
 	EquipRarityMin                int    `json:"equip_rarity_min"`

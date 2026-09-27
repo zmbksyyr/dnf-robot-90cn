@@ -19,8 +19,6 @@ robot_uid_end = 18000999
 robot_uid_guard = 18999999
 name_ascii_fallback = true
 name_ascii_prefix = testbot
-default_money = 222
-default_coin = 7
 inventory_capacity = 24
 
 [spawn]

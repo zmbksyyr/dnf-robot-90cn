@@ -36,7 +36,6 @@ type RobotManager struct {
 	backendRobotPurger              BackendRobotPurger
 	backendPopulationInspector      BackendPopulationInspector
 	backendInfo                     shared.BackendInfo
-	backendLifecycleOwned           bool
 	persistenceInspector            shared.PersistenceInspector
 	systemAnnouncer                 shared.SystemAnnouncer
 	worldShout                      WorldShout
@@ -165,7 +164,6 @@ type BackendPopulationInspector interface {
 func (m *RobotManager) SetBackendRobotCreator(info shared.BackendInfo, creator BackendRobotCreator) {
 	if m != nil {
 		m.backendInfo = info
-		m.backendLifecycleOwned = info.ID != ""
 		m.backendRobotCreator = creator
 	}
 }
