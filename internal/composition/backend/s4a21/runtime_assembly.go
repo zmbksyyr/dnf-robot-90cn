@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"robot/internal/capability/catalog"
@@ -79,10 +80,11 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		return bundle, fmt.Errorf("S4A21 runtime requires random sources")
 	}
 
-	pvfPath, err := ResolvePVFPath(opts.ServerDirectory)
+	pvfPath, pvfSource, err := resolvePVFPath(opts.ServerDirectory)
 	if err != nil {
 		return bundle, fmt.Errorf("PVF: %w", err)
 	}
+	foundationlog.Robotf("S4A21_PVF_RESOLVED path=%s source=%s\n", pvfPath, pvfSource)
 	catalogs, err := ReadCatalogs(pvfPath)
 	if err != nil {
 		return bundle, fmt.Errorf("PVF catalog: %w", err)
@@ -93,10 +95,12 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if err := ExportItemCatalogs(opts.Paths, catalogs.Equipment, catalogs.Stackable); err != nil {
 		return bundle, fmt.Errorf("item catalog: %w", err)
 	}
-	databasePath, err := ResolveDatabasePath(opts.ServerDirectory, opts.DatabasePath)
+	databasePath, databaseSource, err := resolveDatabasePath(opts.ServerDirectory, opts.DatabasePath)
 	if err != nil {
 		return bundle, fmt.Errorf("loadout database: %w", err)
 	}
+	foundationlog.Robotf("S4A21_DATABASE_RESOLVED path=%s source=%s\n", databasePath, databaseSource)
+	logDatabaseSourceConflict(opts.ServerDirectory, opts.DatabasePath)
 	inventory, err := (SQLiteStartupInventory{
 		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config, Equipment: catalogs.Equipment,
 		JobGrows: catalogs.JobGrows,
@@ -212,9 +216,16 @@ const inventoryDatabasePathEnv = "INVENTORY_DATABASE_PATH"
 // Data/Pvf, otherwise the first *.pvf directly under the server base. The
 // archive directory is never treated as the server base.
 func ResolvePVFPath(serverDirectory string) (string, error) {
+	path, _, err := resolvePVFPath(serverDirectory)
+	return path, err
+}
+
+// resolvePVFPath also reports which rule selected the archive so startup can
+// log the exact PVF source.
+func resolvePVFPath(serverDirectory string) (string, string, error) {
 	base, err := resolveServerBase(serverDirectory)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if override := strings.TrimSpace(os.Getenv(pvfArchivePathEnv)); override != "" {
 		candidate := override
@@ -222,18 +233,19 @@ func ResolvePVFPath(serverDirectory string) (string, error) {
 			candidate = filepath.Join(base, candidate)
 		}
 		if isRegularFile(candidate) {
-			return candidate, nil
+			return candidate, "env " + pvfArchivePathEnv, nil
 		}
 	}
 	if candidate := filepath.Join(base, "Data", "Pvf", "Script.pvf"); isRegularFile(candidate) {
-		return candidate, nil
+		return candidate, "Data/Pvf/Script.pvf", nil
 	}
-	for _, dir := range []string{filepath.Join(base, "Data", "Pvf"), base} {
-		if candidate := firstPVFArchive(dir); candidate != "" {
-			return candidate, nil
-		}
+	if candidate := firstPVFArchive(filepath.Join(base, "Data", "Pvf")); candidate != "" {
+		return candidate, "first .pvf under Data/Pvf", nil
 	}
-	return "", fmt.Errorf("S4A21 PVF not found under %q; expected Data/Pvf/Script.pvf or %s", base, pvfArchivePathEnv)
+	if candidate := firstPVFArchive(base); candidate != "" {
+		return candidate, "first .pvf under the server directory", nil
+	}
+	return "", "", fmt.Errorf("S4A21 PVF not found under %q; expected Data/Pvf/Script.pvf or %s", base, pvfArchivePathEnv)
 }
 
 // ResolveDatabasePath mirrors the S4A21 server's ServerPaths.DatabasePath
@@ -241,35 +253,80 @@ func ResolvePVFPath(serverDirectory string) (string, error) {
 // (absolute, or relative to the server base), then Data/inventory.db under the
 // server base. The PVF location never contributes to this path.
 func ResolveDatabasePath(serverDirectory, configured string) (string, error) {
+	path, _, err := resolveDatabasePath(serverDirectory, configured)
+	return path, err
+}
+
+// resolveDatabasePath also reports which rule selected the database file so
+// startup can log the exact database source.
+func resolveDatabasePath(serverDirectory, configured string) (string, string, error) {
 	if value := strings.TrimSpace(configured); value != "" {
 		if _, err := os.Stat(value); err != nil {
-			return "", fmt.Errorf("S4A21 database %q: %w", value, err)
+			return "", "", fmt.Errorf("S4A21 database %q: %w", value, err)
 		}
-		return value, nil
+		return value, "adapter database_path setting", nil
 	}
 	if override := strings.TrimSpace(os.Getenv(inventoryDatabasePathEnv)); override != "" {
 		candidate := override
 		if !filepath.IsAbs(candidate) {
 			base, err := resolveServerBase(serverDirectory)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			candidate = filepath.Join(base, candidate)
 		}
 		if _, err := os.Stat(candidate); err != nil {
-			return "", fmt.Errorf("S4A21 database %q: %w", candidate, err)
+			return "", "", fmt.Errorf("S4A21 database %q: %w", candidate, err)
 		}
-		return candidate, nil
+		return candidate, "env " + inventoryDatabasePathEnv, nil
 	}
 	base, err := resolveServerBase(serverDirectory)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	candidate := filepath.Join(base, "Data", "inventory.db")
 	if _, err := os.Stat(candidate); err != nil {
-		return "", fmt.Errorf("S4A21 database %q: %w", candidate, err)
+		return "", "", fmt.Errorf("S4A21 database %q: %w", candidate, err)
 	}
-	return candidate, nil
+	return candidate, "Data/inventory.db", nil
+}
+
+// logDatabaseSourceConflict warns when the adapter database setting and
+// INVENTORY_DATABASE_PATH name different files. The adapter setting wins for
+// the robot, but the game server itself opens the environment path, so both
+// processes may silently use different databases.
+func logDatabaseSourceConflict(serverDirectory, configured string) {
+	configured = strings.TrimSpace(configured)
+	override := strings.TrimSpace(os.Getenv(inventoryDatabasePathEnv))
+	if configured == "" || override == "" {
+		return
+	}
+	base, err := resolveServerBase(serverDirectory)
+	if err != nil {
+		return
+	}
+	if !filepath.IsAbs(override) {
+		override = filepath.Join(base, override)
+	}
+	if samePath(configured, override) {
+		return
+	}
+	foundationlog.Robotf("S4A21_DATABASE_SOURCE_CONFLICT setting=%s %s=%s effective=%s\n",
+		configured, inventoryDatabasePathEnv, override, configured)
+}
+
+func samePath(left, right string) bool {
+	leftAbs, leftErr := filepath.Abs(left)
+	rightAbs, rightErr := filepath.Abs(right)
+	if leftErr != nil || rightErr != nil {
+		return filepath.Clean(left) == filepath.Clean(right)
+	}
+	leftAbs = filepath.Clean(leftAbs)
+	rightAbs = filepath.Clean(rightAbs)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(leftAbs, rightAbs)
+	}
+	return leftAbs == rightAbs
 }
 
 // resolveServerBase maps the configured server directory, or the configured

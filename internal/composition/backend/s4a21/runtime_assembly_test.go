@@ -89,6 +89,63 @@ func TestResolvePVFPathFallsBackToFirstArchive(t *testing.T) {
 	}
 }
 
+func TestResolvePathsReportSources(t *testing.T) {
+	t.Setenv(pvfArchivePathEnv, "")
+	t.Setenv(inventoryDatabasePathEnv, "")
+	dir := t.TempDir()
+	pvf := filepath.Join(dir, "Data", "Pvf", "Script.pvf")
+	if err := os.MkdirAll(filepath.Dir(pvf), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pvf, []byte("pvf"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(dir, "Data", "inventory.db")
+	if err := os.WriteFile(db, []byte("db"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, source, err := resolvePVFPath(dir); err != nil || source != "Data/Pvf/Script.pvf" {
+		t.Fatalf("default PVF source=%q err=%v", source, err)
+	}
+	if _, source, err := resolveDatabasePath(dir, ""); err != nil || source != "Data/inventory.db" {
+		t.Fatalf("derived database source=%q err=%v", source, err)
+	}
+
+	custom := filepath.Join(dir, "custom.pvf")
+	if err := os.WriteFile(custom, []byte("pvf"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(pvfArchivePathEnv, custom)
+	if path, source, err := resolvePVFPath(dir); err != nil || path != custom || source != "env "+pvfArchivePathEnv {
+		t.Fatalf("override PVF path=%q source=%q err=%v", path, source, err)
+	}
+
+	explicit := filepath.Join(dir, "explicit.db")
+	if err := os.WriteFile(explicit, []byte("db"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if path, source, err := resolveDatabasePath(dir, explicit); err != nil || path != explicit || source != "adapter database_path setting" {
+		t.Fatalf("explicit database path=%q source=%q err=%v", path, source, err)
+	}
+	t.Setenv(inventoryDatabasePathEnv, "env.db")
+	if err := os.WriteFile(filepath.Join(dir, "env.db"), []byte("db"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, source, err := resolveDatabasePath(dir, ""); err != nil || source != "env "+inventoryDatabasePathEnv {
+		t.Fatalf("environment database source=%q err=%v", source, err)
+	}
+}
+
+func TestSamePathNormalizesRelativeSegments(t *testing.T) {
+	dir := t.TempDir()
+	if !samePath(filepath.Join(dir, "a.db"), filepath.Join(dir, ".", "a.db")) {
+		t.Fatal("equivalent paths reported as different")
+	}
+	if samePath(filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")) {
+		t.Fatal("different paths reported as equal")
+	}
+}
+
 func TestResolveDatabasePathPrefersExplicitPath(t *testing.T) {
 	t.Setenv(inventoryDatabasePathEnv, "")
 	dbDir := t.TempDir()
