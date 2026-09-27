@@ -48,6 +48,7 @@ type Session struct {
 	followerEvents     chan protocol.Packet
 	followerDone       chan struct{}
 	followerStarting   bool
+	followerTraceCount int
 	selfUID            uint16
 	partyID            uint16
 	partyLeaderUID     uint16

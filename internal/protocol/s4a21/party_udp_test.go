@@ -1,10 +1,52 @@
 package s4a21
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"testing"
 )
+
+func TestPartyUDPApplicationPayloadsSkipsHandshakeFrames(t *testing.T) {
+	negotiation := buildPartyUDP(9, 1, 0, 1, partyUDPCodec{key: 0x7e})
+	if got := partyUDPApplicationPayloads(negotiation); len(got) != 0 {
+		t.Fatalf("negotiation payloads=%X", got)
+	}
+	reliableHandshake := buildPartyUDP(10, 1, 2, 1, partyUDPCodec{key: 0x7e})
+	if got := partyUDPApplicationPayloads(reliableHandshake); len(got) != 0 {
+		t.Fatalf("reliable handshake payloads=%X", got)
+	}
+	if got := partyUDPApplicationPayloads([]byte("not-a-frame")); len(got) != 0 {
+		t.Fatalf("garbage payloads=%X", got)
+	}
+}
+
+func TestPartyUDPApplicationPayloadsExtractsDataFrames(t *testing.T) {
+	// Type 1 with an application-sized inner block.
+	inner := []byte{0xAA, 0xBB, 0xCC, 0xDD}
+	innerFrame := make([]byte, 9+2+len(inner))
+	innerFrame[0] = 1
+	binary.LittleEndian.PutUint32(innerFrame[1:5], 7)
+	binary.LittleEndian.PutUint16(innerFrame[5:7], uint16(2+len(inner)))
+	binary.LittleEndian.PutUint16(innerFrame[9:11], uint16(len(inner)))
+	copy(innerFrame[11:], inner)
+	payloads := partyUDPApplicationPayloads(innerFrame)
+	if len(payloads) != 1 || !bytes.Equal(payloads[0], inner) {
+		t.Fatalf("inner payloads=%X", payloads)
+	}
+
+	// Type 2 with a non-negotiation body.
+	body := []byte{0x01, 0x02, 0x03, 0x04}
+	typeTwoFrame := make([]byte, 9+len(body))
+	typeTwoFrame[0] = 2
+	binary.LittleEndian.PutUint32(typeTwoFrame[1:5], 8)
+	binary.LittleEndian.PutUint16(typeTwoFrame[5:7], uint16(len(body)))
+	copy(typeTwoFrame[9:], body)
+	payloads = partyUDPApplicationPayloads(typeTwoFrame)
+	if len(payloads) != 1 || !bytes.Equal(payloads[0], body) {
+		t.Fatalf("type2 payloads=%X", payloads)
+	}
+}
 
 func TestPartyUDPHandshakeReplies(t *testing.T) {
 	peer := &partyUDPPeer{}

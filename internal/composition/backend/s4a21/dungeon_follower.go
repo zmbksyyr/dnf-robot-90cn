@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	foundationlog "robot/internal/foundation/log"
@@ -11,6 +13,38 @@ import (
 )
 
 const dungeonFollowerPrepareTimeout = 5 * time.Second
+
+// followerTraceEnv enables bounded follower diagnostics when set to
+// 1/true/yes/on. The trace records the party-follow TCP packets and mirror
+// sends, which tells whether the server projects leader positions to dungeon
+// followers or whether only the client UDP data plane carries them.
+const followerTraceEnv = "S4A21_PARTY_FOLLOW_TRACE"
+
+const followerTraceLimit = 512
+
+func followerTraceEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(followerTraceEnv))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Session) traceFollower(format string, args ...any) {
+	if s == nil || !followerTraceEnabled() {
+		return
+	}
+	s.followerGuard.Lock()
+	allowed := s.followerTraceCount < followerTraceLimit
+	if allowed {
+		s.followerTraceCount++
+	}
+	s.followerGuard.Unlock()
+	if allowed {
+		foundationlog.Robotf(format, args...)
+	}
+}
 
 // EnableDungeonFollower explicitly opts a session into the small party
 // follower workflow. It persists the tutorial-skip flag through the server
@@ -230,10 +264,12 @@ func (s *Session) followLeaderPosition(ctx context.Context, packet protocol.Pack
 	if !active || leaderUID == 0 || uid != leaderUID || uid == selfUID {
 		return
 	}
-	if err := s.client.SetUserPosition(ctx,
-		int16(binary.LittleEndian.Uint16(packet.Body[2:4])),
-		int16(binary.LittleEndian.Uint16(packet.Body[4:6])),
-		packet.Body[6], binary.LittleEndian.Uint16(packet.Body[7:9])); err != nil {
+	x := int16(binary.LittleEndian.Uint16(packet.Body[2:4]))
+	y := int16(binary.LittleEndian.Uint16(packet.Body[4:6]))
+	s.traceFollower("S4A21_FOLLOW_TRACE_POS uid=%d leader=%d x=%d y=%d dir=%d motion=%d\n",
+		selfUID, uid, x, y, packet.Body[6], binary.LittleEndian.Uint16(packet.Body[7:9]))
+	if err := s.client.SetUserPosition(ctx, x, y, packet.Body[6], binary.LittleEndian.Uint16(packet.Body[7:9])); err != nil {
+		s.traceFollower("S4A21_FOLLOW_TRACE_POS_FAILED uid=%d leader=%d err=%v\n", selfUID, uid, err)
 		s.abortFollowerSession(ctx)
 	}
 }
@@ -249,9 +285,13 @@ func (s *Session) followLeaderArea(ctx context.Context, packet protocol.Packet) 
 	if !active || leaderUID == 0 || uid != leaderUID || uid == selfUID || packet.Body[2] == 0xFF || packet.Body[3] == 0xFF {
 		return
 	}
+	s.traceFollower("S4A21_FOLLOW_TRACE_AREA uid=%d leader=%d town=%d area=%d x=%d y=%d\n",
+		selfUID, uid, packet.Body[2], packet.Body[3],
+		int16(binary.LittleEndian.Uint16(packet.Body[4:6])), int16(binary.LittleEndian.Uint16(packet.Body[6:8])))
 	if err := s.client.SetUserArea(ctx, packet.Body[2], packet.Body[3],
 		int16(binary.LittleEndian.Uint16(packet.Body[4:6])),
 		int16(binary.LittleEndian.Uint16(packet.Body[6:8]))); err != nil {
+		s.traceFollower("S4A21_FOLLOW_TRACE_AREA_FAILED uid=%d leader=%d err=%v\n", selfUID, uid, err)
 		s.abortFollowerSession(ctx)
 	}
 }
@@ -273,6 +313,8 @@ func (s *Session) acceptFollowerStartMap(ctx context.Context, packet protocol.Pa
 	err := state.AcceptStartMap(packet.Body)
 	s.dungeonStateGuard.Unlock()
 	if err == nil {
+		s.traceFollower("S4A21_FOLLOW_TRACE_START_MAP uid=%d room=%d,%d party=%d body=%X\n",
+			s.selfUID, packet.Body[0], packet.Body[1], len(packet.Body), packet.Body)
 		// This is deliberately outside the drain callback and outside the
 		// dungeon state lock. The server expects a follower to acknowledge
 		// loading, but never expects a follower MOVE_MAP.
@@ -311,10 +353,14 @@ func (s *Session) abortFollowerQueue(events chan protocol.Packet) {
 }
 
 func (s *Session) commitFollowerFinishLoading(packet protocol.Packet) {
+	accepted := false
 	s.dungeonStateGuard.Lock()
-	defer s.dungeonStateGuard.Unlock()
 	if s.dungeonState != nil {
-		_ = s.dungeonState.AcceptFinishLoading(packet.Body)
+		accepted = s.dungeonState.AcceptFinishLoading(packet.Body) == nil
+	}
+	s.dungeonStateGuard.Unlock()
+	if accepted {
+		s.traceFollower("S4A21_FOLLOW_TRACE_FINISH_LOADING uid=%d body=%X\n", s.selfUID, packet.Body)
 	}
 }
 

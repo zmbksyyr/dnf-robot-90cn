@@ -10,9 +10,32 @@ import (
 	"hash/crc32"
 	"math/bits"
 	"net"
+	"os"
+	"strings"
 
 	foundationlog "robot/internal/foundation/log"
 )
+
+// partyUDPTraceEnv enables full-datagram tracing when set to 1/true/yes/on.
+// The budgets are bounded so a long session cannot flood the robot log; the
+// captured bytes are what identifies the client's in-dungeon application
+// framing, which the transport layer never parses.
+const partyUDPTraceEnv = "S4A21_PARTY_UDP_TRACE"
+
+const (
+	partyUDPTraceSessionLimit = 4096
+	partyUDPTracePeerLimit    = 256
+	partyUDPTraceBytes        = 512
+)
+
+func partyUDPTraceEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(partyUDPTraceEnv))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
 
 type partyUDPCodec struct {
 	key, rotate byte
@@ -29,6 +52,8 @@ type partyUDPPeer struct {
 	pendingSeqRoute  [2]uint32
 	diagPackets      byte
 	diagDrops        byte
+	traceRX          int
+	traceTX          int
 	epochRoute       [2]bool
 }
 
@@ -55,6 +80,7 @@ func (c *Client) partyUDPPeerLocked(remote string) *partyUDPPeer {
 
 func (c *Client) servePartyUDP(conn *net.UDPConn) {
 	buffer := make([]byte, 2048)
+	trace := partyUDPTraceEnabled()
 	for {
 		n, remote, err := conn.ReadFromUDP(buffer)
 		if err != nil {
@@ -87,6 +113,16 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 		if logDrop {
 			peer.diagDrops++
 		}
+		traceRX := trace && c.udpTraceEvents < partyUDPTraceSessionLimit && peer.traceRX < partyUDPTracePeerLimit
+		if traceRX {
+			c.udpTraceEvents++
+			peer.traceRX++
+		}
+		traceTX := trace && c.udpTraceEvents < partyUDPTraceSessionLimit && peer.traceTX < partyUDPTracePeerLimit
+		if traceTX {
+			c.udpTraceEvents++
+			peer.traceTX++
+		}
 		selfUID := c.selfUID
 		c.udpMu.Unlock()
 		loggedPayload := buffer[:n]
@@ -100,14 +136,83 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			foundationlog.Robotf("S4A21_PARTY_UDP_DROP uid=%d slot=%d known=%t remote=%s size=%d bytes=%X pending=%t seq=%d\n",
 				selfUID, selfSlot, slotKnown, remote, n, loggedPayload, afterPending, afterSeq)
 		}
+		if traceRX {
+			logPartyUDPTraceValue("RX", selfUID, remote, buffer[:n])
+			for _, application := range partyUDPApplicationPayloads(buffer[:n]) {
+				logPartyUDPTraceValue("APP", selfUID, remote, application)
+			}
+		}
 		for _, reply := range replies {
 			_, _ = conn.WriteToUDP(reply, remote)
 			if logPacket {
 				foundationlog.Robotf("S4A21_PARTY_UDP_TX uid=%d slot=%d remote=%s bytes=%X\n",
 					selfUID, selfSlot, remote, reply)
 			}
+			if traceTX {
+				logPartyUDPTraceValue("TX", selfUID, remote, reply)
+			}
 		}
 	}
+}
+
+func logPartyUDPTraceValue(direction string, selfUID uint16, remote *net.UDPAddr, payload []byte) {
+	logged := payload
+	truncated := false
+	if len(logged) > partyUDPTraceBytes {
+		logged = logged[:partyUDPTraceBytes]
+		truncated = true
+	}
+	foundationlog.Robotf("S4A21_PARTY_UDP_TRACE_%s uid=%d remote=%s size=%d truncated=%t bytes=%X\n",
+		direction, selfUID, remote, len(payload), truncated, logged)
+}
+
+// partyUDPApplicationPayloads surfaces the application bytes carried by a
+// datagram. TQOS negotiation frames (12-byte bodies) and ACKs are skipped;
+// frames whose shape does not match a control frame are returned so the
+// captured bytes can be decoded offline.
+func partyUDPApplicationPayloads(payload []byte) [][]byte {
+	frames, ok := splitPartyUDPFrames(payload)
+	if !ok {
+		return nil
+	}
+	var result [][]byte
+	for _, frame := range frames {
+		if application := partyUDPApplicationPayload(frame); application != nil {
+			result = append(result, application)
+		}
+	}
+	return result
+}
+
+func partyUDPApplicationPayload(frame []byte) []byte {
+	if len(frame) < 9 || (frame[0] != 1 && frame[0] != 2) {
+		return nil
+	}
+	bodyLen := int(binary.LittleEndian.Uint16(frame[5:7]))
+	if len(frame) != 9+bodyLen {
+		return nil
+	}
+	body := frame[9:]
+	if frame[0] == 1 {
+		if len(body) < 2 {
+			return nil
+		}
+		inner := int(binary.LittleEndian.Uint16(body[:2]))
+		if inner == 12 {
+			return nil
+		}
+		if inner <= 0 || len(body) < 2+inner {
+			return append([]byte(nil), frame...)
+		}
+		return append([]byte(nil), body[2:2+inner]...)
+	}
+	// Type 2 carries reliable data. The TQOS negotiation body is exactly
+	// twelve bytes and starts with three zero bytes; anything else is
+	// application data.
+	if len(body) == 12 && body[0] == 0 && body[1] == 0 && body[2] == 0 {
+		return nil
+	}
+	return append([]byte(nil), body...)
 }
 
 func (c *Client) applyPartyRealtimeInfo(body []byte) {
