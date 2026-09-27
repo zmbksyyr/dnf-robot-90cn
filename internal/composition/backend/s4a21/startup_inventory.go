@@ -509,7 +509,7 @@ func (s SQLiteStartupInventory) characterCompliant(character startupCharacter, i
 	if err != nil || len(encodedName) < 2 || len(encodedName) > 18 {
 		return false
 	}
-	if !configuredIntValue(s.Config.Jobs, character.job) || !configuredIntValue(s.Config.GrowTypes, character.grow) {
+	if !configuredIntValue(s.Config.Jobs, character.job) || !configuredGrowValue(s.Config.GrowTypes, character.grow) {
 		return false
 	}
 	cores := index.cores[character.id]
@@ -633,6 +633,22 @@ func configuredIntValue(values []int, value int) bool {
 		}
 	}
 	return false
+}
+
+// configuredGrowValue validates a stored grow_type byte against the adapter's
+// transfer/awakening encoding: the low nibble is the auto-selected transfer
+// branch (0..5) and the high nibble the awakening stage (0..2), which is the
+// value the configuration selects from.
+func configuredGrowValue(growTypes []int, grow int) bool {
+	if grow < 0 || grow > 255 {
+		return false
+	}
+	first := grow & 0x0F
+	second := (grow >> 4) & 0x0F
+	if first > 5 || second > 2 || (second > 0 && first == 0) {
+		return false
+	}
+	return configuredIntValue(growTypes, second)
 }
 
 func ownedRobotUID(account, prefix string, start, end int) (int, bool) {

@@ -103,7 +103,7 @@ func TestStartupInventoryAdoptsCompliantAndHardDeletesInvalidAccounts(t *testing
 INSERT INTO accounts(account_id,m_id) VALUES
  (7,'robot17000007'),(8,'robot17000008'),(9,'laoxxx'),(10,'robot18000010');
 INSERT INTO characters(character_id,account_id,name,job,grow_type,level,delete_flag) VALUES
- (70,7,'Compliant',1,0,50,0),
+ (70,7,'Compliant',1,18,50,0),
  (80,8,'Reusable',1,0,5,0),
  (81,8,'DeletedSibling',1,0,50,1),
  (90,9,'RealPlayer',1,0,5,0),
@@ -117,7 +117,7 @@ UPDATE characters SET town_id=3,area_id=2,pos_x=480,pos_y=240,slot_index=0 WHERE
 	rc := robotconfig.Default()
 	rc.RobotUIDStart, rc.RobotUIDEnd = 17000000, 17000099
 	rc.LevelMin, rc.LevelMax = 50, 85
-	rc.Jobs, rc.GrowTypes = []int{1}, []int{0}
+	rc.Jobs, rc.GrowTypes = []int{1}, []int{0, 1, 2}
 	rc.EquipSlots = []int{1, 11, 12}
 	rc.MinAvatarSlots = 0
 	rc.PetEnabled, rc.PetProbabilityPercent = true, 100
@@ -145,7 +145,7 @@ UPDATE characters SET town_id=3,area_id=2,pos_x=480,pos_y=240,slot_index=0 WHERE
 	if result.ScannedAccounts != 2 || result.DeletedAccounts != 1 || result.DeletedCharacters != 2 {
 		t.Fatalf("scan result=%+v", result)
 	}
-	if len(result.Robots) != 1 || result.Robots[0].UID != 17000007 || result.Robots[0].CID != 70 || result.Robots[0].Village != 3 {
+	if len(result.Robots) != 1 || result.Robots[0].UID != 17000007 || result.Robots[0].CID != 70 || result.Robots[0].Village != 3 || result.Robots[0].Grow != 0x12 {
 		t.Fatalf("adopted robots=%+v", result.Robots)
 	}
 	if len(result.Identities) != 1 || result.Identities[0].Account != "robot17000007" || result.Identities[0].Slot == nil || *result.Identities[0].Slot != 0 {
