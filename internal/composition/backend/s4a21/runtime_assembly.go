@@ -107,6 +107,14 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if reconciled > 0 {
 		foundationlog.Robotf("S4A21_GROWTH_RECONCILED count=%d\n", reconciled)
 	}
+	seeded, err := SeedRobotQuestGates(ctx, databasePath, inventory.Robots, catalogs.QuestGates)
+	if err != nil {
+		return bundle, fmt.Errorf("quest gates: %w", err)
+	}
+	if seeded > 0 {
+		foundationlog.Robotf("S4A21_QUEST_GATES_SEEDED completed=%d active=%d robots=%d\n",
+			len(catalogs.QuestGates.CompletedQuestIDs), len(catalogs.QuestGates.ActiveQuestIDs), seeded)
+	}
 	state := robotstate.NewMemoryStore(inventory.Robots)
 	if err := state.RegisterIdentities(ctx, inventory.Identities); err != nil {
 		return bundle, fmt.Errorf("startup identities: %w", err)
@@ -115,6 +123,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if err != nil {
 		return bundle, fmt.Errorf("loadout applier: %w", err)
 	}
+	loadouts.QuestGates = catalogs.QuestGates
 	transport, err := NewRuntimeTransport(opts.ConnectIP, opts.GamePort)
 	if err != nil {
 		_ = loadouts.Close()

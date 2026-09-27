@@ -14,6 +14,7 @@ import (
 	"time"
 
 	equipmentcap "robot/internal/capability/equipment"
+	capabilitypvf "robot/internal/capability/pvf"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/foundation/charset"
@@ -58,6 +59,7 @@ type SQLiteLoadoutApplier struct {
 	DatabasePath string
 	Config       robotconfig.RuntimeConfig
 	Equipment    []shared.EquipmentCatalogItem
+	QuestGates   capabilitypvf.QuestGates
 	RandIntn     func(int) int
 	db           *sql.DB
 	items        map[int]shared.EquipmentCatalogItem
@@ -315,6 +317,9 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 		}
 		if err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, resolved, items, petSchema); err != nil {
 			return err
+		}
+		if err := applyQuestGates(ctx, db, characterID, a.QuestGates); err != nil {
+			return fmt.Errorf("seed S4A21 quest gates uid=%d: %w", resolved.UID, err)
 		}
 		actual = resolved
 		return nil

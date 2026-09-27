@@ -282,7 +282,9 @@ CREATE TABLE IF NOT EXISTS character_creatures(character_id INTEGER,sort_order I
 CREATE TABLE IF NOT EXISTS character_creature_uid_sequence(creature_uid INTEGER PRIMARY KEY AUTOINCREMENT);
 CREATE TABLE IF NOT EXISTS character_subtype0_fields(character_id INTEGER PRIMARY KEY,creature_buffer BLOB,pet_display_flag INTEGER);
 CREATE TABLE IF NOT EXISTS character_subtype1_fields(character_id INTEGER PRIMARY KEY,equipped_creature_level INTEGER);
-CREATE TABLE IF NOT EXISTS character_skills(character_id INTEGER,skill_index INTEGER,level INTEGER,PRIMARY KEY(character_id,skill_index));`); err != nil {
+CREATE TABLE IF NOT EXISTS character_skills(character_id INTEGER,skill_index INTEGER,level INTEGER,PRIMARY KEY(character_id,skill_index));
+CREATE TABLE IF NOT EXISTS character_quest_completions(character_id INTEGER NOT NULL,quest_id INTEGER NOT NULL,completion_value INTEGER NOT NULL,PRIMARY KEY(character_id,quest_id));
+CREATE TABLE IF NOT EXISTS character_active_quests(character_id INTEGER NOT NULL,slot INTEGER NOT NULL,quest_id INTEGER NOT NULL,trigger_value INTEGER NOT NULL DEFAULT 0,version INTEGER NOT NULL DEFAULT 0,activation_id TEXT NOT NULL,PRIMARY KEY(character_id,slot),UNIQUE(character_id,quest_id),UNIQUE(character_id,activation_id));`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
