@@ -49,6 +49,9 @@ type Session struct {
 	followerDone       chan struct{}
 	followerStarting   bool
 	followerTraceCount int
+	followerUDPKnown   bool
+	followerUDPX       int32
+	followerUDPY       int32
 	selfUID            uint16
 	partyID            uint16
 	partyLeaderUID     uint16

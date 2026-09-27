@@ -79,7 +79,12 @@ func (s *Session) EnableDungeonFollower(_ context.Context) error {
 	s.followerCancel = followerCancel
 	s.followerEvents = events
 	s.followerDone = done
+	s.followerUDPKnown = false
 	s.followerGuard.Unlock()
+	// In-dungeon positions travel on the party UDP data plane, so the follower
+	// consumes the decoded application frames in addition to the TCP
+	// projections. The handler is cleared again by DisableDungeonFollower.
+	s.client.SetPartyAppHandler(s.handlePartyAppPosition)
 	go s.followerLoop(followerCtx, events, done)
 	// Party invitations must be handled immediately. Tutorial preparation is
 	// only needed for dungeon entry and can be delayed by a busy server, so it
@@ -109,11 +114,15 @@ func (s *Session) prepareDungeonFollowerEventually(ctx context.Context) {
 // DisableDungeonFollower removes the opt-in packet consumer. It is useful to
 // stop following while keeping the authenticated town session alive.
 func (s *Session) DisableDungeonFollower() {
+	if s != nil && s.client != nil {
+		s.client.SetPartyAppHandler(nil)
+	}
 	s.stopDungeonFollower(true)
 	s.followerGuard.Lock()
 	s.partyActive = false
 	s.partyID = 0
 	s.partyLeaderUID = 0
+	s.followerUDPKnown = false
 	s.followerGuard.Unlock()
 	s.dungeonStateGuard.Lock()
 	s.dungeonState = nil
@@ -271,6 +280,72 @@ func (s *Session) followLeaderPosition(ctx context.Context, packet protocol.Pack
 	if err := s.client.SetUserPosition(ctx, x, y, packet.Body[6], binary.LittleEndian.Uint16(packet.Body[7:9])); err != nil {
 		s.traceFollower("S4A21_FOLLOW_TRACE_POS_FAILED uid=%d leader=%d err=%v\n", selfUID, uid, err)
 		s.abortFollowerSession(ctx)
+	}
+}
+
+// partyLeaderDefaultSlot is the roster slot the leader keeps while no explicit
+// transfer has happened. A transfer preserves member slots, so the follower
+// resolves the leader's slot from the realtime roster when it can.
+const partyLeaderDefaultSlot = 0
+
+// partyFollowerDirection matches the server default facing for mirrored moves.
+const partyFollowerDirection = 0x05
+
+// followerUDPWriteTimeout bounds one mirror write issued from the UDP read
+// loop so a stalled server cannot block party packet processing forever.
+const followerUDPWriteTimeout = 3 * time.Second
+
+// handlePartyAppPosition mirrors the leader's in-dungeon position broadcast.
+// The retail client sends in-room positions on the party UDP data plane and
+// the server never projects those frames over TCP, so following has to consume
+// them here. The mirrored move is echoed back on the same data plane, which is
+// what lets the real client render the robot walking behind it.
+func (s *Session) handlePartyAppPosition(position protocol.PartyAppPosition) {
+	if s == nil || s.client == nil {
+		return
+	}
+	if !position.Valid() || !s.PartyActive() {
+		return
+	}
+	s.followerGuard.Lock()
+	leaderUID := s.partyLeaderUID
+	s.followerGuard.Unlock()
+	if leaderUID == 0 || leaderUID == s.selfUID {
+		return
+	}
+	leaderSlot, ok := s.client.PartySlotOf(leaderUID)
+	if !ok {
+		leaderSlot = partyLeaderDefaultSlot
+	}
+	if position.Slot != leaderSlot {
+		return
+	}
+	selfSlot, slotKnown := s.client.PartySelfSlot()
+	if !slotKnown || selfSlot == leaderSlot {
+		return
+	}
+	s.followerGuard.Lock()
+	if s.followerUDPKnown && s.followerUDPX == position.X && s.followerUDPY == position.Y {
+		s.followerGuard.Unlock()
+		return
+	}
+	s.followerUDPKnown = true
+	s.followerUDPX = position.X
+	s.followerUDPY = position.Y
+	selfUID := s.selfUID
+	s.followerGuard.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), followerUDPWriteTimeout)
+	defer cancel()
+	if err := s.client.SetUserPosition(ctx, int16(position.X), int16(position.Y), partyFollowerDirection, 0); err != nil {
+		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_POS_FAILED uid=%d x=%d y=%d err=%v\n",
+			selfUID, position.X, position.Y, err)
+		return
+	}
+	s.traceFollower("S4A21_FOLLOW_TRACE_UDP_POS uid=%d x=%d y=%d\n", selfUID, position.X, position.Y)
+	if err := s.client.SendPartyPosition(int16(position.X), int16(position.Y)); err != nil {
+		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_BROADCAST_FAILED uid=%d x=%d y=%d err=%v\n",
+			selfUID, position.X, position.Y, err)
 	}
 }
 

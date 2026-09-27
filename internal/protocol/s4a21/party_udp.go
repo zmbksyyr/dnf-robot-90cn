@@ -7,6 +7,7 @@ package s4a21
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"math/bits"
 	"net"
@@ -50,6 +51,7 @@ type partyUDPCodec struct {
 	extra       [2]byte
 }
 type partyUDPPeer struct {
+	remote           *net.UDPAddr
 	codecRoute       [2]partyUDPCodec
 	codecKnown       [2]bool
 	nextSeqRoute     [2]uint32
@@ -71,19 +73,82 @@ type partyUDPPeer struct {
 // the registered port, so the table must not grow without limit.
 const partyUDPMaxPeers = 256
 
+// partyUDPDefaultCodec is the codec a robot picks when it opens the TQOS
+// exchange itself. The receiver derives the codec from the frame, so any key is
+// valid; the retail client observes the same fixed key in its captures.
+var partyUDPDefaultCodec = partyUDPCodec{key: 0x59}
+
+// partyUDPSelfRoute is the route byte the initiator stamps into the exchange
+// frame. Type-2 control frames are expected on route 1.
+const partyUDPSelfRoute = 1
+
+// StartPartyUDPExchange opens the TQOS exchange with every announced party peer
+// that is not this session. The retail client does the same when it enters a
+// dungeon; without it two robots would both wait for the other side and never
+// negotiate a codec.
+func (c *Client) StartPartyUDPExchange(body []byte) {
+	if c == nil || len(body) < 1 {
+		return
+	}
+	count := int(body[0])
+	if count <= 0 || len(body) != 1+count*22 {
+		return
+	}
+	c.udpMu.Lock()
+	if c.udpConn == nil || !c.slotKnown {
+		c.udpMu.Unlock()
+		return
+	}
+	selfUID := c.selfUID
+	slot := c.selfSlot
+	targets := make([]*net.UDPAddr, 0, count)
+	for index := 0; index < count; index++ {
+		offset := 1 + index*22
+		uid := binary.LittleEndian.Uint16(body[offset : offset+2])
+		if uid == selfUID || uid == 0 || uid == 0xFFFF {
+			continue
+		}
+		port := int(body[offset+10])<<8 | int(body[offset+11])
+		if port <= 0 {
+			continue
+		}
+		addr := &net.UDPAddr{
+			IP:   net.IPv4(body[offset+2], body[offset+3], body[offset+4], body[offset+5]),
+			Port: port,
+		}
+		if c.partyUDPPeerLocked(addr) == nil {
+			continue
+		}
+		targets = append(targets, addr)
+	}
+	if len(targets) == 0 {
+		c.udpMu.Unlock()
+		return
+	}
+	c.udpSendCounter++
+	sequence := c.udpSendCounter
+	conn := c.udpConn
+	c.udpMu.Unlock()
+	for _, addr := range targets {
+		frame := buildPartyUDP(sequence, slot, 3, partyUDPSelfRoute, partyUDPDefaultCodec)
+		_, _ = conn.WriteToUDP(frame, addr)
+	}
+}
+
 var partyUDPCRCTable = crc32.MakeTable(0x4db89129)
 
 // partyUDPPeerLocked returns the tracked peer for remote, creating one while
 // the peer budget allows. Callers must hold c.udpMu.
-func (c *Client) partyUDPPeerLocked(remote string) *partyUDPPeer {
-	if peer := c.udpPeers[remote]; peer != nil {
+func (c *Client) partyUDPPeerLocked(remote *net.UDPAddr) *partyUDPPeer {
+	key := remote.String()
+	if peer := c.udpPeers[key]; peer != nil {
 		return peer
 	}
 	if len(c.udpPeers) >= partyUDPMaxPeers {
 		return nil
 	}
-	peer := &partyUDPPeer{}
-	c.udpPeers[remote] = peer
+	peer := &partyUDPPeer{remote: remote}
+	c.udpPeers[key] = peer
 	return peer
 }
 
@@ -99,7 +164,7 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			continue
 		}
 		c.udpMu.Lock()
-		peer := c.partyUDPPeerLocked(remote.String())
+		peer := c.partyUDPPeerLocked(remote)
 		if peer == nil {
 			if c.udpPeerDrops == 0 {
 				c.udpPeerDrops++
@@ -133,6 +198,28 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			peer.traceTX++
 		}
 		sampleApp := peer.appRXSamples < partyUDPAppSampleLimit
+		handler := c.partyAppHandler
+		var applications []partyUDPApplicationFrame
+		if traceRX || sampleApp || handler != nil {
+			applications = partyUDPApplicationFrames(buffer[:n])
+		}
+		var positions []PartyAppPosition
+		if handler != nil {
+			for _, application := range applications {
+				for route := 0; route < 2; route++ {
+					if !peer.codecKnown[route] {
+						continue
+					}
+					position, ok := parsePartyAppPosition(application.Body, peer.codecRoute[route])
+					if !ok {
+						continue
+					}
+					position.Slot = application.Sender
+					positions = append(positions, position)
+					break
+				}
+			}
+		}
 		selfUID := c.selfUID
 		c.udpMu.Unlock()
 		loggedPayload := buffer[:n]
@@ -148,12 +235,12 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 		}
 		if traceRX {
 			logPartyUDPTraceValue("RX", selfUID, remote, buffer[:n])
-			for _, application := range partyUDPApplicationPayloads(buffer[:n]) {
-				logPartyUDPTraceValue("APP", selfUID, remote, application)
+			for _, application := range applications {
+				logPartyUDPTraceValue("APP", selfUID, remote, application.Body)
 			}
 		}
 		if sampleApp {
-			for _, application := range partyUDPApplicationPayloads(buffer[:n]) {
+			for _, application := range applications {
 				c.udpMu.Lock()
 				if peer.appRXSamples >= partyUDPAppSampleLimit {
 					c.udpMu.Unlock()
@@ -161,8 +248,11 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 				}
 				peer.appRXSamples++
 				c.udpMu.Unlock()
-				logPartyUDPAppSample(selfUID, remote, application)
+				logPartyUDPAppSample(selfUID, remote, application.Body)
 			}
+		}
+		for _, position := range positions {
+			handler(position)
 		}
 		for _, reply := range replies {
 			_, _ = conn.WriteToUDP(reply, remote)
@@ -251,23 +341,154 @@ func partyUDPApplicationPayload(frame []byte) []byte {
 	return append([]byte(nil), body...)
 }
 
+// SetPartyAppHandler registers the decoded application-frame callback. The
+// handler runs on the UDP read loop after the internal locks are released, so
+// it may call back into the client. Passing nil unregisters the callback.
+func (c *Client) SetPartyAppHandler(handler func(PartyAppPosition)) {
+	if c == nil {
+		return
+	}
+	c.udpMu.Lock()
+	c.partyAppHandler = handler
+	c.udpMu.Unlock()
+}
+
+// PartySelfSlot returns the session's own party slot once the server has
+// published it through the trusted realtime roster.
+func (c *Client) PartySelfSlot() (byte, bool) {
+	if c == nil {
+		return 0, false
+	}
+	c.udpMu.Lock()
+	defer c.udpMu.Unlock()
+	return c.selfSlot, c.slotKnown
+}
+
+// PartyUDPReady reports whether position broadcasts can flow: the session has
+// announced its UDP endpoint, learned its own slot and negotiated a codec with
+// at least one party peer.
+func (c *Client) PartyUDPReady() bool {
+	if c == nil {
+		return false
+	}
+	c.udpMu.Lock()
+	defer c.udpMu.Unlock()
+	if c.udpConn == nil || !c.slotKnown {
+		return false
+	}
+	for _, peer := range c.udpPeers {
+		if peer == nil {
+			continue
+		}
+		for route := 0; route < 2; route++ {
+			if peer.codecKnown[route] && peer.remote != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// SendPartyPosition broadcasts the session's own in-dungeon position to every
+// party peer whose codec is known. The frame mirrors the verified retail
+// client shape so the real client renders the robot's movement.
+func (c *Client) SendPartyPosition(x, y int16) error {
+	if c == nil {
+		return fmt.Errorf("S4A21 party UDP endpoint is not registered")
+	}
+	c.udpMu.Lock()
+	conn := c.udpConn
+	if conn == nil {
+		c.udpMu.Unlock()
+		return fmt.Errorf("S4A21 party UDP endpoint is not registered")
+	}
+	if !c.slotKnown {
+		c.udpMu.Unlock()
+		return fmt.Errorf("S4A21 party slot is not known")
+	}
+	selfSlot := c.selfSlot
+	c.udpSendCounter++
+	counter := c.udpSendCounter
+	type peerTarget struct {
+		remote *net.UDPAddr
+		codec  partyUDPCodec
+	}
+	targets := make([]peerTarget, 0, len(c.udpPeers))
+	for _, peer := range c.udpPeers {
+		if peer == nil || peer.remote == nil {
+			continue
+		}
+		for route := 0; route < 2; route++ {
+			if peer.codecKnown[route] {
+				targets = append(targets, peerTarget{remote: peer.remote, codec: peer.codecRoute[route]})
+				break
+			}
+		}
+	}
+	c.udpMu.Unlock()
+	if len(targets) == 0 {
+		return nil
+	}
+	for _, target := range targets {
+		x32, y32 := int32(x), int32(y)
+		body := buildPartyAppPositionBody(counter, counter, x32, y32, x32, y32, target.codec)
+		frame := wrapPartyUDPApp(selfSlot, counter, body)
+		if _, err := conn.WriteToUDP(frame, target.remote); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// wrapPartyUDPApp frames an application body as an unreliable TQOS type-2
+// frame: type, sequence, body length, sender slot and body.
+func wrapPartyUDPApp(sender byte, sequence uint32, body []byte) []byte {
+	out := make([]byte, 9+len(body))
+	out[0] = 2
+	binary.LittleEndian.PutUint32(out[1:5], sequence)
+	binary.LittleEndian.PutUint16(out[5:7], uint16(len(body)))
+	out[7] = sender
+	copy(out[9:], body)
+	return out
+}
+
 func (c *Client) applyPartyRealtimeInfo(body []byte) {
 	if len(body) < 1 || len(body) != 1+int(body[0])*5 {
 		return
 	}
 	c.udpMu.Lock()
 	defer c.udpMu.Unlock()
+	if c.partySlots == nil {
+		c.partySlots = make(map[uint16]byte)
+	}
 	for offset := 1; offset+5 <= len(body); offset += 5 {
-		if binary.LittleEndian.Uint16(body[offset:offset+2]) == c.selfUID {
+		uid := binary.LittleEndian.Uint16(body[offset : offset+2])
+		slot := body[offset+4]
+		if uid != 0 && uid != 0xFFFF && slot < 4 {
+			c.partySlots[uid] = slot
+		}
+		if uid == c.selfUID {
 			previousSlot, previousKnown := c.selfSlot, c.slotKnown
-			c.selfSlot = body[offset+4]
+			c.selfSlot = slot
 			c.slotKnown = c.selfSlot < 4
 			if previousSlot != c.selfSlot || previousKnown != c.slotKnown {
 				foundationlog.Robotf("S4A21_PARTY_UDP_SLOT uid=%d slot=%d known=%t\n", c.selfUID, c.selfSlot, c.slotKnown)
 			}
-			return
 		}
 	}
+}
+
+// PartySlotOf returns the roster slot the server assigned to uid. The leader
+// can occupy a slot other than zero after a leadership transfer, so following
+// resolves the leader's slot instead of assuming one.
+func (c *Client) PartySlotOf(uid uint16) (byte, bool) {
+	if c == nil || uid == 0 || uid == 0xFFFF {
+		return 0, false
+	}
+	c.udpMu.Lock()
+	defer c.udpMu.Unlock()
+	slot, ok := c.partySlots[uid]
+	return slot, ok
 }
 
 func partyUDPReplies(payload []byte, peer *partyUDPPeer, selfSlot byte, slotKnown bool) [][]byte {

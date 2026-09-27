@@ -84,12 +84,12 @@ func TestPartyUDPPeerTableIsBounded(t *testing.T) {
 	client := NewClient(nil)
 	for i := 0; i < partyUDPMaxPeers+64; i++ {
 		client.udpMu.Lock()
-		client.partyUDPPeerLocked(fmt.Sprintf("10.0.0.1:%d", 40000+i))
+		client.partyUDPPeerLocked(&net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 40000 + i})
 		client.udpMu.Unlock()
 	}
 	client.udpMu.Lock()
 	count := len(client.udpPeers)
-	overflow := client.partyUDPPeerLocked("10.0.0.2:1")
+	overflow := client.partyUDPPeerLocked(&net.UDPAddr{IP: net.ParseIP("10.0.0.2"), Port: 1})
 	client.udpMu.Unlock()
 	if count != partyUDPMaxPeers {
 		t.Fatalf("peer table size = %d, want %d", count, partyUDPMaxPeers)
