@@ -44,7 +44,7 @@ func DecodeCharacterRoster(body []byte) ([]CharacterRosterEntry, error) {
 			return nil, fmt.Errorf("character roster entry %d: %w", i, r.err)
 		}
 		entry.NameRaw = append([]byte(nil), name...)
-		entry.Name = charset.DecodePVFBytes(name)
+		entry.Name = charset.DecodeWireName(name)
 		appearanceCount := int(r.byte())
 		if r.err != nil {
 			return nil, fmt.Errorf("character roster entry %d appearance count: %w", i, r.err)

@@ -111,7 +111,7 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 			continue
 		}
 		character := account.characters[0]
-		name := strings.TrimSpace(charset.DecodePVFBytes(character.nameRaw))
+		name := strings.TrimSpace(charset.DecodeWireName(character.nameRaw))
 		robot := robotcap.Info{
 			UID: account.uid, CID: character.id, Name: name,
 			Level: character.level, Job: character.job, Grow: character.grow,
@@ -504,7 +504,7 @@ func (s SQLiteStartupInventory) characterCompliant(character startupCharacter, i
 	if character.deleteFlag != 0 || character.level < s.Config.LevelMin || character.level > s.Config.LevelMax || character.slot < 0 || character.slot > 65535 {
 		return false
 	}
-	name := strings.TrimSpace(charset.DecodePVFBytes(character.nameRaw))
+	name := strings.TrimSpace(charset.DecodeWireName(character.nameRaw))
 	encodedName, err := charset.EncodeGBKString(name)
 	if err != nil || len(encodedName) < 2 || len(encodedName) > 18 {
 		return false

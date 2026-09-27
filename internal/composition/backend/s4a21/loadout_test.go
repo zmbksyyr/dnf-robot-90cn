@@ -265,6 +265,28 @@ func TestInitializeCharacterKeepsSkillsWithoutTransferChange(t *testing.T) {
 	}
 }
 
+func TestResolveCharacterProfileMatchesWireName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot7')`); err != nil {
+		t.Fatal(err)
+	}
+	// GBK wire name that also decodes as Big5 if the heuristic is used.
+	raw := []byte{0xD3, 0xC4, 0xB3, 0xC7, 0xC2, 0xC3, 0xBF, 0xCD}
+	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,grow_type,level,exp,delete_flag) VALUES(9,7,?,2,0,70,0,0)`, raw); err != nil {
+		t.Fatal(err)
+	}
+	name := charset.DecodeWireName(raw)
+	if name != "幽城旅客" {
+		t.Fatalf("decoded wire name=%q", name)
+	}
+	_, _, resolved, err := resolveCharacterProfile(context.Background(), db, "robot7", robotcap.Info{Name: name})
+	if err != nil || resolved.Job != 2 || resolved.Level != 70 {
+		t.Fatalf("resolved=%+v err=%v", resolved, err)
+	}
+}
+
 func openLoadoutTestDB(t *testing.T, path string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", path)
