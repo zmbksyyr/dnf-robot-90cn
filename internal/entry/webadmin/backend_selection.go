@@ -132,12 +132,15 @@ func (s *Server) runtimeSettingDefault(source string) string {
 		if value == "" {
 			return ""
 		}
-		// Only a .pvf file is treated as the server executable; any other
+		// A .pvf file cannot identify the server directory; do not treat the
+		// archive directory as the server base. The field stays empty so the
+		// operator selects the real server directory.
+		if strings.EqualFold(filepath.Ext(value), ".pvf") {
+			return ""
+		}
+		// Only the server executable is reduced to its directory; any other
 		// path is returned as-is, because a directory may legitimately contain
 		// dots (for example DfoServer.v1).
-		if strings.EqualFold(filepath.Ext(value), ".pvf") {
-			return filepath.Dir(value)
-		}
 		if stat, err := os.Stat(value); err == nil && !stat.IsDir() {
 			return filepath.Dir(value)
 		}

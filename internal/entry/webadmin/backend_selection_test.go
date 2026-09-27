@@ -26,8 +26,8 @@ func TestRuntimeSettingDefaultKeepsDottedServerDirectory(t *testing.T) {
 
 	pvf := filepath.Join(dir, "Script.pvf")
 	server.cfg.ServerDirectory = pvf
-	if got := server.runtimeSettingDefault("server_directory"); got != dir {
-		t.Fatalf("pvf default = %q, want %q", got, dir)
+	if got := server.runtimeSettingDefault("server_directory"); got != "" {
+		t.Fatalf("pvf default = %q, want empty because the archive directory is not the server base", got)
 	}
 
 	exe := filepath.Join(dir, "DfoServer.exe")

@@ -80,7 +80,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 
 	pvfPath, err := ResolvePVFPath(opts.ServerDirectory)
 	if err != nil {
-		return bundle, fmt.Errorf("town map: %w", err)
+		return bundle, fmt.Errorf("PVF: %w", err)
 	}
 	catalogs, err := ReadCatalogs(pvfPath)
 	if err != nil {
@@ -167,35 +167,48 @@ func ExportItemCatalogs(paths layout.Paths, equipment, stackable []shared.Equipm
 	return nil
 }
 
-// ResolvePVFPath accepts either the server executable, the server directory or
-// the Script.pvf file itself.
+// pvfArchivePathEnv is the environment override ServerS4A21 itself reads when
+// locating the PVF archive.
+const pvfArchivePathEnv = "PVF_ARCHIVE_PATH"
+
+// inventoryDatabasePathEnv is the environment override ServerS4A21 itself
+// reads when locating the SQLite inventory database.
+const inventoryDatabasePathEnv = "INVENTORY_DATABASE_PATH"
+
+// ResolvePVFPath mirrors the S4A21 server's GameWorldConfig.PvfArchivePath
+// resolution relative to the server base directory: PVF_ARCHIVE_PATH when that
+// file exists, otherwise Data/Pvf/Script.pvf, otherwise the first *.pvf under
+// Data/Pvf, otherwise the first *.pvf directly under the server base. The
+// archive directory is never treated as the server base.
 func ResolvePVFPath(serverDirectory string) (string, error) {
-	value := strings.TrimSpace(serverDirectory)
-	if value == "" {
-		return "", fmt.Errorf("S4A21 PVF path cannot be resolved from empty ServerDirectory")
+	base, err := resolveServerBase(serverDirectory)
+	if err != nil {
+		return "", err
 	}
-	if strings.EqualFold(filepath.Ext(value), ".pvf") {
-		if _, err := os.Stat(value); err != nil {
-			return "", fmt.Errorf("S4A21 PVF %q: %w", value, err)
+	if override := strings.TrimSpace(os.Getenv(pvfArchivePathEnv)); override != "" {
+		candidate := override
+		if !filepath.IsAbs(candidate) {
+			candidate = filepath.Join(base, candidate)
 		}
-		return value, nil
+		if isRegularFile(candidate) {
+			return candidate, nil
+		}
 	}
-	// Some adapter bundles configure ServerDirectory as the server executable,
-	// while Linux-oriented bundles may configure it as the server directory.
-	// Resolve both forms without making backend selection implicit.
-	base := filepath.Dir(value)
-	if stat, err := os.Stat(value); err == nil && stat.IsDir() {
-		base = value
+	if candidate := filepath.Join(base, "Data", "Pvf", "Script.pvf"); isRegularFile(candidate) {
+		return candidate, nil
 	}
-	candidate := filepath.Join(base, "Script.pvf")
-	if _, err := os.Stat(candidate); err != nil {
-		return "", fmt.Errorf("S4A21 PVF %q: %w", candidate, err)
+	for _, dir := range []string{filepath.Join(base, "Data", "Pvf"), base} {
+		if candidate := firstPVFArchive(dir); candidate != "" {
+			return candidate, nil
+		}
 	}
-	return candidate, nil
+	return "", fmt.Errorf("S4A21 PVF not found under %q; expected Data/Pvf/Script.pvf or %s", base, pvfArchivePathEnv)
 }
 
-// ResolveDatabasePath prefers the explicitly configured path and otherwise
-// derives Data/inventory.db beside the server executable or directory.
+// ResolveDatabasePath mirrors the S4A21 server's ServerPaths.DatabasePath
+// resolution: the explicit adapter setting wins, then INVENTORY_DATABASE_PATH
+// (absolute, or relative to the server base), then Data/inventory.db under the
+// server base. The PVF location never contributes to this path.
 func ResolveDatabasePath(serverDirectory, configured string) (string, error) {
 	if value := strings.TrimSpace(configured); value != "" {
 		if _, err := os.Stat(value); err != nil {
@@ -203,19 +216,74 @@ func ResolveDatabasePath(serverDirectory, configured string) (string, error) {
 		}
 		return value, nil
 	}
-	value := strings.TrimSpace(serverDirectory)
-	if value == "" {
-		return "", fmt.Errorf("S4A21 database path cannot be resolved from empty ServerDirectory")
+	if override := strings.TrimSpace(os.Getenv(inventoryDatabasePathEnv)); override != "" {
+		candidate := override
+		if !filepath.IsAbs(candidate) {
+			base, err := resolveServerBase(serverDirectory)
+			if err != nil {
+				return "", err
+			}
+			candidate = filepath.Join(base, candidate)
+		}
+		if _, err := os.Stat(candidate); err != nil {
+			return "", fmt.Errorf("S4A21 database %q: %w", candidate, err)
+		}
+		return candidate, nil
 	}
-	base := value
-	if stat, err := os.Stat(value); err == nil && !stat.IsDir() {
-		base = filepath.Dir(value)
-	} else if filepath.Ext(value) != "" {
-		base = filepath.Dir(value)
+	base, err := resolveServerBase(serverDirectory)
+	if err != nil {
+		return "", err
 	}
 	candidate := filepath.Join(base, "Data", "inventory.db")
 	if _, err := os.Stat(candidate); err != nil {
 		return "", fmt.Errorf("S4A21 database %q: %w", candidate, err)
 	}
 	return candidate, nil
+}
+
+// resolveServerBase maps the configured server directory, or the configured
+// server executable, onto the directory ServerS4A21 uses as its base. A .pvf
+// path cannot identify that base and is rejected instead of guessing.
+func resolveServerBase(serverDirectory string) (string, error) {
+	value := strings.TrimSpace(serverDirectory)
+	if value == "" {
+		return "", fmt.Errorf("S4A21 server directory is empty")
+	}
+	if strings.EqualFold(filepath.Ext(value), ".pvf") {
+		return "", fmt.Errorf("S4A21 server directory %q is a .pvf file; configure the directory that contains the server executable", value)
+	}
+	switch stat, err := os.Stat(value); {
+	case err == nil && stat.IsDir():
+		return value, nil
+	case err == nil:
+		return filepath.Dir(value), nil
+	case filepath.Ext(value) != "":
+		return filepath.Dir(value), nil
+	default:
+		return value, nil
+	}
+}
+
+func isRegularFile(path string) bool {
+	stat, err := os.Stat(path)
+	return err == nil && stat.Mode().IsRegular()
+}
+
+// firstPVFArchive mirrors the server's fallback of picking the first archive
+// in a directory when Script.pvf is absent.
+func firstPVFArchive(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".pvf") {
+			continue
+		}
+		candidate := filepath.Join(dir, entry.Name())
+		if isRegularFile(candidate) {
+			return candidate
+		}
+	}
+	return ""
 }

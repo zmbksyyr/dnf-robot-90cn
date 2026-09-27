@@ -10,30 +10,87 @@ import (
 	"robot/internal/foundation/layout"
 )
 
-func TestResolvePVFPathAcceptsExecutableDirectoryAndFile(t *testing.T) {
+func TestResolvePVFPathUsesServerDataLayout(t *testing.T) {
+	t.Setenv(pvfArchivePathEnv, "")
 	dir := t.TempDir()
-	pvf := filepath.Join(dir, "Script.pvf")
-	if err := os.WriteFile(pvf, []byte("pvf"), 0644); err != nil {
+	pvf := filepath.Join(dir, "Data", "Pvf", "Script.pvf")
+	if err := os.MkdirAll(filepath.Dir(pvf), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := ResolvePVFPath(filepath.Join(dir, "DfoServer.exe")); err != nil || got != pvf {
-		t.Fatalf("executable resolution = %q, %v", got, err)
+	if err := os.WriteFile(pvf, []byte("pvf"), 0644); err != nil {
+		t.Fatal(err)
 	}
 	if got, err := ResolvePVFPath(dir); err != nil || got != pvf {
 		t.Fatalf("directory resolution = %q, %v", got, err)
 	}
-	if got, err := ResolvePVFPath(pvf); err != nil || got != pvf {
-		t.Fatalf("file resolution = %q, %v", got, err)
+	if got, err := ResolvePVFPath(filepath.Join(dir, "DfoServer.exe")); err != nil || got != pvf {
+		t.Fatalf("executable resolution = %q, %v", got, err)
 	}
 	if _, err := ResolvePVFPath(""); err == nil {
 		t.Fatal("empty server directory was accepted")
 	}
 	if _, err := ResolvePVFPath(t.TempDir()); err == nil {
-		t.Fatal("directory without Script.pvf was accepted")
+		t.Fatal("directory without a PVF archive was accepted")
+	}
+	if _, err := ResolvePVFPath(pvf); err == nil {
+		t.Fatal("a .pvf file was accepted as the server directory")
+	}
+}
+
+func TestResolvePVFPathMirrorsServerArchiveOverride(t *testing.T) {
+	dir := t.TempDir()
+	defaultPVF := filepath.Join(dir, "Data", "Pvf", "Script.pvf")
+	if err := os.MkdirAll(filepath.Dir(defaultPVF), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(defaultPVF, []byte("pvf"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	custom := filepath.Join(dir, "custom.pvf")
+	if err := os.WriteFile(custom, []byte("pvf"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(pvfArchivePathEnv, custom)
+	if got, err := ResolvePVFPath(dir); err != nil || got != custom {
+		t.Fatalf("absolute override = %q, %v", got, err)
+	}
+	t.Setenv(pvfArchivePathEnv, "custom.pvf")
+	if got, err := ResolvePVFPath(dir); err != nil || got != custom {
+		t.Fatalf("relative override = %q, %v", got, err)
+	}
+	t.Setenv(pvfArchivePathEnv, "missing.pvf")
+	if got, err := ResolvePVFPath(dir); err != nil || got != defaultPVF {
+		t.Fatalf("missing override fallback = %q, %v", got, err)
+	}
+}
+
+func TestResolvePVFPathFallsBackToFirstArchive(t *testing.T) {
+	t.Setenv(pvfArchivePathEnv, "")
+	dir := t.TempDir()
+	pvfDir := filepath.Join(dir, "Data", "Pvf")
+	if err := os.MkdirAll(pvfDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(pvfDir, "Other.pvf")
+	if err := os.WriteFile(archive, []byte("pvf"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ResolvePVFPath(dir); err != nil || got != archive {
+		t.Fatalf("Data/Pvf fallback = %q, %v", got, err)
+	}
+
+	legacy := t.TempDir()
+	legacyArchive := filepath.Join(legacy, "Client.pvf")
+	if err := os.WriteFile(legacyArchive, []byte("pvf"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ResolvePVFPath(legacy); err != nil || got != legacyArchive {
+		t.Fatalf("server base fallback = %q, %v", got, err)
 	}
 }
 
 func TestResolveDatabasePathPrefersExplicitPath(t *testing.T) {
+	t.Setenv(inventoryDatabasePathEnv, "")
 	dbDir := t.TempDir()
 	explicit := filepath.Join(dbDir, "custom.db")
 	if err := os.WriteFile(explicit, []byte("db"), 0644); err != nil {
@@ -57,8 +114,41 @@ func TestResolveDatabasePathPrefersExplicitPath(t *testing.T) {
 	if got, err := ResolveDatabasePath(filepath.Join(serverDir, "DfoServer.exe"), ""); err != nil || got != derived {
 		t.Fatalf("executable database = %q, %v", got, err)
 	}
+	if _, err := ResolveDatabasePath(filepath.Join(serverDir, "Data", "Pvf", "Script.pvf"), ""); err == nil {
+		t.Fatal("a .pvf file was accepted as the server base for the database")
+	}
 	if _, err := ResolveDatabasePath("", ""); err == nil {
 		t.Fatal("empty server directory was accepted")
+	}
+}
+
+func TestResolveDatabasePathMirrorsServerOverride(t *testing.T) {
+	serverDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(serverDir, "Data"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	derived := filepath.Join(serverDir, "Data", "inventory.db")
+	if err := os.WriteFile(derived, []byte("db"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	custom := filepath.Join(serverDir, "custom.db")
+	if err := os.WriteFile(custom, []byte("db"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(inventoryDatabasePathEnv, custom)
+	if got, err := ResolveDatabasePath(serverDir, ""); err != nil || got != custom {
+		t.Fatalf("absolute override = %q, %v", got, err)
+	}
+	t.Setenv(inventoryDatabasePathEnv, "custom.db")
+	if got, err := ResolveDatabasePath(serverDir, ""); err != nil || got != custom {
+		t.Fatalf("relative override = %q, %v", got, err)
+	}
+	if got, err := ResolveDatabasePath(serverDir, derived); err != nil || got != derived {
+		t.Fatalf("explicit setting = %q, %v", got, err)
+	}
+	t.Setenv(inventoryDatabasePathEnv, "missing.db")
+	if _, err := ResolveDatabasePath(serverDir, ""); err == nil {
+		t.Fatal("missing override was accepted")
 	}
 }
 

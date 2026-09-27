@@ -49,6 +49,9 @@ func TestRobotProcessLifecycle(t *testing.T) {
 
 	clone := filepath.Join(dir, "inventory-clone.db")
 	cloneDatabase(t, dbPath, clone)
+	// The adapter resolves the PVF through the same override the server reads,
+	// so the fixture archive can stay outside the server directory layout.
+	serverDir := filepath.Join(dir, "game_server")
 
 	robotPort := freeTCPPort(t)
 	webPort := freeTCPPort(t)
@@ -77,7 +80,7 @@ WebPassword = lifecycle-test-password
 log_max_size_mb = 20
 log_max_backups = 2
 max_response_bytes = 4194304
-`, robotPort, webPort, pvfPath)
+`, robotPort, webPort, serverDir)
 	if err := os.WriteFile(filepath.Join(configDir, "conf", "config.ini"), []byte(mainConfig), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -92,13 +95,14 @@ max_response_bytes = 4194304
     "database_path": %q
   }
 }
-`, pvfPath, clone)
+`, serverDir, clone)
 	if err := os.WriteFile(filepath.Join(configDir, "state", "backend_selection.json"), []byte(selection), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	cmd := exec.Command(exe)
 	cmd.Dir = dir
+	cmd.Env = withEnv(os.Environ(), "PVF_ARCHIVE_PATH", pvfPath)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -181,6 +185,19 @@ func cloneDatabase(t *testing.T, sourcePath, targetPath string) {
 	if _, err := source.Exec(`VACUUM INTO '` + quoted + `'`); err != nil {
 		t.Fatalf("clone database: %v", err)
 	}
+}
+
+// withEnv replaces key in env so the child process sees exactly one value.
+func withEnv(env []string, key, value string) []string {
+	prefix := strings.ToLower(key) + "="
+	filtered := make([]string, 0, len(env)+1)
+	for _, item := range env {
+		if strings.HasPrefix(strings.ToLower(item), prefix) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return append(filtered, key+"="+value)
 }
 
 func freeTCPPort(t *testing.T) int {
