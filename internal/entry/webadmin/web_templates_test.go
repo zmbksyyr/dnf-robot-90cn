@@ -43,7 +43,7 @@ func TestAutoDialogUsesBackendCapacityAndCapabilities(t *testing.T) {
 }
 
 func TestDatabaseCardUsesDashboardProjection(t *testing.T) {
-	for _, want := range []string{"api('dashboardStatus')", "backendCapabilities.database", "String(r.engine).toUpperCase()", "r.writable?' · writable':''"} {
+	for _, want := range []string{"api('dashboardStatus')", "backendCapabilities.database", "String(r.engine).toUpperCase()", "r.writable?' · '+i18nFormat('database.writable'):''"} {
 		if !strings.Contains(appJS, want) {
 			t.Errorf("database projection is missing %q", want)
 		}
@@ -107,10 +107,15 @@ func TestI18nLocalesHaveMatchingKeys(t *testing.T) {
 	}
 }
 
-func TestSchedulerAndActorStoreStatusRemainCompactEnglish(t *testing.T) {
-	for _, want := range []string{`class="scheduler" data-i18n-skip`, "i18nEnglishFormat('scheduler.attach_value'", `<th data-i18n-skip>Store</th>`, "i18nEnglishFormat('status.'+store)"} {
+func TestSchedulerAndActorStoreStatusAreLocalized(t *testing.T) {
+	for _, want := range []string{`data-i18n="scheduler.policy_mode"`, "i18nFormat('scheduler.attach_value'", `data-i18n="robots.store"`, "i18nFormat('status.'+store)"} {
 		if !strings.Contains(indexHTML+appJS, want) {
-			t.Errorf("compact English UI is missing %q", want)
+			t.Errorf("localized dashboard is missing %q", want)
+		}
+	}
+	for _, stale := range []string{"i18nEnglishFormat", "data-i18n-skip"} {
+		if strings.Contains(indexHTML+appJS, stale) {
+			t.Errorf("dashboard still forces English via %q", stale)
 		}
 	}
 }
