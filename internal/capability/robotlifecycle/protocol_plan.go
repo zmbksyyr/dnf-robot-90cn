@@ -19,6 +19,7 @@ type ProtocolPlanOptions struct {
 	Config        robotconfig.RuntimeConfig
 	Names         robottemplate.NameTemplates
 	Maps          []shared.MapCatalogItem
+	JobGrows      map[int][]int
 	NameExists    func(string) bool
 	RandIntn      func(int) int
 	RandBetween   func(int, int) int
@@ -59,9 +60,22 @@ func BuildProtocolRobotPlans(options ProtocolPlanOptions) ([]ProtocolRobotPlan, 
 	for index := 0; index < options.Count; index++ {
 		uid := options.IDStart + index
 		job := chooseInt(options.Config.Jobs, options.RandIntn)
-		grow := chooseInt(options.Config.GrowTypes, options.RandIntn)
+		firstGrow := chooseFirstGrow(options.JobGrows[job], env.RandIntn)
+		// grow_types selects the awakening stage; the server rejects an
+		// awakening without a transfer, so an untransferable job stays at 0.
+		awakening := chooseInt(options.Config.GrowTypes, env.RandIntn)
+		if awakening < 0 {
+			awakening = 0
+		}
+		if awakening > 2 {
+			awakening = 2
+		}
+		if firstGrow == 0 {
+			awakening = 0
+		}
+		grow := (awakening << 4) | (firstGrow & 0x0F)
 		level := env.RandBetween(levels, levelMax)
-		name := robottemplate.AllocateName(uid, job, grow, used, options.Config, options.Names, options.NameExists, options.RandBetween)
+		name := robottemplate.AllocateName(uid, job, firstGrow, used, options.Config, options.Names, options.NameExists, options.RandBetween)
 		info := robotcap.Info{UID: uid, Name: name, Level: level, Job: job, Grow: grow, Port: 0, Village: options.Config.SpawnFallbackVillage, Area: options.Config.SpawnArea, X: options.Config.SpawnXMin, Y: options.Config.SpawnYMin}
 		if mp, ok := robotspawn.RandomMap(env, options.Maps, level); ok {
 			info.Village, info.Area = mp.Village, mp.Area
@@ -109,4 +123,25 @@ func chooseInt(values []int, randIntn func(int) int) int {
 		index = 0
 	}
 	return values[index]
+}
+
+// chooseFirstGrow picks a transfer branch from the job's PVF grow catalog. The
+// server's CharacterStatComputer guards the first nibble to 0..5, so malformed
+// or out-of-range branches fall back to "not transferred".
+func chooseFirstGrow(branches []int, randIntn func(int) int) int {
+	if len(branches) == 0 {
+		return 0
+	}
+	index := 0
+	if randIntn != nil {
+		index = randIntn(len(branches))
+		if index < 0 || index >= len(branches) {
+			index = 0
+		}
+	}
+	branch := branches[index]
+	if branch < 1 || branch > 5 {
+		return 0
+	}
+	return branch
 }

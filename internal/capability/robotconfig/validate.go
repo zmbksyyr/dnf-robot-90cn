@@ -30,7 +30,8 @@ func validateRuntimeConfig(dec *foundationconfig.Decoder, rc RuntimeConfig) erro
 	checkRange("create", "level_max", rc.LevelMax, 1, 255)
 	checkOrder("create", "level_min", rc.LevelMin, "level_max", rc.LevelMax)
 	checkListRange("create", "jobs", rc.Jobs, 0, 255)
-	checkListRange("create", "grow_types", rc.GrowTypes, 0, 255)
+	// grow_types selects the awakening stage: 0 = none, 1 = first, 2 = second.
+	checkListRange("create", "grow_types", rc.GrowTypes, 0, 2)
 	dec.Check("create", "robot_uid_start", rc.RobotUIDStart >= 100000 && uint64(rc.RobotUIDStart) <= uint64(^uint32(0)), "must be between 100000 and 4294967295")
 	dec.Check("create", "robot_uid_end", rc.RobotUIDEnd >= rc.RobotUIDStart && uint64(rc.RobotUIDEnd) <= uint64(^uint32(0)), "must be greater than or equal to robot_uid_start and at most 4294967295")
 	dec.Check("create", "robot_uid_guard", rc.RobotUIDGuard == 0 || (rc.RobotUIDGuard > rc.RobotUIDEnd && uint64(rc.RobotUIDGuard) <= uint64(^uint32(0))), "must be 0 or greater than robot_uid_end and at most 4294967295")

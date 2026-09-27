@@ -28,6 +28,7 @@ type RobotCreator struct {
 	Config        robotconfig.RuntimeConfig
 	Names         robottemplate.NameTemplates
 	Maps          []shared.MapCatalogItem
+	JobGrows      map[int][]int
 	AccountPrefix string
 	PasswordHash  string
 	IDStart       int
@@ -72,7 +73,7 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	buildPlan := func(uid int) (robotlifecycle.ProtocolRobotPlan, error) {
 		plans, err := robotlifecycle.BuildProtocolRobotPlans(robotlifecycle.ProtocolPlanOptions{
 			Backend: BackendID, Count: 1, IDStart: uid, AccountPrefix: c.AccountPrefix,
-			PasswordHash: c.PasswordHash, Config: c.Config, Names: c.Names, Maps: c.Maps, RandIntn: c.RandIntn, RandBetween: c.RandBetween,
+			PasswordHash: c.PasswordHash, Config: c.Config, Names: c.Names, Maps: c.Maps, JobGrows: c.JobGrows, RandIntn: c.RandIntn, RandBetween: c.RandBetween,
 			NameExists: nameTaken,
 		})
 		if err != nil {
@@ -126,13 +127,14 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		provisioned := result.Results[0]
 		info := plan.Info
 		plannedLevel := info.Level
+		plannedGrow := info.Grow
 		info.Name = provisioned.CharacterName
 		if provisioned.ProfileKnown {
 			info.Job, info.Grow, info.Level = provisioned.Job, provisioned.Grow, provisioned.Level
 		}
 		loadoutApplied := false
 		if initializer, ok := c.Profiles.(CharacterInitializer); ok && !provisioned.Reused {
-			info, err = initializer.InitializeCharacter(ctx, plan.Request.AccountName, info, plannedLevel)
+			info, err = initializer.InitializeCharacter(ctx, plan.Request.AccountName, info, plannedLevel, plannedGrow)
 			if err != nil {
 				return robots, fmt.Errorf("initialize S4A21 character uid=%d: %w", info.UID, err)
 			}

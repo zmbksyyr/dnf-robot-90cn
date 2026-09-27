@@ -141,6 +141,51 @@ func TestRobotCreatorRegistersBackendReportedProfile(t *testing.T) {
 	}
 }
 
+type growthRecordingInitializer struct {
+	level int
+	grow  int
+}
+
+func (g *growthRecordingInitializer) ResolveCharacterProfile(_ context.Context, _ string, info robotcap.Info) (robotcap.Info, error) {
+	return info, nil
+}
+
+func (g *growthRecordingInitializer) InitializeCharacter(_ context.Context, _ string, info robotcap.Info, level, grow int) (robotcap.Info, error) {
+	g.level, g.grow = level, grow
+	info.Level, info.Grow = level, grow
+	return info, nil
+}
+
+func (g *growthRecordingInitializer) ApplyCharacterLoadout(context.Context, string, robotcap.Info) error {
+	return nil
+}
+
+func TestRobotCreatorPassesPlannedGrowthToInitializer(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	initializer := &growthRecordingInitializer{}
+	creator := RobotCreator{
+		Provisioner: creatorProvisioner{}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			LevelMin: 60, LevelMax: 60, Jobs: []int{1}, GrowTypes: []int{1},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+			NameASCIIFallback: true, NameASCIIPrefix: "growth",
+		},
+		Names: robottemplate.NameTemplates{}, IDStart: 17000000, AccountPrefix: "robot",
+		JobGrows: map[int][]int{1: {3}}, Profiles: initializer, Loadouts: initializer,
+	}
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1})
+	if err != nil || len(robots) != 1 {
+		t.Fatalf("robots=%+v err=%v", robots, err)
+	}
+	// first grow 3 (branch) + second grow 1 (awakening) = 0x13.
+	if initializer.level != 60 || initializer.grow != 0x13 {
+		t.Fatalf("initializer level=%d grow=0x%02X", initializer.level, initializer.grow)
+	}
+	if robots[0].Level != 60 || robots[0].Grow != 0x13 {
+		t.Fatalf("registered robot=%+v", robots[0])
+	}
+}
+
 type reusedCreatorProvisioner struct{}
 
 func (reusedCreatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {

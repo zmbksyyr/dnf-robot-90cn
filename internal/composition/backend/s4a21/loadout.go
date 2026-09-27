@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -50,7 +51,7 @@ type CharacterProfileAdapter interface {
 }
 
 type CharacterInitializer interface {
-	InitializeCharacter(context.Context, string, robotcap.Info, int) (robotcap.Info, error)
+	InitializeCharacter(context.Context, string, robotcap.Info, int, int) (robotcap.Info, error)
 }
 
 type SQLiteLoadoutApplier struct {
@@ -277,9 +278,12 @@ func (a *SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, accoun
 	})
 }
 
-func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
+func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account string, info robotcap.Info, level, grow int) (robotcap.Info, error) {
 	if level < 1 || level > math.MaxUint8 {
 		return info, fmt.Errorf("S4A21 character level must be between 1 and %d", math.MaxUint8)
+	}
+	if err := validateGrowType(grow); err != nil {
+		return info, err
 	}
 	actual := info
 	err := a.persistenceDo(ctx, func(ctx context.Context) error {
@@ -297,7 +301,7 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 		if err != nil {
 			return err
 		}
-		resolved, err = writeResolvedCharacterLevel(ctx, db, characterID, resolved, level)
+		resolved, err = writeResolvedCharacterProgression(ctx, db, characterID, resolved, level, grow)
 		if err != nil {
 			return err
 		}
@@ -506,6 +510,68 @@ SET level=?, exp=0, updated_at=CURRENT_TIMESTAMP
 	}
 	actual.Level = level
 	return actual, nil
+}
+
+// validateGrowType mirrors the server's CharacterStatComputer guard: the low
+// nibble is the transfer branch (0..5) and the high nibble the awakening stage
+// (0..2). An awakening without a transfer is not a state the server produces.
+func validateGrowType(grow int) error {
+	first := grow & 0x0F
+	second := (grow >> 4) & 0x0F
+	if grow < 0 || grow > math.MaxUint8 || first > 5 || second > 2 || (second > 0 && first == 0) {
+		return fmt.Errorf("S4A21 grow type 0x%02X is not a valid transfer/awakening state", grow)
+	}
+	return nil
+}
+
+// writeResolvedCharacterProgression applies the planned level and transfer or
+// awakening state in one transaction. The server rebuilds the skill panel from
+// (job, grow, level) at the next character select, so skills saved under the
+// previous grow are cleared the same way the GM tool's grow overwrite does.
+func writeResolvedCharacterProgression(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info, level, grow int) (robotcap.Info, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return actual, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE characters
+SET level=?, exp=0, grow_type=?, updated_at=CURRENT_TIMESTAMP
+	WHERE character_id=? AND delete_flag=0`, level, grow, characterID)
+	if err != nil {
+		return actual, fmt.Errorf("write S4A21 character progression id=%d: %w", characterID, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		return actual, fmt.Errorf("write S4A21 character progression id=%d affected=%d err=%v", characterID, affected, err)
+	}
+	if actual.Grow != grow {
+		available, err := tableAvailable(ctx, tx, "character_skills")
+		if err != nil {
+			return actual, err
+		}
+		if available {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM character_skills WHERE character_id=?`, characterID); err != nil {
+				return actual, fmt.Errorf("reset S4A21 character skills id=%d: %w", characterID, err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return actual, fmt.Errorf("commit S4A21 character progression id=%d: %w", characterID, err)
+	}
+	actual.Level = level
+	actual.Grow = grow
+	return actual, nil
+}
+
+func tableAvailable(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
+	var found string
+	err := tx.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect S4A21 schema for %s: %w", name, err)
+	}
+	return found == name, nil
 }
 
 func equipmentByID(catalog []shared.EquipmentCatalogItem) map[int]shared.EquipmentCatalogItem {

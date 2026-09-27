@@ -176,6 +176,95 @@ func TestSQLiteProfileAdapterPersistsPlannedAndConfiguredLevels(t *testing.T) {
 	}
 }
 
+func TestInitializeCharacterWritesTransferAwakeningAndResetsSkills(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot7')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,grow_type,level,exp,delete_flag) VALUES(9,7,'Alpha',1,0,1,0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO character_skills(character_id,skill_index,level) VALUES(9,42,1)`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	rc := robotconfig.Default()
+	rc.EquipSlots = []int{1}
+	rc.AvatarSlots = nil
+	rc.MinAvatarSlots = 0
+	rc.PetEnabled = false
+	rc.PreferEquipSets = false
+	rc.PreferAvatarSets = false
+	items := []shared.EquipmentCatalogItem{{ID: 1001, Name: "Sword", ItemType: 1, Level: 40, Durability: 45, UseJob: []int{1}}}
+	adapter := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
+	info := robotcap.Info{UID: 17000007, Name: "Alpha", Job: 1, Grow: 0, Level: 1}
+
+	// first grow 2 (branch) + second grow 1 (awakening) = 0x12.
+	actual, err := adapter.InitializeCharacter(context.Background(), "robot7", info, 70, 0x12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual.Level != 70 || actual.Grow != 0x12 {
+		t.Fatalf("initialized profile=%+v", actual)
+	}
+	db = openLoadoutTestDB(t, path)
+	var level, grow, skills int
+	if err := db.QueryRow(`SELECT level,grow_type FROM characters WHERE character_id=9`).Scan(&level, &grow); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM character_skills WHERE character_id=9`).Scan(&skills); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if level != 70 || grow != 0x12 || skills != 0 {
+		t.Fatalf("persisted level=%d grow=0x%02X skills=%d", level, grow, skills)
+	}
+
+	if _, err := adapter.InitializeCharacter(context.Background(), "robot7", info, 70, 0x20); err == nil {
+		t.Fatal("awakening without transfer was accepted")
+	}
+}
+
+func TestInitializeCharacterKeepsSkillsWithoutTransferChange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot7')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,grow_type,level,exp,delete_flag) VALUES(9,7,'Alpha',1,0,1,0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO character_skills(character_id,skill_index,level) VALUES(9,42,1)`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	rc := robotconfig.Default()
+	rc.EquipSlots = []int{1}
+	rc.AvatarSlots = nil
+	rc.MinAvatarSlots = 0
+	rc.PetEnabled = false
+	rc.PreferEquipSets = false
+	rc.PreferAvatarSets = false
+	items := []shared.EquipmentCatalogItem{{ID: 1001, Name: "Sword", ItemType: 1, Level: 40, Durability: 45, UseJob: []int{1}}}
+	adapter := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
+
+	if _, err := adapter.InitializeCharacter(context.Background(), "robot7", robotcap.Info{Name: "Alpha", Job: 1}, 70, 0); err != nil {
+		t.Fatal(err)
+	}
+	db = openLoadoutTestDB(t, path)
+	defer db.Close()
+	var skills int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM character_skills WHERE character_id=9`).Scan(&skills); err != nil {
+		t.Fatal(err)
+	}
+	if skills != 1 {
+		t.Fatalf("unchanged transfer reset skills=%d", skills)
+	}
+}
+
 func openLoadoutTestDB(t *testing.T, path string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", path)
@@ -192,7 +281,8 @@ CREATE TABLE IF NOT EXISTS character_avatar_uid_sequence(avatar_uid INTEGER PRIM
 CREATE TABLE IF NOT EXISTS character_creatures(character_id INTEGER,sort_order INTEGER,creature_key INTEGER,field04 INTEGER,mode_flag INTEGER,progress_value INTEGER,mode1_field0a INTEGER,mode1_field0b INTEGER,field_after_value INTEGER,creature_text BLOB,tail_flag INTEGER,extra_json TEXT,PRIMARY KEY(character_id,sort_order));
 CREATE TABLE IF NOT EXISTS character_creature_uid_sequence(creature_uid INTEGER PRIMARY KEY AUTOINCREMENT);
 CREATE TABLE IF NOT EXISTS character_subtype0_fields(character_id INTEGER PRIMARY KEY,creature_buffer BLOB,pet_display_flag INTEGER);
-CREATE TABLE IF NOT EXISTS character_subtype1_fields(character_id INTEGER PRIMARY KEY,equipped_creature_level INTEGER);`); err != nil {
+CREATE TABLE IF NOT EXISTS character_subtype1_fields(character_id INTEGER PRIMARY KEY,equipped_creature_level INTEGER);
+CREATE TABLE IF NOT EXISTS character_skills(character_id INTEGER,skill_index INTEGER,level INTEGER,PRIMARY KEY(character_id,skill_index));`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}

@@ -125,7 +125,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	bundle.Creator = RobotCreator{
 		Provisioner: Provisioner{Address: address},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state,
-		Config: opts.Config, Names: names, Maps: catalogs.TownMaps,
+		Config: opts.Config, Names: names, Maps: catalogs.TownMaps, JobGrows: catalogs.JobGrows,
 		AccountPrefix: prefix, IDStart: opts.Config.RobotUIDStart,
 		RandIntn: opts.RandIntn, RandBetween: opts.RandBetween,
 		Loadouts: loadouts, Profiles: loadouts,
