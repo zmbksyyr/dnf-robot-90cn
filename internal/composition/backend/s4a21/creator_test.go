@@ -186,6 +186,77 @@ func TestRobotCreatorPassesPlannedGrowthToInitializer(t *testing.T) {
 	}
 }
 
+// reusableCreatorProvisioner simulates the game server keeping the character
+// a previous create attempt already provisioned.
+type reusableCreatorProvisioner struct {
+	mu    lockhub.Locker
+	names map[string]string
+}
+
+func (p *reusableCreatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	request := requests[0]
+	name, reused := p.names[request.AccountName]
+	if !reused {
+		name = request.CharacterName
+		p.names[request.AccountName] = name
+	}
+	return []shared.ProvisionCharacterResult{{
+		Backend: BackendID, CharacterName: name, Created: true, Reused: reused, RobotUID: request.RobotUID,
+		ProfileKnown: true, Job: request.Job, Grow: 0, Level: 1,
+	}}, nil
+}
+
+type failingOnceInitializer struct {
+	fail bool
+}
+
+func (i *failingOnceInitializer) ResolveCharacterProfile(_ context.Context, _ string, info robotcap.Info) (robotcap.Info, error) {
+	return info, nil
+}
+
+func (i *failingOnceInitializer) InitializeCharacter(_ context.Context, _ string, info robotcap.Info, level, grow int) (robotcap.Info, error) {
+	if i.fail {
+		i.fail = false
+		return info, errors.New("post-provision initialization failure")
+	}
+	info.Level, info.Grow = level, grow
+	return info, nil
+}
+
+func (i *failingOnceInitializer) ApplyCharacterLoadout(context.Context, string, robotcap.Info) error {
+	return nil
+}
+
+func TestRobotCreatorRecoversAfterPostProvisionFailure(t *testing.T) {
+	store := robotstate.NewMemoryStore(nil)
+	initializer := &failingOnceInitializer{fail: true}
+	creator := RobotCreator{
+		Provisioner: &reusableCreatorProvisioner{names: map[string]string{}}, BatchStore: store, IdentityStore: store, RobotCatalog: store,
+		Config: robotconfig.RuntimeConfig{
+			LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{0},
+			SpawnFallbackVillage: 1, SpawnArea: 1, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200,
+			NameASCIIFallback: true, NameASCIIPrefix: "recover",
+		},
+		Names: robottemplate.NameTemplates{}, IDStart: 17000000, AccountPrefix: "robot",
+		Profiles: initializer, Loadouts: initializer,
+	}
+	if _, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1}); err == nil {
+		t.Fatal("first create unexpectedly succeeded")
+	}
+	// The failed attempt provisioned a server character. The retry must adopt
+	// the same character instead of failing with a duplicate identity.
+	robots, err := creator.CreateRobots(context.Background(), robotcap.CreateRequest{Count: 1})
+	if err != nil || len(robots) != 1 {
+		t.Fatalf("recovery create robots=%d err=%v", len(robots), err)
+	}
+	identities, err := store.Identities(context.Background(), BackendID)
+	if err != nil || len(identities) != 1 || identities[0].Account != "robot17000000" {
+		t.Fatalf("identities=%+v err=%v", identities, err)
+	}
+}
+
 type reusedCreatorProvisioner struct{}
 
 func (reusedCreatorProvisioner) ProvisionCharacters(_ context.Context, requests []shared.ProvisionCharacterRequest) ([]shared.ProvisionCharacterResult, error) {

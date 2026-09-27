@@ -132,30 +132,44 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		if provisioned.ProfileKnown {
 			info.Job, info.Grow, info.Level = provisioned.Job, provisioned.Grow, provisioned.Level
 		}
+		// ProvisionProtocolBatch already registered this account's identity.
+		// A later failure must not leave an orphan identity behind: retries
+		// would then fail with "robot identity already registered" until the
+		// whole process restarts.
+		rollbackIdentity := func() {
+			if remover, ok := c.IdentityStore.(robotstate.IdentityRemover); ok {
+				_ = remover.RemoveIdentities(ctx, []string{plan.Request.AccountName})
+			}
+		}
 		loadoutApplied := false
 		if initializer, ok := c.Profiles.(CharacterInitializer); ok && !provisioned.Reused {
 			info, err = initializer.InitializeCharacter(ctx, plan.Request.AccountName, info, plannedLevel, plannedGrow)
 			if err != nil {
+				rollbackIdentity()
 				return robots, fmt.Errorf("initialize S4A21 character uid=%d: %w", info.UID, err)
 			}
 			loadoutApplied = true
 		} else if profiles, ok := c.Profiles.(CharacterProfileAdapter); ok && !provisioned.Reused {
 			info, err = profiles.ApplyPlannedCharacterLevel(ctx, plan.Request.AccountName, info, plannedLevel)
 			if err != nil {
+				rollbackIdentity()
 				return robots, fmt.Errorf("apply S4A21 planned level uid=%d: %w", info.UID, err)
 			}
 		} else if c.Profiles != nil && !provisioned.Reused {
 			info, err = c.Profiles.ResolveCharacterProfile(ctx, plan.Request.AccountName, info)
 			if err != nil {
+				rollbackIdentity()
 				return robots, fmt.Errorf("resolve S4A21 profile uid=%d: %w", info.UID, err)
 			}
 		}
 		if c.Loadouts != nil && !loadoutApplied {
 			if err := c.Loadouts.ApplyCharacterLoadout(ctx, plan.Request.AccountName, info); err != nil {
+				rollbackIdentity()
 				return robots, fmt.Errorf("apply S4A21 loadout uid=%d: %w", info.UID, err)
 			}
 		}
 		if err := c.RobotCatalog.RegisterRobots(ctx, []robotcap.Info{info}); err != nil {
+			rollbackIdentity()
 			return robots, fmt.Errorf("register S4A21 robot directory uid=%d: %w", info.UID, err)
 		}
 		robots = append(robots, info)

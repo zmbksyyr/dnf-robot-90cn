@@ -107,6 +107,20 @@ func (p SQLiteRobotPurger) ExecuteDangerousDelete(ctx context.Context, requested
 			return purgeResult(actual, true), fmt.Errorf("remove purged S4A21 robot state: %w", err)
 		}
 	}
+	// Accounts are unique per robot, so this also clears orphan identities
+	// whose character name no longer matches a live robot entry (for example
+	// after a failed create or a rename) and would otherwise block recreation.
+	if len(actual.UIDs) > 0 && p.State != nil {
+		if remover, ok := p.State.(robotstate.IdentityRemover); ok {
+			accounts := make([]string, 0, len(actual.UIDs))
+			for _, uid := range actual.UIDs {
+				accounts = append(accounts, p.AccountPrefix+strconv.Itoa(uid))
+			}
+			if err := remover.RemoveIdentities(ctx, accounts); err != nil {
+				return purgeResult(actual, true), fmt.Errorf("remove purged S4A21 robot identities: %w", err)
+			}
+		}
+	}
 	return purgeResult(actual, actual.AccountCount > 0 || actual.CharacterCount > 0), nil
 }
 

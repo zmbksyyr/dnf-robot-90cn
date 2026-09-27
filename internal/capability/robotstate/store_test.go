@@ -40,19 +40,43 @@ func TestMemoryStoreHonorsCanceledContext(t *testing.T) {
 	}
 }
 
-func TestMemoryStoreRegistersBackendNeutralIdentity(t *testing.T) {
+func TestMemoryStoreRefreshesRegisteredIdentity(t *testing.T) {
 	store := NewMemoryStore(nil)
 	slot := uint16(4)
 	identity := Identity{Backend: shared.BackendID("test"), Account: "acct", CharacterName: "robot", Slot: &slot}
 	if err := store.RegisterIdentity(context.Background(), identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RegisterIdentity(context.Background(), identity); !errors.Is(err, ErrDuplicateIdentity) {
-		t.Fatalf("duplicate error = %v", err)
+	// Re-registering the same account/character refreshes the linkage instead
+	// of failing, so a stale identity cannot block adoption forever.
+	slot = 5
+	identity.Slot = &slot
+	if err := store.RegisterIdentity(context.Background(), identity); err != nil {
+		t.Fatalf("refresh error = %v", err)
 	}
 	identities, err := store.Identities(context.Background(), shared.BackendID("test"))
 	if err != nil || len(identities) != 1 || identities[0].Slot == nil || *identities[0].Slot != slot {
 		t.Fatalf("identities = %+v, err=%v", identities, err)
+	}
+	if err := store.RegisterIdentities(context.Background(), []Identity{identity, identity}); !errors.Is(err, ErrDuplicateIdentity) {
+		t.Fatalf("intra-batch duplicate error = %v", err)
+	}
+}
+
+func TestMemoryStoreRemovesIdentitiesByAccount(t *testing.T) {
+	store := NewMemoryStore(nil)
+	if err := store.RegisterIdentities(context.Background(), []Identity{
+		{Backend: shared.BackendID("test"), Account: "acct7", CharacterName: "old-name"},
+		{Backend: shared.BackendID("test"), Account: "acct8", CharacterName: "keep"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RemoveIdentities(context.Background(), []string{"acct7", ""}); err != nil {
+		t.Fatal(err)
+	}
+	identities, err := store.Identities(context.Background(), shared.BackendID("test"))
+	if err != nil || len(identities) != 1 || identities[0].Account != "acct8" {
+		t.Fatalf("identities=%+v err=%v", identities, err)
 	}
 }
 

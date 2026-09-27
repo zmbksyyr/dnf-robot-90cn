@@ -35,6 +35,16 @@ func TestSQLiteRobotPurgerRangeDeletesStrictRobotAccountsAndState(t *testing.T) 
 		{UID: 17000001, CID: 101, Name: "one"},
 		{UID: 17000002, CID: 102, Name: "two"},
 	})
+	if err := state.RegisterIdentities(context.Background(), []robotstate.Identity{
+		{Backend: BackendID, Account: "robot17000001", CharacterName: "one"},
+		{Backend: BackendID, Account: "robot17000002", CharacterName: "two"},
+		// Orphan identity: the account exists in the database but has no live
+		// robot entry, so RemoveRobots can never see its character name.
+		{Backend: BackendID, Account: "robot17000005", CharacterName: "orphan"},
+		{Backend: BackendID, Account: "player17000001", CharacterName: "keep"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	closer := &recordingSessionCloser{}
 	purger := SQLiteRobotPurger{DatabasePath: path, AccountPrefix: "robot", State: state, Sessions: closer}
 	request := robotcap.DangerousDeleteRequest{Mode: robotcap.DangerousDeleteModeRange, MinUID: 17000001, MaxUID: 17000005}
@@ -59,6 +69,10 @@ func TestSQLiteRobotPurgerRangeDeletesStrictRobotAccountsAndState(t *testing.T) 
 	if err != nil || len(robots) != 0 {
 		t.Fatalf("robots=%+v err=%v", robots, err)
 	}
+	identities, err := state.Identities(context.Background(), BackendID)
+	if err != nil || len(identities) != 1 || identities[0].Account != "player17000001" {
+		t.Fatalf("identities=%+v err=%v", identities, err)
+	}
 	db := openPurgeTestDatabase(t, path)
 	defer db.Close()
 	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id IN ('robot17000001','robot17000002','robot17000005')`, 0)
@@ -69,6 +83,12 @@ func TestSQLiteRobotPurgerRangeDeletesStrictRobotAccountsAndState(t *testing.T) 
 func TestSQLiteRobotPurgerCIDDeletesOneCharacterAndRetainsNonemptyAccount(t *testing.T) {
 	path := newPurgeTestDatabase(t)
 	state := robotstate.NewMemoryStore([]robotcap.Info{{UID: 17000002, CID: 102, Name: "two"}})
+	if err := state.RegisterIdentities(context.Background(), []robotstate.Identity{
+		{Backend: BackendID, Account: "robot17000002", CharacterName: "two"},
+		{Backend: BackendID, Account: "player17000001", CharacterName: "keep"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	purger := SQLiteRobotPurger{DatabasePath: path, AccountPrefix: "robot", State: state}
 	plan, err := purger.PlanDangerousDelete(context.Background(), robotcap.DangerousDeleteRequest{Mode: robotcap.DangerousDeleteModeCID, CID: 102})
 	if err != nil {
@@ -86,6 +106,10 @@ func TestSQLiteRobotPurgerCIDDeletesOneCharacterAndRetainsNonemptyAccount(t *tes
 	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id='robot17000002'`, 1)
 	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id=102`, 0)
 	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id=103`, 1)
+	identities, err := state.Identities(context.Background(), BackendID)
+	if err != nil || len(identities) != 1 || identities[0].Account != "player17000001" {
+		t.Fatalf("identities=%+v err=%v", identities, err)
+	}
 }
 
 func TestSQLiteRobotPurgerRejectsChangedDeletePlan(t *testing.T) {

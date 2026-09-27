@@ -32,6 +32,13 @@ type IdentityDirectory interface {
 	Identities(context.Context, shared.BackendID) ([]Identity, error)
 }
 
+// IdentityRemover clears every identity registered for the given account
+// names. Accounts are unique per robot, so this also removes stale identities
+// whose character name no longer matches a live robot entry.
+type IdentityRemover interface {
+	RemoveIdentities(context.Context, []string) error
+}
+
 type Directory interface {
 	SelectRobots(context.Context, robotcap.CommandRequest) ([]robotcap.Info, error)
 	RobotLocations(context.Context) ([]shared.MapLocation, error)
@@ -88,18 +95,45 @@ func (s *MemoryStore) RegisterIdentities(ctx context.Context, identities []Ident
 		if identity.Backend == "" || identity.Account == "" || identity.CharacterName == "" {
 			return errors.New("backend, account, and character name are required")
 		}
-		key := string(identity.Backend) + "\x00" + identity.Account + "\x00" + identity.CharacterName
-		if _, exists := s.identities[key]; exists {
-			return ErrDuplicateIdentity
-		}
+		key := identityKey(identity)
 		if _, exists := keys[key]; exists {
 			return ErrDuplicateIdentity
 		}
 		keys[key] = struct{}{}
 	}
 	for _, identity := range identities {
-		key := string(identity.Backend) + "\x00" + identity.Account + "\x00" + identity.CharacterName
-		s.identities[key] = identity
+		// The key is the backend account/character linkage. Re-registering it
+		// refreshes the stored identity (for example a reused character that is
+		// adopted again after a failed create) instead of failing, so a stale
+		// registration can never block robot provisioning forever.
+		s.identities[identityKey(identity)] = identity
+	}
+	return nil
+}
+
+func identityKey(identity Identity) string {
+	return string(identity.Backend) + "\x00" + identity.Account + "\x00" + identity.CharacterName
+}
+
+func (s *MemoryStore) RemoveIdentities(ctx context.Context, accounts []string) error {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	wanted := make(map[string]struct{}, len(accounts))
+	for _, account := range accounts {
+		if account != "" {
+			wanted[account] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+	for key, identity := range s.identities {
+		if _, ok := wanted[identity.Account]; ok {
+			delete(s.identities, key)
+		}
 	}
 	return nil
 }
@@ -276,3 +310,4 @@ var _ Directory = (*MemoryStore)(nil)
 var _ RobotCatalog = (*MemoryStore)(nil)
 var _ RobotProfileUpdater = (*MemoryStore)(nil)
 var _ RobotRemover = (*MemoryStore)(nil)
+var _ IdentityRemover = (*MemoryStore)(nil)
