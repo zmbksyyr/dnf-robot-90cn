@@ -76,9 +76,11 @@ func applyQuestGates(ctx context.Context, db *sql.DB, characterID int, gates cap
 }
 
 // applyQuestGatesTx makes the character's quest tables hold exactly the gate
-// set and reports whether any row changed. Active gate quests fill the client
-// slots first; overflow uses higher slot numbers, which the server still reads
-// for admission while the fixed-slot client projection ignores them.
+// set and reports whether any row changed. Gate quests fill slots from 0 in
+// ascending quest order. The server reads every row for admission and maze
+// selection, while the fixed 30-slot client projection is filtered by the
+// server's own presentation planner (world-map task cards), so slot overflow
+// neither blocks entry nor floods the client.
 func applyQuestGatesTx(ctx context.Context, tx *sql.Tx, characterID int, gates capabilitypvf.QuestGates) (bool, error) {
 	if gates.Empty() {
 		return false, nil

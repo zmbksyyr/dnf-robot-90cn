@@ -8,8 +8,10 @@ import (
 
 // QuestGates is the fixed quest state that removes every quest-based dungeon
 // gate. World map persistent gates are marked completed; world map
-// [in progress] entries and dungeon [quest connection] ids stay active. An
-// active quest satisfies either admission rule, so active wins on overlap.
+// [in progress] entries, dungeon [quest connection] ids and quests whose
+// [dungeon info] references an otherwise unreachable quest-asset dungeon stay
+// active. An active quest satisfies either admission rule, so active wins on
+// overlap.
 type QuestGates struct {
 	CompletedQuestIDs []int
 	ActiveQuestIDs    []int
@@ -19,21 +21,28 @@ func (g QuestGates) Empty() bool {
 	return len(g.CompletedQuestIDs) == 0 && len(g.ActiveQuestIDs) == 0
 }
 
-// ProjectQuestGates reads the released world maps (worldmap/worldmap.lst) and
-// the dungeon list (dungeon/dungeon.lst) to derive the gate quest set.
+// ProjectQuestGates reads the released world maps (worldmap/worldmap.lst), the
+// dungeon list (dungeon/dungeon.lst) and quest files (n_quest/quest.lst) to
+// derive the gate quest set.
 func ProjectQuestGates(archive TownTextArchive) QuestGates {
 	if archive == nil {
 		return QuestGates{}
 	}
 	persistent, inProgress := projectWorldMapGates(archive)
 	connections := projectDungeonQuestConnections(archive)
-	active := make(map[int]struct{}, len(inProgress)+len(connections))
+	references := projectQuestDungeonReferences(archive)
+	active := make(map[int]struct{}, len(inProgress)+len(connections)+len(references))
 	for _, questID := range inProgress {
 		if questID > 0 {
 			active[questID] = struct{}{}
 		}
 	}
 	for _, questID := range connections {
+		if questID > 0 {
+			active[questID] = struct{}{}
+		}
+	}
+	for _, questID := range references {
 		if questID > 0 {
 			active[questID] = struct{}{}
 		}
@@ -145,6 +154,103 @@ func parseQuestConnectionIDs(body string) []int {
 		values := parseAllInts(block)
 		if len(values) >= 2 && values[1] > 0 {
 			result = append(result, values[1])
+		}
+	}
+	return result
+}
+
+// projectQuestDungeonReferences finds quest-asset dungeons whose entry is not
+// already granted by a [quest connection] and returns one quest per dungeon
+// whose [dungeon info] pairs reference it. The server's admission check accepts
+// an active quest with a matching reference, so a single referencing quest is
+// enough to open the dungeon.
+func projectQuestDungeonReferences(archive TownTextArchive) []int {
+	needy := projectUnconnectedQuestDungeons(archive)
+	if len(needy) == 0 {
+		return nil
+	}
+	lst, _ := archive.ReadText("n_quest/quest.lst")
+	if lst == "" {
+		return nil
+	}
+	needySet := make(map[int]struct{}, len(needy))
+	for _, dungeonID := range needy {
+		needySet[dungeonID] = struct{}{}
+	}
+	covered := make(map[int]struct{}, len(needy))
+	result := make([]int, 0, len(needy))
+	for _, match := range pvfListEntryPattern.FindAllStringSubmatch(lst, -1) {
+		if len(covered) == len(needy) {
+			break
+		}
+		questID, err := strconv.Atoi(match[1])
+		if err != nil || questID <= 0 {
+			continue
+		}
+		body, _ := archive.ReadText(normalizePVFPath("n_quest/" + strings.TrimSpace(match[2])))
+		for _, dungeonID := range questDungeonReferences(body) {
+			if _, wanted := needySet[dungeonID]; !wanted {
+				continue
+			}
+			if _, done := covered[dungeonID]; done {
+				continue
+			}
+			covered[dungeonID] = struct{}{}
+			result = append(result, questID)
+		}
+	}
+	return result
+}
+
+// projectUnconnectedQuestDungeons lists the quest-asset dungeons (paths under
+// quest/ or dungeon/quest/) that have no [quest connection] id in their file or
+// mazes. These can only be entered through a quest reference.
+func projectUnconnectedQuestDungeons(archive TownTextArchive) []int {
+	lst, _ := archive.ReadText("dungeon/dungeon.lst")
+	if lst == "" {
+		return nil
+	}
+	needy := make([]int, 0)
+	for _, match := range pvfListEntryPattern.FindAllStringSubmatch(lst, -1) {
+		dungeonID, err := strconv.Atoi(match[1])
+		if err != nil || dungeonID <= 0 {
+			continue
+		}
+		path := strings.TrimSpace(match[2])
+		if !isQuestDungeonPath(path) {
+			continue
+		}
+		text, _ := archive.ReadText(normalizePVFPath("dungeon/" + path))
+		if len(parseQuestConnectionIDs(text)) > 0 {
+			continue
+		}
+		needy = append(needy, dungeonID)
+	}
+	sort.Ints(needy)
+	return needy
+}
+
+func isQuestDungeonPath(path string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	normalized = strings.TrimPrefix(normalized, "/")
+	return strings.HasPrefix(normalized, "quest/") || strings.HasPrefix(normalized, "dungeon/quest/")
+}
+
+// questDungeonReferences returns the first value of every [dungeon info] pair,
+// mirroring the server's QuestTargetIndex.ReferencesDungeon.
+func questDungeonReferences(body string) []int {
+	if body == "" {
+		return nil
+	}
+	section, ok := sectionText(body, "dungeon info")
+	if !ok {
+		return nil
+	}
+	values := parseAllInts(section)
+	result := make([]int, 0, len(values)/2)
+	for offset := 0; offset+1 < len(values); offset += 2 {
+		if values[offset] > 0 {
+			result = append(result, values[offset])
 		}
 	}
 	return result
