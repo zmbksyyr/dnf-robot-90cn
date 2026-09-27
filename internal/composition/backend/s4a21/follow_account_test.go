@@ -22,7 +22,10 @@ INSERT INTO accounts(account_id,m_id) VALUES (1,'leader'),(2,'empty-account');
 INSERT INTO characters(character_id,account_id,name,town_id,delete_flag,updated_at) VALUES
  (10,1,'old',3,0,'2026-09-01 00:00:00'),
  (11,1,'newest',9,0,'2026-09-02 00:00:00'),
- (12,1,'deleted',7,1,'2026-09-03 00:00:00');`); err != nil {
+ (12,1,'deleted',7,1,'2026-09-03 00:00:00'),
+ (13,1,'single-digit-month',5,0,'2026-9-8 10:00:00'),
+ (14,1,'iso-day',6,0,'2026-10-01 09:00:00'),
+ (15,1,'empty-stamp',4,0,NULL);`); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -31,8 +34,8 @@ INSERT INTO characters(character_id,account_id,name,town_id,delete_flag,updated_
 func TestFollowAccountLocatorPicksNewestLiveCharacter(t *testing.T) {
 	locator := FollowAccountLocator{DatabasePath: newFollowAccountTestDatabase(t)}
 	village, ok, err := locator.FollowAccountVillageLastPlayed(context.Background(), "leader")
-	if err != nil || !ok || village != 9 {
-		t.Fatalf("village=%d ok=%t err=%v, want town 9 from the newest live character", village, ok, err)
+	if err != nil || !ok || village != 6 {
+		t.Fatalf("village=%d ok=%t err=%v, want town 6 from the newest parsed timestamp", village, ok, err)
 	}
 	if _, ok, err := locator.FollowAccountVillageLastPlayed(context.Background(), "missing"); err != nil || ok {
 		t.Fatalf("missing account ok=%t err=%v, want no result", ok, err)

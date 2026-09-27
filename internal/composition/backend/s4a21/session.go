@@ -64,7 +64,7 @@ type packetObserverRegistration struct {
 
 func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSessionRequest) (shared.RobotSession, error) {
 	if strings.TrimSpace(request.AccountName) == "" {
-		return nil, fmt.Errorf("account name is required")
+		return nil, fmt.Errorf("S4A21 session account name is required")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -233,7 +233,7 @@ func (s *Session) Shout(ctx context.Context, intent shared.ShoutIntent) error {
 	case shared.ShoutChannelWorld:
 		return shared.UnsupportedCapabilityError{Backend: BackendID, Operation: shared.CapabilityWorldShout, Reason: "S4A21 has no verified world-shout protocol mode"}
 	default:
-		return fmt.Errorf("unknown shout channel %q", intent.Channel)
+		return fmt.Errorf("S4A21 unknown shout channel %q", intent.Channel)
 	}
 	message, err := charset.EncodeGBKString(strings.TrimSpace(intent.Message))
 	if err != nil {

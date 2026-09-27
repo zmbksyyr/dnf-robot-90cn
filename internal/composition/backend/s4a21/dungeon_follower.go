@@ -364,6 +364,10 @@ func (s *Session) commitFollowerFinishLoading(packet protocol.Packet) {
 	}
 }
 
+// parsePartyInvite decodes the verified A21 invite notification: u16 inviter
+// UID, u8 routing byte (0 on the party channel), then an i32 peer value that
+// AcceptPartyInvite echoes back unchanged. Any other shape is ignored so
+// unrelated notifications cannot trigger an acceptance.
 func parsePartyInvite(packet protocol.Packet) (uint16, int32, bool) {
 	if packet.Command != 0 || len(packet.Body) < 7 || packet.Body[2] != 0 {
 		return 0, 0, false

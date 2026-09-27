@@ -54,10 +54,10 @@ func (p Provisioner) ProvisionCharacters(ctx context.Context, requests []shared.
 func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.ProvisionCharacterRequest) (shared.ProvisionCharacterResult, error) {
 	result := shared.ProvisionCharacterResult{Backend: BackendID, CharacterName: request.CharacterName, RobotUID: request.RobotUID}
 	if strings.TrimSpace(request.AccountName) == "" {
-		return result, fmt.Errorf("account name is required")
+		return result, fmt.Errorf("S4A21 provision account name is required")
 	}
 	if request.Job < 0 || request.Job > 255 {
-		return result, fmt.Errorf("job must be between 0 and 255")
+		return result, fmt.Errorf("S4A21 provision job must be between 0 and 255")
 	}
 	requestedName := strings.TrimSpace(request.CharacterName)
 	if ctx == nil {
@@ -278,7 +278,7 @@ func waitPacket(ctx context.Context, client *protocol.Client, typ uint16, comman
 		return protocol.Packet{}, err
 	}
 	if command == 1 && !commandAccepted(packet.Body) {
-		return protocol.Packet{}, fmt.Errorf("command 0x%04X rejected with body %v", typ, packet.Body)
+		return protocol.Packet{}, fmt.Errorf("S4A21 command 0x%04X rejected with body %v", typ, packet.Body)
 	}
 	return packet, nil
 }

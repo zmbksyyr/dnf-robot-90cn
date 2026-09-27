@@ -36,7 +36,7 @@ func (l FollowAccountLocator) FollowAccountVillageLastPlayed(ctx context.Context
 	err = db.QueryRowContext(ctx, `SELECT c.town_id FROM accounts a
 JOIN characters c ON c.account_id=a.account_id
 WHERE a.m_id=? AND c.delete_flag=0
-ORDER BY c.updated_at DESC, c.character_id DESC LIMIT 1`, account).Scan(&village)
+ORDER BY datetime(c.updated_at) DESC, c.character_id DESC LIMIT 1`, account).Scan(&village)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
