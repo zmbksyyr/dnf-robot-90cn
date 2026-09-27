@@ -152,6 +152,13 @@ func rotateLogIfNeededLocked(nextBytes int) {
 	logWriter = bufio.NewWriterSize(logFile, defaultLogBufferSize)
 }
 
+// LogSizeBytes reports the current log file size for runtime metrics.
+func LogSizeBytes() int64 {
+	logMu.Lock()
+	defer logMu.Unlock()
+	return logSize
+}
+
 func LogClose() {
 	logMu.Lock()
 	if logClosing {

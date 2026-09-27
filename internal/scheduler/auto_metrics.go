@@ -7,6 +7,7 @@ import (
 	actormodel "robot/internal/actor"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
+	"robot/internal/foundation/robotlog"
 )
 
 func (m *RobotManager) addAutoCreated(n int) {
@@ -198,7 +199,8 @@ func (s *RobotSupervisor) updateMetrics(rc robotconfig.RuntimeConfig, signals ad
 	s.manager.schedulerLastOnlineFailed = stats.OnlineFailed
 	policy := s.manager.schedulerStatus
 	s.manager.autoMu.Unlock()
-	line := fmt.Sprintf("[RobotMetrics] policy=%s target=%d actors=%d leased=%d idle=%d state idle=%d assigned=%d online=%d running=%d busy=%d releasing=%d runtime running=%d store=%d connecting=%d recycling=%d blocked=%d cpu=%.1f mem_mb=%d goroutines=%d online=%d/%d move=%d/%d shout_local=%d/%d shout_world=%d/%d store=%d/%d expired=%d\n",
+	dbStatus := s.manager.DatabaseStatus()
+	line := fmt.Sprintf("[RobotMetrics] policy=%s target=%d actors=%d leased=%d idle=%d state idle=%d assigned=%d online=%d running=%d busy=%d releasing=%d runtime running=%d store=%d connecting=%d recycling=%d blocked=%d cpu=%.1f mem_mb=%d goroutines=%d online=%d/%d move=%d/%d shout_local=%d/%d shout_world=%d/%d store=%d/%d expired=%d db_ms=%d db_ok=%t log_mb=%.1f\n",
 		policy.Mode,
 		rc.AutoTargetOnlineCount, counts.Auto, counts.Leased, counts.Idle,
 		counts.StateIdle, counts.StateAssigned, counts.StateOnline, counts.StateRunning, counts.StateBusy, counts.StateReleasing,
@@ -208,7 +210,8 @@ func (s *RobotSupervisor) updateMetrics(rc robotconfig.RuntimeConfig, signals ad
 		stats.MoveSuccess, stats.MoveFailed,
 		stats.ShoutLocalSuccess, stats.ShoutLocalFailed,
 		stats.ShoutWorldSuccess, stats.ShoutWorldFailed,
-		stats.StoreSuccess, stats.StoreFailed, stats.StoreExpired)
+		stats.StoreSuccess, stats.StoreFailed, stats.StoreExpired,
+		dbStatus.LatencyMS, dbStatus.OK, float64(robotlog.LogSizeBytes())/(1024*1024))
 	robotLogf("%s", line)
 }
 
