@@ -28,6 +28,14 @@ const (
 	partyUDPTraceBytes        = 512
 )
 
+// Application payload samples are captured even without the trace switch: the
+// first few application frames of each peer are what identifies the client's
+// in-dungeon position format, and the bound keeps a long session quiet.
+const (
+	partyUDPAppSampleLimit = 4
+	partyUDPAppSampleBytes = 256
+)
+
 func partyUDPTraceEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(partyUDPTraceEnv))) {
 	case "1", "true", "yes", "on":
@@ -54,6 +62,7 @@ type partyUDPPeer struct {
 	diagDrops        byte
 	traceRX          int
 	traceTX          int
+	appRXSamples     int
 	epochRoute       [2]bool
 }
 
@@ -123,6 +132,7 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			c.udpTraceEvents++
 			peer.traceTX++
 		}
+		sampleApp := peer.appRXSamples < partyUDPAppSampleLimit
 		selfUID := c.selfUID
 		c.udpMu.Unlock()
 		loggedPayload := buffer[:n]
@@ -140,6 +150,18 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 			logPartyUDPTraceValue("RX", selfUID, remote, buffer[:n])
 			for _, application := range partyUDPApplicationPayloads(buffer[:n]) {
 				logPartyUDPTraceValue("APP", selfUID, remote, application)
+			}
+		}
+		if sampleApp {
+			for _, application := range partyUDPApplicationPayloads(buffer[:n]) {
+				c.udpMu.Lock()
+				if peer.appRXSamples >= partyUDPAppSampleLimit {
+					c.udpMu.Unlock()
+					break
+				}
+				peer.appRXSamples++
+				c.udpMu.Unlock()
+				logPartyUDPAppSample(selfUID, remote, application)
 			}
 		}
 		for _, reply := range replies {
@@ -164,6 +186,20 @@ func logPartyUDPTraceValue(direction string, selfUID uint16, remote *net.UDPAddr
 	}
 	foundationlog.Robotf("S4A21_PARTY_UDP_TRACE_%s uid=%d remote=%s size=%d truncated=%t bytes=%X\n",
 		direction, selfUID, remote, len(payload), truncated, logged)
+}
+
+// logPartyUDPAppSample records one bounded application payload sample per peer
+// without the trace switch. These lines are the deterministic input for the
+// in-dungeon position format.
+func logPartyUDPAppSample(selfUID uint16, remote *net.UDPAddr, payload []byte) {
+	logged := payload
+	truncated := false
+	if len(logged) > partyUDPAppSampleBytes {
+		logged = logged[:partyUDPAppSampleBytes]
+		truncated = true
+	}
+	foundationlog.Robotf("S4A21_PARTY_UDP_APP_RX uid=%d remote=%s size=%d truncated=%t bytes=%X\n",
+		selfUID, remote, len(payload), truncated, logged)
 }
 
 // partyUDPApplicationPayloads surfaces the application bytes carried by a

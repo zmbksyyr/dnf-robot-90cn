@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"net"
+	"strings"
 	"testing"
+
+	foundationlog "robot/internal/foundation/log"
 )
 
 func TestPartyUDPApplicationPayloadsSkipsHandshakeFrames(t *testing.T) {
@@ -177,5 +181,25 @@ func TestPartyUDPAcksReliableFramesInCombinedDatagram(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint32(replies[0][2:6]); got != 13 {
 		t.Fatalf("combined reliable ack=%d want=13", got)
+	}
+}
+
+func TestPartyUDPAppSampleIsBounded(t *testing.T) {
+	var lines []string
+	foundationlog.SetRobotSink(func(msg string) { lines = append(lines, msg) })
+	defer foundationlog.SetRobotSink(nil)
+	payload := make([]byte, partyUDPAppSampleBytes+10)
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+	remote := &net.UDPAddr{IP: net.IPv4(192, 168, 5, 58), Port: 5063}
+	logPartyUDPAppSample(7619, remote, payload)
+	if len(lines) != 1 {
+		t.Fatalf("sample lines=%v", lines)
+	}
+	line := lines[0]
+	if !strings.Contains(line, "S4A21_PARTY_UDP_APP_RX") || !strings.Contains(line, "truncated=true") ||
+		!strings.Contains(line, fmt.Sprintf("size=%d", len(payload))) || strings.Contains(line, "FF FF ff") {
+		t.Fatalf("sample line=%q", line)
 	}
 }
