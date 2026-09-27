@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -250,7 +251,15 @@ func sqliteReadOnlyDSN(path string) string {
 }
 
 func (a *SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account string, info robotcap.Info) error {
-	return a.persistenceDo(ctx, func(ctx context.Context) error {
+	_, err := a.applyCharacterLoadout(ctx, account, info)
+	return err
+}
+
+// applyCharacterLoadout applies the generated loadout and reports whether the
+// stored equipment had to be replaced.
+func (a *SQLiteLoadoutApplier) applyCharacterLoadout(ctx context.Context, account string, info robotcap.Info) (bool, error) {
+	replaced := false
+	err := a.persistenceDo(ctx, func(ctx context.Context) error {
 		if strings.TrimSpace(a.DatabasePath) == "" {
 			return fmt.Errorf("S4A21 loadout database path is required")
 		}
@@ -276,8 +285,43 @@ func (a *SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, accoun
 		if a.db == nil {
 			petSchema = petSchemaAvailable(ctx, db)
 		}
-		return a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema)
+		changed, err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, actual, items, petSchema)
+		if err != nil {
+			return err
+		}
+		replaced = changed
+		return nil
 	})
+	return replaced, err
+}
+
+// ReconcileRobotLoadouts re-applies the generated loadout to robots whose saved
+// equipment no longer matches the selection window for their level and job
+// (for example stale initial weapons after a level change). Robots whose
+// loadout is already current are left untouched.
+func (a *SQLiteLoadoutApplier) ReconcileRobotLoadouts(ctx context.Context, accountPrefix string, robots []robotcap.Info) (int, error) {
+	if a == nil || len(robots) == 0 {
+		return 0, nil
+	}
+	prefix := strings.TrimSpace(accountPrefix)
+	if prefix == "" {
+		return 0, fmt.Errorf("S4A21 loadout reconcile account prefix is required")
+	}
+	replaced := 0
+	for index := range robots {
+		info := robots[index]
+		if info.UID <= 0 || strings.TrimSpace(info.Name) == "" {
+			continue
+		}
+		changed, err := a.applyCharacterLoadout(ctx, prefix+strconv.Itoa(info.UID), info)
+		if err != nil {
+			return replaced, fmt.Errorf("reconcile S4A21 loadout uid=%d: %w", info.UID, err)
+		}
+		if changed {
+			replaced++
+		}
+	}
+	return replaced, nil
 }
 
 func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account string, info robotcap.Info, level, grow int) (robotcap.Info, error) {
@@ -315,7 +359,7 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 		if a.db == nil {
 			petSchema = petSchemaAvailable(ctx, db)
 		}
-		if err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, resolved, items, petSchema); err != nil {
+		if _, err := a.applyResolvedCharacterLoadout(ctx, db, accountID, characterID, resolved, items, petSchema); err != nil {
 			return err
 		}
 		if err := applyQuestGates(ctx, db, characterID, a.QuestGates); err != nil {
@@ -327,7 +371,7 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 	return actual, err
 }
 
-func (a *SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) error {
+func (a *SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) (bool, error) {
 	selectedEquipment := selectS4A21Equipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
 	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
 	selectedPet, selectedArtifacts, petSelected := equipmentcap.SelectPet(a.Equipment, a.Config, a.RandIntn)
@@ -336,30 +380,31 @@ func (a *SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context
 		selectedArtifacts = nil
 	}
 	if len(selectedEquipment) == 0 {
-		return fmt.Errorf("S4A21 loadout has no compatible equipment for level=%d job=%d", info.Level, info.Job)
+		return false, fmt.Errorf("S4A21 loadout has no compatible equipment for level=%d job=%d", info.Level, info.Job)
 	}
 	if a.Config.MinAvatarSlots > 0 && len(selectedAvatar) < a.Config.MinAvatarSlots {
-		return fmt.Errorf("S4A21 loadout has %d compatible avatar slots, need %d for job=%d", len(selectedAvatar), a.Config.MinAvatarSlots, info.Job)
+		return false, fmt.Errorf("S4A21 loadout has %d compatible avatar slots, need %d for job=%d", len(selectedAvatar), a.Config.MinAvatarSlots, info.Job)
 	}
-	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, items, a.Config, len(selectedEquipment), len(selectedAvatar), petSelected, selectedPet, selectedArtifacts)
+	bestLevels := equipmentcap.BestEquipmentLevels(a.Equipment, info.Level, info.Job, a.Config)
+	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, items, a.Config, bestLevels, len(selectedEquipment), len(selectedAvatar), petSelected, selectedPet, selectedArtifacts)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if compatible {
-		return nil
+		return false, nil
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
 	if err := replaceLoadout(ctx, tx, accountID, characterID, selectedEquipment, selectedAvatar, selectedPet, selectedArtifacts, petSelected, a.Config, a.RandIntn); err != nil {
-		return err
+		return false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit S4A21 loadout: %w", err)
+		return false, fmt.Errorf("commit S4A21 loadout: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 // S4A21 exposes support and magic-stone slots for every generated character,
@@ -636,7 +681,7 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 	return accountID, characterID, info, nil
 }
 
-func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
+func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig, bestLevels map[int]int, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
 	rows, err := db.QueryContext(ctx, `SELECT slot_index,item_core FROM character_inventory_items
 WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, characterID, a21ListTypeEquipment)
 	if err != nil {
@@ -673,7 +718,7 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 					equipmentSetCounts[setKey]++
 				}
 			}
-			levelIncompatible := slot < 22 && item.Level > info.Level
+			levelIncompatible := slot < 22 && (item.Level > info.Level || item.Level < bestLevels[slot-11]-10)
 			if item.ItemType != slot-11 || levelIncompatible || !equipmentcap.UsableByJob(item.UseJob, info.Job) {
 				return false, nil
 			}

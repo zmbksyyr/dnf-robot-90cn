@@ -203,6 +203,46 @@ func SafeAvg(total, count int) int {
 }
 
 func SelectEquipment(items []shared.EquipmentCatalogItem, level int, job int, rc robotconfig.RuntimeConfig, randIntn func(int) int) map[int]shared.EquipmentCatalogItem {
+	candidatesBySlot, bestLevelBySlot := equipmentCandidates(items, level, job, rc)
+	for slot, candidates := range candidatesBySlot {
+		if len(candidates) == 0 {
+			delete(candidatesBySlot, slot)
+			continue
+		}
+		bestLevel := bestLevelBySlot[slot]
+		if bestLevel > 0 {
+			near := candidates[:0]
+			for _, item := range candidates {
+				if item.Level >= bestLevel-10 {
+					near = append(near, item)
+				}
+			}
+			if len(near) > 0 {
+				candidates = near
+			}
+		}
+		candidatesBySlot[slot] = candidates
+	}
+	selected := make(map[int]shared.EquipmentCatalogItem)
+	if rc.PreferEquipSets {
+		selected = SelectSetItems(candidatesBySlot, rc.EquipSetMinSlots, randIntn)
+	}
+	FillRandomItems(selected, candidatesBySlot, randIntn)
+	return selected
+}
+
+// BestEquipmentLevels returns the highest selectable item level per configured
+// equipment slot for (level, job, config). The loadout compatibility check uses
+// the same candidate filters as SelectEquipment so an existing loadout is only
+// kept when a fresh selection could have produced it.
+func BestEquipmentLevels(items []shared.EquipmentCatalogItem, level, job int, rc robotconfig.RuntimeConfig) map[int]int {
+	_, bestLevelBySlot := equipmentCandidates(items, level, job, rc)
+	return bestLevelBySlot
+}
+
+// equipmentCandidates collects the selectable items per configured slot and
+// the highest selectable item level per slot.
+func equipmentCandidates(items []shared.EquipmentCatalogItem, level, job int, rc robotconfig.RuntimeConfig) (map[int][]shared.EquipmentCatalogItem, map[int]int) {
 	slots := rc.EquipSlots
 	if len(slots) == 0 {
 		slots = []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
@@ -234,31 +274,7 @@ func SelectEquipment(items []shared.EquipmentCatalogItem, level int, job int, rc
 		}
 		candidatesBySlot[slot] = append(candidatesBySlot[slot], item)
 	}
-	for slot, candidates := range candidatesBySlot {
-		if len(candidates) == 0 {
-			delete(candidatesBySlot, slot)
-			continue
-		}
-		bestLevel := bestLevelBySlot[slot]
-		if bestLevel > 0 {
-			near := candidates[:0]
-			for _, item := range candidates {
-				if item.Level >= bestLevel-10 {
-					near = append(near, item)
-				}
-			}
-			if len(near) > 0 {
-				candidates = near
-			}
-		}
-		candidatesBySlot[slot] = candidates
-	}
-	selected := make(map[int]shared.EquipmentCatalogItem)
-	if rc.PreferEquipSets {
-		selected = SelectSetItems(candidatesBySlot, rc.EquipSetMinSlots, randIntn)
-	}
-	FillRandomItems(selected, candidatesBySlot, randIntn)
-	return selected
+	return candidatesBySlot, bestLevelBySlot
 }
 
 func SelectAvatar(items []shared.EquipmentCatalogItem, job int, rc robotconfig.RuntimeConfig, randIntn func(int) int) map[int]shared.EquipmentCatalogItem {

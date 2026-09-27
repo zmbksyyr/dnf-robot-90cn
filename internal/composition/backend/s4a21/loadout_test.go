@@ -287,6 +287,102 @@ func TestResolveCharacterProfileMatchesWireName(t *testing.T) {
 	}
 }
 
+func TestExistingLoadoutCompatibleRejectsStaleLowLevelWeapon(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot7')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,grow_type,level,exp,delete_flag) VALUES(9,7,'Alpha',1,0,70,0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	rc := robotconfig.Default()
+	rc.EquipSlots = []int{1}
+	rc.AvatarSlots = nil
+	rc.MinAvatarSlots = 0
+	rc.PetEnabled = false
+	rc.PreferEquipSets = false
+	rc.PreferAvatarSets = false
+	items := []shared.EquipmentCatalogItem{
+		{ID: 27850, ItemType: 1, Level: 1, UseJob: []int{1}},
+		{ID: 1001, ItemType: 1, Level: 68, UseJob: []int{1}},
+	}
+	if _, err := db.Exec(`INSERT INTO character_inventory_items(character_id,list_type,slot_index,item_core) VALUES(9,3,12,?)`,
+		a21ItemCore(a21ItemKindEquipment, items[0], 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	info := robotcap.Info{Job: 1, Level: 70}
+	byID := equipmentByID(items)
+	best := equipmentcap.BestEquipmentLevels(items, info.Level, info.Job, rc)
+	compatible, err := existingLoadoutCompatible(context.Background(), db, 9, info, byID, rc, best, 1, 0, false, shared.EquipmentCatalogItem{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compatible {
+		t.Fatal("stale level-1 weapon was treated as a compatible loadout")
+	}
+
+	// A weapon inside the selection window stays compatible.
+	if _, err := db.Exec(`UPDATE character_inventory_items SET item_core=? WHERE character_id=9 AND list_type=3 AND slot_index=12`,
+		a21ItemCore(a21ItemKindEquipment, items[1], 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	compatible, err = existingLoadoutCompatible(context.Background(), db, 9, info, byID, rc, best, 1, 0, false, shared.EquipmentCatalogItem{}, nil)
+	if err != nil || !compatible {
+		t.Fatalf("in-window weapon incompatible: compatible=%t err=%v", compatible, err)
+	}
+}
+
+func TestReconcileRobotLoadoutsReplacesStaleEquipment(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot17000009')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,grow_type,level,exp,delete_flag) VALUES(9,7,'Alpha',1,0,70,0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	rc := robotconfig.Default()
+	rc.EquipSlots = []int{1}
+	rc.AvatarSlots = nil
+	rc.MinAvatarSlots = 0
+	rc.PetEnabled = false
+	rc.PreferEquipSets = false
+	rc.PreferAvatarSets = false
+	items := []shared.EquipmentCatalogItem{
+		{ID: 27850, ItemType: 1, Level: 1, Durability: 40, UseJob: []int{1}},
+		{ID: 1001, ItemType: 1, Level: 68, Durability: 45, UseJob: []int{1}},
+	}
+	if _, err := db.Exec(`INSERT INTO character_inventory_items(character_id,list_type,slot_index,item_core) VALUES(9,3,12,?)`,
+		a21ItemCore(a21ItemKindEquipment, items[0], 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	adapter := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
+	robots := []robotcap.Info{{UID: 17000009, Name: "Alpha", Job: 1, Level: 70}}
+	replaced, err := adapter.ReconcileRobotLoadouts(context.Background(), "robot", robots)
+	if err != nil || replaced != 1 {
+		t.Fatalf("replaced=%d err=%v", replaced, err)
+	}
+	db = openLoadoutTestDB(t, path)
+	var core []byte
+	if err := db.QueryRow(`SELECT item_core FROM character_inventory_items WHERE character_id=9 AND list_type=3 AND slot_index=12`).Scan(&core); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+	if len(core) != a21ItemCoreSize || int(binary.LittleEndian.Uint32(core[1:5])) != 1001 {
+		t.Fatalf("reconciled weapon core=%X", core)
+	}
+
+	replaced, err = adapter.ReconcileRobotLoadouts(context.Background(), "robot", robots)
+	if err != nil || replaced != 0 {
+		t.Fatalf("second reconcile replaced=%d err=%v", replaced, err)
+	}
+}
+
 func openLoadoutTestDB(t *testing.T, path string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", path)

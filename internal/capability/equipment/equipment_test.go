@@ -12,6 +12,30 @@ import (
 	"robot/internal/shared"
 )
 
+func TestBestEquipmentLevelsMirrorsSelectionFilters(t *testing.T) {
+	rc := robotconfig.Default()
+	rc.EquipSlots = []int{1, 2}
+	rc.EquipRarityMin, rc.EquipRarityMax = 0, 5
+	items := []shared.EquipmentCatalogItem{
+		{ID: 1, ItemType: 1, Level: 30, UseJob: []int{1}},
+		{ID: 2, ItemType: 1, Level: 70, UseJob: []int{1}},
+		{ID: 3, ItemType: 1, Level: 60, UseJob: []int{2}},
+		{ID: 4, ItemType: 1, Level: 55, UseJob: []int{100}, ClientIncompatible: true},
+		{ID: 5, ItemType: 1, Level: 58, UseJob: []int{1}, Expire: true},
+		{ID: 6, ItemType: 2, Level: 40, UseJob: []int{1}},
+	}
+	best := BestEquipmentLevels(items, 60, 1, rc)
+	if best[1] != 30 || best[2] != 40 {
+		t.Fatalf("best levels=%v", best)
+	}
+	// The rarity window excludes the only job-compatible weapon.
+	rc.EquipRarityMin, rc.EquipRarityMax = 3, 5
+	best = BestEquipmentLevels(items, 60, 1, rc)
+	if best[1] != 0 {
+		t.Fatalf("filtered weapon best level=%d", best[1])
+	}
+}
+
 func TestBuildCreatureSlotsUsesActiveCreatureRecord(t *testing.T) {
 	const itemID = 63050
 	raw := buildCreatureSlots(itemID, nil)

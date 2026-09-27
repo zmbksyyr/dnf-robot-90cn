@@ -124,6 +124,14 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		return bundle, fmt.Errorf("loadout applier: %w", err)
 	}
 	loadouts.QuestGates = catalogs.QuestGates
+	replaced, err := loadouts.ReconcileRobotLoadouts(ctx, prefix, inventory.Robots)
+	if err != nil {
+		_ = loadouts.Close()
+		return bundle, fmt.Errorf("loadout reconcile: %w", err)
+	}
+	if replaced > 0 {
+		foundationlog.Robotf("S4A21_LOADOUT_RECONCILED robots=%d\n", replaced)
+	}
 	transport, err := NewRuntimeTransport(opts.ConnectIP, opts.GamePort)
 	if err != nil {
 		_ = loadouts.Close()
