@@ -15,6 +15,7 @@ import (
 	robotstate "robot/internal/capability/robotstate"
 	robottemplate "robot/internal/capability/robottemplate"
 	"robot/internal/foundation/layout"
+	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
 )
 
@@ -98,6 +99,13 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	}).ScanAndClean(ctx)
 	if err != nil {
 		return bundle, fmt.Errorf("startup inventory: %w", err)
+	}
+	reconciled, err := ReconcileRobotGrowth(ctx, databasePath, inventory.Robots, opts.Config.GrowTypes, catalogs.JobGrows, opts.RandIntn)
+	if err != nil {
+		return bundle, fmt.Errorf("growth reconcile: %w", err)
+	}
+	if reconciled > 0 {
+		foundationlog.Robotf("S4A21_GROWTH_RECONCILED count=%d\n", reconciled)
 	}
 	state := robotstate.NewMemoryStore(inventory.Robots)
 	if err := state.RegisterIdentities(ctx, inventory.Identities); err != nil {

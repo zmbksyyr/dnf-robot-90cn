@@ -60,20 +60,7 @@ func BuildProtocolRobotPlans(options ProtocolPlanOptions) ([]ProtocolRobotPlan, 
 	for index := 0; index < options.Count; index++ {
 		uid := options.IDStart + index
 		job := chooseInt(options.Config.Jobs, options.RandIntn)
-		firstGrow := chooseFirstGrow(options.JobGrows[job], env.RandIntn)
-		// grow_types selects the awakening stage; the server rejects an
-		// awakening without a transfer, so an untransferable job stays at 0.
-		awakening := chooseInt(options.Config.GrowTypes, env.RandIntn)
-		if awakening < 0 {
-			awakening = 0
-		}
-		if awakening > 2 {
-			awakening = 2
-		}
-		if firstGrow == 0 {
-			awakening = 0
-		}
-		grow := (awakening << 4) | (firstGrow & 0x0F)
+		firstGrow, grow := SelectJobGrowth(job, options.JobGrows, options.Config.GrowTypes, env.RandIntn)
 		level := env.RandBetween(levels, levelMax)
 		name := robottemplate.AllocateName(uid, job, firstGrow, used, options.Config, options.Names, options.NameExists, options.RandBetween)
 		info := robotcap.Info{UID: uid, Name: name, Level: level, Job: job, Grow: grow, Port: 0, Village: options.Config.SpawnFallbackVillage, Area: options.Config.SpawnArea, X: options.Config.SpawnXMin, Y: options.Config.SpawnYMin}
@@ -123,6 +110,25 @@ func chooseInt(values []int, randIntn func(int) int) int {
 		index = 0
 	}
 	return values[index]
+}
+
+// SelectJobGrowth picks the transfer branch and the packed grow_type for one
+// robot. grow_types selects the awakening stage (0..2); the server rejects an
+// awakening without a transfer, so an untransferable job stays at 0. The first
+// return value is the transfer branch used by name templates.
+func SelectJobGrowth(job int, jobGrows map[int][]int, growTypes []int, randIntn func(int) int) (int, int) {
+	first := chooseFirstGrow(jobGrows[job], randIntn)
+	awakening := chooseInt(growTypes, randIntn)
+	if awakening < 0 {
+		awakening = 0
+	}
+	if awakening > 2 {
+		awakening = 2
+	}
+	if first == 0 {
+		awakening = 0
+	}
+	return first, (awakening << 4) | (first & 0x0F)
 }
 
 // chooseFirstGrow picks a transfer branch from the job's PVF grow catalog. The

@@ -534,24 +534,12 @@ func writeResolvedCharacterProgression(ctx context.Context, db *sql.DB, characte
 		return actual, err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE characters
-SET level=?, exp=0, grow_type=?, updated_at=CURRENT_TIMESTAMP
-	WHERE character_id=? AND delete_flag=0`, level, grow, characterID)
-	if err != nil {
-		return actual, fmt.Errorf("write S4A21 character progression id=%d: %w", characterID, err)
-	}
-	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
-		return actual, fmt.Errorf("write S4A21 character progression id=%d affected=%d err=%v", characterID, affected, err)
+	if err := updateCharacterProgression(ctx, tx, characterID, level, grow); err != nil {
+		return actual, err
 	}
 	if actual.Grow != grow {
-		available, err := tableAvailable(ctx, tx, "character_skills")
-		if err != nil {
+		if err := resetCharacterSkills(ctx, tx, characterID); err != nil {
 			return actual, err
-		}
-		if available {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM character_skills WHERE character_id=?`, characterID); err != nil {
-				return actual, fmt.Errorf("reset S4A21 character skills id=%d: %w", characterID, err)
-			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -560,6 +548,48 @@ SET level=?, exp=0, grow_type=?, updated_at=CURRENT_TIMESTAMP
 	actual.Level = level
 	actual.Grow = grow
 	return actual, nil
+}
+
+func updateCharacterProgression(ctx context.Context, tx *sql.Tx, characterID, level, grow int) error {
+	result, err := tx.ExecContext(ctx, `UPDATE characters
+SET level=?, exp=0, grow_type=?, updated_at=CURRENT_TIMESTAMP
+	WHERE character_id=? AND delete_flag=0`, level, grow, characterID)
+	if err != nil {
+		return fmt.Errorf("write S4A21 character progression id=%d: %w", characterID, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		return fmt.Errorf("write S4A21 character progression id=%d affected=%d err=%v", characterID, affected, err)
+	}
+	return nil
+}
+
+// updateCharacterGrow changes only grow_type so an untransferred character can
+// be reconciled without touching its level or accumulated experience.
+func updateCharacterGrow(ctx context.Context, tx *sql.Tx, characterID, grow int) error {
+	result, err := tx.ExecContext(ctx, `UPDATE characters
+SET grow_type=?, updated_at=CURRENT_TIMESTAMP
+	WHERE character_id=? AND delete_flag=0`, grow, characterID)
+	if err != nil {
+		return fmt.Errorf("write S4A21 character grow id=%d: %w", characterID, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		return fmt.Errorf("write S4A21 character grow id=%d affected=%d err=%v", characterID, affected, err)
+	}
+	return nil
+}
+
+func resetCharacterSkills(ctx context.Context, tx *sql.Tx, characterID int) error {
+	available, err := tableAvailable(ctx, tx, "character_skills")
+	if err != nil {
+		return err
+	}
+	if !available {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM character_skills WHERE character_id=?`, characterID); err != nil {
+		return fmt.Errorf("reset S4A21 character skills id=%d: %w", characterID, err)
+	}
+	return nil
 }
 
 func tableAvailable(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
