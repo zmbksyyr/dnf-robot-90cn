@@ -70,7 +70,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if config.VerifyWebPassword(s.cfg.WebPassword, s.cfg.WebPasswordHash, password) {
 		s.clearLoginFailures(peer)
-		token := randomToken()
+		token, err := randomToken()
+		if err != nil {
+			http.Error(w, "session token generation failed", http.StatusInternalServerError)
+			return
+		}
 		s.tokenMu.Lock()
 		now := time.Now()
 		s.cleanupExpiredTokensLocked(now)
@@ -403,10 +407,10 @@ func (s *Server) storeSessionTokenLocked(token string, expires time.Time) {
 	s.tokens[token] = expires
 }
 
-func randomToken() string {
+func randomToken() (string, error) {
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
-		panic(fmt.Sprintf("webadmin random token: %v", err))
+		return "", fmt.Errorf("webadmin random token: %w", err)
 	}
-	return hex.EncodeToString(raw[:])
+	return hex.EncodeToString(raw[:]), nil
 }

@@ -309,11 +309,6 @@ func (a *recordingCharacterInitializer) ApplyPlannedCharacterLevel(_ context.Con
 	return info, nil
 }
 
-func (a *recordingCharacterInitializer) ReconcileConfiguredCharacterLevel(_ context.Context, _ string, info robotcap.Info) (robotcap.Info, error) {
-	a.profileCalls++
-	return info, nil
-}
-
 func (a *recordingCharacterInitializer) ApplyCharacterLoadout(_ context.Context, _ string, _ robotcap.Info) error {
 	a.loadoutCalls++
 	return nil

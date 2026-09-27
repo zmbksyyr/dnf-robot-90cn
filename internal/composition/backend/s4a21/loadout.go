@@ -49,7 +49,6 @@ type CharacterProfileReader interface {
 type CharacterProfileAdapter interface {
 	CharacterProfileReader
 	ApplyPlannedCharacterLevel(context.Context, string, robotcap.Info, int) (robotcap.Info, error)
-	ReconcileConfiguredCharacterLevel(context.Context, string, robotcap.Info) (robotcap.Info, error)
 }
 
 type CharacterInitializer interface {
@@ -494,44 +493,6 @@ func (a *SQLiteLoadoutApplier) ApplyPlannedCharacterLevel(ctx context.Context, a
 	return a.writeCharacterLevel(ctx, account, info, level)
 }
 
-func (a *SQLiteLoadoutApplier) ReconcileConfiguredCharacterLevel(ctx context.Context, account string, info robotcap.Info) (robotcap.Info, error) {
-	actual := info
-	err := a.persistenceDo(ctx, func(ctx context.Context) error {
-		if strings.TrimSpace(a.DatabasePath) == "" {
-			return fmt.Errorf("S4A21 profile database path is required")
-		}
-		db, closeDB, err := a.database(ctx)
-		if err != nil {
-			return fmt.Errorf("open S4A21 profile database: %w", err)
-		}
-		defer closeDB()
-		_, characterID, resolved, err := resolveCharacterProfile(ctx, db, account, info)
-		if err != nil {
-			return err
-		}
-		actual, err = a.reconcileResolvedCharacterLevel(ctx, db, characterID, resolved)
-		return err
-	})
-	return actual, err
-}
-
-func (a *SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info) (robotcap.Info, error) {
-	minLevel, maxLevel := a.Config.LevelMin, a.Config.LevelMax
-	if minLevel < 1 {
-		minLevel = 1
-	}
-	if maxLevel < minLevel {
-		maxLevel = minLevel
-	}
-	if maxLevel > math.MaxUint8 {
-		maxLevel = math.MaxUint8
-	}
-	if actual.Level >= minLevel && actual.Level <= maxLevel {
-		return actual, nil
-	}
-	return a.writeResolvedCharacterProgression(ctx, db, characterID, actual.Job, actual, randomBetween(a.RandIntn, minLevel, maxLevel), actual.Grow)
-}
-
 func (a *SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
 	actual := info
 	err := a.persistenceDo(ctx, func(ctx context.Context) error {
@@ -767,6 +728,9 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 		}
 		switch {
 		case slot >= 12 && slot <= 23:
+			if core[0] != a21ItemKindEquipment {
+				return false, nil
+			}
 			equipmentCount++
 			for _, setKey := range strings.Split(item.SetKey, "|") {
 				if setKey = strings.TrimSpace(setKey); setKey != "" {
@@ -778,6 +742,9 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 				return false, nil
 			}
 		case slot >= 0 && slot <= 9:
+			if core[0] != a21ItemKindAvatar {
+				return false, nil
+			}
 			avatarCount++
 			for _, setKey := range strings.Split(item.SetKey, "|") {
 				if setKey = strings.TrimSpace(setKey); setKey != "" {

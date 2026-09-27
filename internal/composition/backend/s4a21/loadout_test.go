@@ -136,7 +136,7 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 	}
 }
 
-func TestSQLiteProfileAdapterPersistsPlannedAndConfiguredLevels(t *testing.T) {
+func TestSQLiteProfileAdapterPersistsPlannedLevel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "inventory.db")
 	db := openLoadoutTestDB(t, path)
 	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot7')`); err != nil {
@@ -180,22 +180,6 @@ func TestSQLiteProfileAdapterPersistsPlannedAndConfiguredLevels(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
-
-	actual, err = adapter.ReconcileConfiguredCharacterLevel(context.Background(), "robot7", info)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if actual.Level != 50 {
-		t.Fatalf("reconciled level=%d want deterministic minimum 50", actual.Level)
-	}
-	db = openLoadoutTestDB(t, path)
-	defer db.Close()
-	if err := db.QueryRow(`SELECT level,exp FROM characters WHERE character_id=9`).Scan(&level, &exp); err != nil {
-		t.Fatal(err)
-	}
-	if level != 50 || exp != 4900 {
-		t.Fatalf("persisted reconciled level=%d exp=%d", level, exp)
-	}
 }
 
 func TestInitializeCharacterWritesTransferAwakeningAndResetsSkills(t *testing.T) {
@@ -415,6 +399,25 @@ func TestReconcileRobotLoadoutsReplacesStaleEquipment(t *testing.T) {
 	replaced, err = adapter.ReconcileRobotLoadouts(context.Background(), "robot", robots)
 	if err != nil || replaced != 0 {
 		t.Fatalf("second reconcile replaced=%d err=%v", replaced, err)
+	}
+
+	// A core whose kind byte no longer matches its slot must be repaired by the
+	// reconcile instead of being left for the startup compliance deletion.
+	db = openLoadoutTestDB(t, path)
+	corrupt := a21ItemCore(a21ItemKindEquipment, items[1], 0, 0)
+	corrupt[0] = a21ItemKindAvatar
+	if _, err := db.Exec(`UPDATE character_inventory_items SET item_core=? WHERE character_id=9 AND list_type=3 AND slot_index=12`, corrupt); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+	replaced, err = adapter.ReconcileRobotLoadouts(context.Background(), "robot", robots)
+	if err != nil || replaced != 1 {
+		t.Fatalf("wrong-kind reconcile replaced=%d err=%v", replaced, err)
+	}
+	replaced, err = adapter.ReconcileRobotLoadouts(context.Background(), "robot", robots)
+	if err != nil || replaced != 0 {
+		t.Fatalf("wrong-kind second reconcile replaced=%d err=%v", replaced, err)
 	}
 }
 
