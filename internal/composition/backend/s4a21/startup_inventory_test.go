@@ -51,8 +51,45 @@ INSERT INTO characters(character_id,account_id,name,job,grow_type,level,delete_f
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(toDelete) != 1 || toDelete[0] != 8 || characters != 2 {
+	if len(toDelete) != 1 || toDelete[0].id != 8 || characters != 2 {
 		t.Fatalf("fresh candidate = %v characters=%d, want account 8 with 2 characters", toDelete, characters)
+	}
+}
+
+func TestGrowCompliantAlignsWithGrowthReconcile(t *testing.T) {
+	purger := SQLiteStartupInventory{
+		Config:   robotconfig.RuntimeConfig{GrowTypes: []int{2}, ReconcileAwakening: true},
+		JobGrows: map[int][]int{1: {2, 3}},
+	}
+	for _, test := range []struct {
+		name string
+		job  int
+		grow int
+		want bool
+	}{
+		{name: "untransferred with branches", job: 1, grow: 0, want: true},
+		{name: "branch-less job stage 0", job: 9, grow: 0, want: true},
+		{name: "unawakened reconcilable", job: 1, grow: 2, want: true},
+		{name: "configured stage", job: 1, grow: 0x22, want: true},
+		{name: "unconfigured stage", job: 1, grow: 0x12, want: false},
+		{name: "awakening without transfer", job: 1, grow: 0x20, want: false},
+		{name: "stage out of range", job: 1, grow: 0x32, want: false},
+		{name: "branch out of range", job: 1, grow: 0x1F, want: false},
+		{name: "second nibble out of range", job: 1, grow: 0xF0, want: false},
+	} {
+		if got := purger.growCompliant(startupCharacter{job: test.job, grow: test.grow}); got != test.want {
+			t.Fatalf("%s: job=%d grow=0x%02X compliant=%t want=%t", test.name, test.job, test.grow, got, test.want)
+		}
+	}
+
+	// With awakening reconcile disabled the stored stage must match exactly.
+	purger.Config = robotconfig.RuntimeConfig{GrowTypes: []int{0, 2}, ReconcileAwakening: false}
+	if !purger.growCompliant(startupCharacter{job: 1, grow: 2}) {
+		t.Fatal("stage 0 must stay accepted when awakening reconcile is disabled")
+	}
+	purger.Config = robotconfig.RuntimeConfig{GrowTypes: []int{2}, ReconcileAwakening: false}
+	if purger.growCompliant(startupCharacter{job: 1, grow: 2}) {
+		t.Fatal("unawakened character accepted while awakening reconcile is disabled")
 	}
 }
 

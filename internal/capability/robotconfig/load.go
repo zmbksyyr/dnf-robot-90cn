@@ -1,6 +1,9 @@
 package robotconfig
 
-import "robot/internal/foundation/config"
+import (
+	"robot/internal/foundation/config"
+	foundationlog "robot/internal/foundation/log"
+)
 
 // LoadFile loads the runtime robot configuration from an INI file.
 func LoadFile(path string) (RuntimeConfig, error) {
@@ -29,12 +32,22 @@ func decodeConfig(ini *config.INIConfig) (RuntimeConfig, error) {
 	rc.LevelMax = dec.Int("create", "level_max", rc.LevelMax)
 	rc.Jobs = dec.IntList("create", "jobs", rc.Jobs)
 	rc.GrowTypes = dec.IntList("create", "grow_types", rc.GrowTypes)
+	rc.ReconcileAwakening = dec.Bool("create", "reconcile_awakening", rc.ReconcileAwakening)
 	rc.RobotUIDStart = dec.Int("create", "robot_uid_start", rc.RobotUIDStart)
 	rc.RobotUIDEnd = dec.Int("create", "robot_uid_end", rc.RobotUIDEnd)
 	rc.RobotUIDGuard = dec.Int("create", "robot_uid_guard", rc.RobotUIDGuard)
 	rc.NameASCIIFallback = dec.Bool("create", "name_ascii_fallback", rc.NameASCIIFallback)
 	rc.NameASCIIPrefix = dec.String("create", "name_ascii_prefix", rc.NameASCIIPrefix)
 	rc.InventoryCapacity = dec.Int("create", "inventory_capacity", rc.InventoryCapacity)
+
+	// Native-backend leftovers removed from the schema. Configuration files
+	// written before the removal still carry them; consume the keys so startup
+	// keeps working and report them instead of failing as unknown settings.
+	for _, key := range []string{"default_money", "default_coin"} {
+		if dec.Obsolete("create", key) {
+			foundationlog.Robotf("ROBOT_CONFIG_OBSOLETE [create] %s was removed with the native backend and is ignored\n", key)
+		}
+	}
 
 	rc.SpawnFixed = dec.Bool("spawn", "spawn_fixed", rc.SpawnFixed)
 	rc.SpawnVillage = dec.Int("spawn", "spawn_village", rc.SpawnVillage)

@@ -112,6 +112,22 @@ func chooseInt(values []int, randIntn func(int) int) int {
 	return values[index]
 }
 
+// SelectAwakeningStage picks an awakening stage from the configured candidates
+// for an already transferred character. It reports false when the configuration
+// offers no positive stage (0..2).
+func SelectAwakeningStage(growTypes []int, randIntn func(int) int) (int, bool) {
+	candidates := make([]int, 0, len(growTypes))
+	for _, stage := range growTypes {
+		if stage > 0 && stage <= 2 {
+			candidates = append(candidates, stage)
+		}
+	}
+	if len(candidates) == 0 {
+		return 0, false
+	}
+	return chooseInt(candidates, randIntn), true
+}
+
 // SelectJobGrowth picks the transfer branch and the packed grow_type for one
 // robot. grow_types selects the awakening stage (0..2); the server rejects an
 // awakening without a transfer, so an untransferable job stays at 0. The first

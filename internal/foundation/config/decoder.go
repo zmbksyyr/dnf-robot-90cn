@@ -133,6 +133,14 @@ func (d *Decoder) Check(section, key string, valid bool, reason string) {
 	d.err = fmt.Errorf("%s [%s] %s: %s", d.label, section, key, reason)
 }
 
+// Obsolete consumes a known-but-removed setting so configuration files written
+// by an older version keep loading. Callers surface the returned keys as a
+// warning; any other unknown key is still rejected by Validate.
+func (d *Decoder) Obsolete(section, key string) bool {
+	_, ok := d.lookup(section, key)
+	return ok
+}
+
 func (d *Decoder) Validate() error {
 	if d.err != nil {
 		return d.err

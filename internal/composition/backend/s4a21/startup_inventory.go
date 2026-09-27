@@ -12,11 +12,16 @@ import (
 	equipmentcap "robot/internal/capability/equipment"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
+	robotlifecycle "robot/internal/capability/robotlifecycle"
 	robotstate "robot/internal/capability/robotstate"
 	"robot/internal/foundation/charset"
 	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
 )
+
+// startupDeleteLogLimit bounds the per-account deletion trace. Larger cleanups
+// stay traceable through the aggregate counters and the DELETE_MORE line.
+const startupDeleteLogLimit = 50
 
 type StartupInventory struct {
 	Robots            []robotcap.Info
@@ -31,6 +36,7 @@ type SQLiteStartupInventory struct {
 	AccountPrefix string
 	Config        robotconfig.RuntimeConfig
 	Equipment     []shared.EquipmentCatalogItem
+	JobGrows      map[int][]int
 }
 
 type startupAccount struct {
@@ -140,7 +146,25 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 		if err != nil {
 			return result, err
 		}
-		if err := deleteStartupAccounts(ctx, conn, toDelete); err != nil {
+		for index, account := range toDelete {
+			if index >= startupDeleteLogLimit {
+				break
+			}
+			reason := "incomplete account"
+			if len(account.characters) == 1 {
+				reason = "character non-compliant"
+			}
+			foundationlog.Robotf("STARTUP_INVENTORY_DELETE account=%s uid=%d characters=%d reason=%s\n",
+				account.name, account.uid, len(account.characters), reason)
+		}
+		if omitted := len(toDelete) - startupDeleteLogLimit; omitted > 0 {
+			foundationlog.Robotf("STARTUP_INVENTORY_DELETE_MORE accounts=%d\n", omitted)
+		}
+		accountIDs := make([]int, 0, len(toDelete))
+		for _, account := range toDelete {
+			accountIDs = append(accountIDs, account.id)
+		}
+		if err := deleteStartupAccounts(ctx, conn, accountIDs); err != nil {
 			return result, err
 		}
 		if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
@@ -159,9 +183,9 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 // transaction and returns only accounts whose identity and character set still
 // match the scan. An account that changed in the meantime is skipped and left
 // for the next startup instead of being deleted with stale evidence.
-func (s SQLiteStartupInventory) verifyInvalidAccounts(ctx context.Context, conn startupSQLiteConn, prefix string, candidates []startupAccount) ([]int, int, error) {
+func (s SQLiteStartupInventory) verifyInvalidAccounts(ctx context.Context, conn startupSQLiteConn, prefix string, candidates []startupAccount) ([]startupAccount, int, error) {
 	const batchSize = 200
-	toDelete := make([]int, 0, len(candidates))
+	toDelete := make([]startupAccount, 0, len(candidates))
 	deletedCharacters := 0
 	for start := 0; start < len(candidates); start += batchSize {
 		end := start + batchSize
@@ -239,7 +263,7 @@ WHERE a.account_id IN (` + strings.Join(placeholders, ",") + `)`
 				foundationlog.Robotf("STARTUP_INVENTORY_SKIP_CHANGED account=%s reason=candidate is now compliant\n", candidate.name)
 				continue
 			}
-			toDelete = append(toDelete, candidate.id)
+			toDelete = append(toDelete, candidate)
 			deletedCharacters += len(candidate.characters)
 		}
 	}
@@ -509,7 +533,7 @@ func (s SQLiteStartupInventory) characterCompliant(character startupCharacter, i
 	if err != nil || len(encodedName) < 2 || len(encodedName) > 18 {
 		return false
 	}
-	if !configuredIntValue(s.Config.Jobs, character.job) || !configuredGrowValue(s.Config.GrowTypes, character.grow) {
+	if !configuredIntValue(s.Config.Jobs, character.job) || !s.growCompliant(character) {
 		return false
 	}
 	cores := index.cores[character.id]
@@ -623,6 +647,36 @@ func hasStartupArtifactCore(cores map[int][]byte) bool {
 	return false
 }
 
+// growCompliant accepts the grow states that the startup growth reconcile can
+// bring in line with the configuration: an untransferred character (stage 0) is
+// either transferred by the reconcile when its job has released branches, or is
+// the final state of a branch-less job and must not be deleted on every boot. A
+// transferred character at stage 0 is accepted while reconcile_awakening can
+// still awaken it. Everything else must already match a configured stage.
+func (s SQLiteStartupInventory) growCompliant(character startupCharacter) bool {
+	grow := character.grow
+	if grow < 0 || grow > 255 {
+		return false
+	}
+	first := grow & 0x0F
+	second := (grow >> 4) & 0x0F
+	if first > 5 || second > 2 || (second > 0 && first == 0) {
+		return false
+	}
+	if first == 0 {
+		return true
+	}
+	if configuredIntValue(s.Config.GrowTypes, second) {
+		return true
+	}
+	if second == 0 && s.Config.ReconcileAwakening {
+		if _, ok := robotlifecycle.SelectAwakeningStage(s.Config.GrowTypes, nil); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func configuredIntValue(values []int, value int) bool {
 	if len(values) == 0 {
 		return true
@@ -633,22 +687,6 @@ func configuredIntValue(values []int, value int) bool {
 		}
 	}
 	return false
-}
-
-// configuredGrowValue validates a stored grow_type byte against the adapter's
-// transfer/awakening encoding: the low nibble is the auto-selected transfer
-// branch (0..5) and the high nibble the awakening stage (0..2), which is the
-// value the configuration selects from.
-func configuredGrowValue(growTypes []int, grow int) bool {
-	if grow < 0 || grow > 255 {
-		return false
-	}
-	first := grow & 0x0F
-	second := (grow >> 4) & 0x0F
-	if first > 5 || second > 2 || (second > 0 && first == 0) {
-		return false
-	}
-	return configuredIntValue(growTypes, second)
 }
 
 func ownedRobotUID(account, prefix string, start, end int) (int, bool) {

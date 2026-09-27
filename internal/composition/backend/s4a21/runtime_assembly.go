@@ -99,11 +99,12 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	}
 	inventory, err := (SQLiteStartupInventory{
 		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config, Equipment: catalogs.Equipment,
+		JobGrows: catalogs.JobGrows,
 	}).ScanAndClean(ctx)
 	if err != nil {
 		return bundle, fmt.Errorf("startup inventory: %w", err)
 	}
-	reconciled, err := ReconcileRobotGrowth(ctx, databasePath, inventory.Robots, opts.Config.GrowTypes, catalogs.JobGrows, catalogs.StatTables, opts.RandIntn)
+	reconciled, err := ReconcileRobotGrowth(ctx, databasePath, inventory.Robots, opts.Config.GrowTypes, catalogs.JobGrows, catalogs.StatTables, opts.Config.ReconcileAwakening, opts.RandIntn)
 	if err != nil {
 		return bundle, fmt.Errorf("growth reconcile: %w", err)
 	}

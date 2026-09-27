@@ -5,6 +5,7 @@ type RuntimeConfig struct {
 	LevelMax                      int    `json:"level_max"`
 	Jobs                          []int  `json:"jobs"`
 	GrowTypes                     []int  `json:"grow_types"`
+	ReconcileAwakening            bool   `json:"reconcile_awakening"`
 	RobotUIDStart                 int    `json:"robot_uid_start"`
 	RobotUIDEnd                   int    `json:"robot_uid_end"`
 	RobotUIDGuard                 int    `json:"robot_uid_guard"`

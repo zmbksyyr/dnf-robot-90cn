@@ -12,13 +12,14 @@ import (
 	robotlifecycle "robot/internal/capability/robotlifecycle"
 )
 
-// ReconcileRobotGrowth fills the transfer state of robots provisioned before
-// growth writes existed. Only untransferred characters (grow_type low nibble 0)
-// whose job has a released PVF transfer branch are touched; already transferred
-// characters, including deliberate operator assignments, are left alone. The
-// robot slice is updated in place so the in-memory directory matches the
-// database.
-func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []robotcap.Info, growTypes []int, jobGrows map[int][]int, statTables map[int]capabilitypvf.CharacterStatTables, randIntn func(int) int) (int, error) {
+// ReconcileRobotGrowth fills the transfer and awakening state of robots
+// provisioned before those writes existed. Untransferred characters (grow_type
+// low nibble 0) whose job has a released PVF transfer branch receive a branch;
+// when reconcileAwakening is set, transferred characters still at awakening
+// stage 0 receive a configured positive stage. Already matching characters,
+// including deliberate operator assignments, are left alone. The robot slice is
+// updated in place so the in-memory directory matches the database.
+func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []robotcap.Info, growTypes []int, jobGrows map[int][]int, statTables map[int]capabilitypvf.CharacterStatTables, reconcileAwakening bool, randIntn func(int) int) (int, error) {
 	if strings.TrimSpace(databasePath) == "" || len(robots) == 0 || len(jobGrows) == 0 {
 		return 0, nil
 	}
@@ -39,11 +40,11 @@ func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []rob
 	changed := 0
 	for index := range robots {
 		info := &robots[index]
-		if info.CID <= 0 || info.Grow&0x0F != 0 {
+		if info.CID <= 0 {
 			continue
 		}
-		first, grow := robotlifecycle.SelectJobGrowth(info.Job, jobGrows, growTypes, randIntn)
-		if first == 0 {
+		grow, ok := reconciledGrow(info.Job, info.Grow, growTypes, jobGrows, reconcileAwakening, randIntn)
+		if !ok {
 			continue
 		}
 		var level int
@@ -73,4 +74,29 @@ func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []rob
 		return 0, fmt.Errorf("commit S4A21 growth reconcile: %w", err)
 	}
 	return changed, nil
+}
+
+// reconciledGrow returns the target grow byte for one stored robot. It fills a
+// missing transfer branch for untransferred robots and, when reconcileAwakening
+// is set, a positive awakening stage for transferred robots that still carry
+// stage 0. Characters whose stored value already satisfies the configuration
+// (including jobs without released branches) are reported as unchanged.
+func reconciledGrow(job, grow int, growTypes []int, jobGrows map[int][]int, reconcileAwakening bool, randIntn func(int) int) (int, bool) {
+	first := grow & 0x0F
+	second := (grow >> 4) & 0x0F
+	if first == 0 {
+		_, target := robotlifecycle.SelectJobGrowth(job, jobGrows, growTypes, randIntn)
+		if target == 0 || target == grow {
+			return 0, false
+		}
+		return target, true
+	}
+	if second == 0 && reconcileAwakening {
+		stage, ok := robotlifecycle.SelectAwakeningStage(growTypes, randIntn)
+		if !ok {
+			return 0, false
+		}
+		return (stage << 4) | (first & 0x0F), true
+	}
+	return 0, false
 }

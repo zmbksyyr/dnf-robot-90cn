@@ -14,6 +14,7 @@ level_min = 61
 level_max = 72
 jobs = 1,2,3
 grow_types = 0,2
+reconcile_awakening = false
 robot_uid_start = 18000000
 robot_uid_end = 18000999
 robot_uid_guard = 18999999
@@ -132,7 +133,7 @@ packet_rate_per_sec = 30
 	if !reflect.DeepEqual(rc.Jobs, []int{1, 2, 3}) || !reflect.DeepEqual(rc.GrowTypes, []int{0, 2}) {
 		t.Fatalf("integer lists not loaded: jobs=%v grow_types=%v", rc.Jobs, rc.GrowTypes)
 	}
-	if !rc.NameASCIIFallback || !rc.SpawnFixed || rc.PreferEquipSets || rc.PreferAvatarSets || rc.ShoutSendEnabled || rc.AutoActions {
+	if !rc.NameASCIIFallback || !rc.SpawnFixed || rc.PreferEquipSets || rc.PreferAvatarSets || rc.ShoutSendEnabled || rc.AutoActions || rc.ReconcileAwakening {
 		t.Fatalf("boolean settings not loaded: %+v", rc)
 	}
 	if rc.SpawnVillage != 2 || rc.MoveSteps != 7 || rc.MaxOnlineRobots != 321 || rc.MaxOnlinePerCommand != 123 {
@@ -155,6 +156,20 @@ packet_rate_per_sec = 30
 	}
 	if rc.FollowAccount != "leader" || rc.AutoTargetOnlineCount != 200 || rc.SchedulerOnlineBatchSize != 42 || rc.SystemActorPollMS != 777 {
 		t.Fatalf("follow/auto/scheduler/system config not loaded: %+v", rc)
+	}
+}
+
+func TestLoadFileIgnoresRemovedNativeSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "robot_config.ini")
+	if err := os.WriteFile(path, []byte("[create]\ndefault_money = 222\ndefault_coin = 7\nlevel_min = 60\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rc, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("legacy native settings rejected: %v", err)
+	}
+	if rc.LevelMin != 60 {
+		t.Fatalf("level_min=%d want 60", rc.LevelMin)
 	}
 }
 
