@@ -67,6 +67,7 @@ type SQLiteLoadoutApplier struct {
 	db              *sql.DB
 	items           map[int]shared.EquipmentCatalogItem
 	petSchema       bool
+	avatars         *equipmentcap.AvatarCandidateCatalog
 	executorMu      lockhub.Locker
 	executor        *persistenceExecutor
 	closed          bool
@@ -92,8 +93,18 @@ func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config ro
 	return &SQLiteLoadoutApplier{
 		DatabasePath: databasePath, Config: config, Equipment: equipment, RandIntn: randIntn,
 		db: db, items: equipmentByID(equipment), petSchema: petSchemaAvailable(ctx, db),
+		avatars:  equipmentcap.PrepareAvatarCatalog(equipment, config),
 		executor: newPersistenceExecutor(s4a21PersistenceQueueSize),
 	}, nil
+}
+
+// avatarCatalog lazily prepares the per-job avatar candidates for adapters
+// built as a bare struct (tests) so repeated selections stay cheap.
+func (a *SQLiteLoadoutApplier) avatarCatalog() *equipmentcap.AvatarCandidateCatalog {
+	if a.avatars == nil {
+		a.avatars = equipmentcap.PrepareAvatarCatalog(a.Equipment, a.Config)
+	}
+	return a.avatars
 }
 
 func (a *SQLiteLoadoutApplier) Close() error {
@@ -375,7 +386,7 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 
 func (a *SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context, db *sql.DB, accountID, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, petSchema bool) (bool, error) {
 	selectedEquipment := selectS4A21Equipment(a.Equipment, info.Level, info.Job, a.Config, a.RandIntn)
-	selectedAvatar := equipmentcap.SelectAvatar(a.Equipment, s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
+	selectedAvatar := a.avatarCatalog().Select(s4a21AvatarJob(info.Job), a.Config, a.RandIntn)
 	selectedPet, selectedArtifacts, petSelected := equipmentcap.SelectPet(a.Equipment, a.Config, a.RandIntn)
 	if petSelected && !petSchema {
 		petSelected = false
@@ -388,7 +399,7 @@ func (a *SQLiteLoadoutApplier) applyResolvedCharacterLoadout(ctx context.Context
 		return false, fmt.Errorf("S4A21 loadout has %d compatible avatar slots, need %d for job=%d", len(selectedAvatar), a.Config.MinAvatarSlots, info.Job)
 	}
 	bestLevels := equipmentcap.BestEquipmentLevels(a.Equipment, info.Level, info.Job, a.Config)
-	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, items, a.Config, bestLevels, len(selectedEquipment), len(selectedAvatar), petSelected, selectedPet, selectedArtifacts)
+	compatible, err := existingLoadoutCompatible(ctx, db, characterID, info, items, a.Config, bestLevels, len(selectedEquipment), len(selectedAvatar), petSchema)
 	if err != nil {
 		return false, err
 	}
@@ -720,7 +731,7 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 	return accountID, characterID, info, nil
 }
 
-func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig, bestLevels map[int]int, wantEquipment, wantAvatar int, wantPet bool, pet shared.EquipmentCatalogItem, artifacts map[int]shared.EquipmentCatalogItem) (bool, error) {
+func existingLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, info robotcap.Info, items map[int]shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig, bestLevels map[int]int, wantEquipment, wantAvatar int, petSchema bool) (bool, error) {
 	rows, err := db.QueryContext(ctx, `SELECT slot_index,item_core FROM character_inventory_items
 WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, characterID, a21ListTypeEquipment)
 	if err != nil {
@@ -731,6 +742,7 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 	equipmentSetCounts := make(map[string]int)
 	avatarSetCounts := make(map[string]int)
 	artifactCores := make(map[int][]byte, 3)
+	var creatureCore []byte
 	for rows.Next() {
 		var slot int
 		var core []byte
@@ -739,6 +751,10 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 		}
 		if len(core) < 5 {
 			return false, nil
+		}
+		if slot == a21CreatureSlot {
+			creatureCore = append([]byte(nil), core...)
+			continue
 		}
 		if slot >= a21ArtifactSlotBase && slot <= 28 {
 			if _, exists := artifactCores[slot]; !exists {
@@ -785,53 +801,62 @@ WHERE character_id=? AND list_type=? AND slot_index BETWEEN 0 AND 28`, character
 	if rc.PreferAvatarSets && maxSetCount(avatarSetCounts) < requiredSetCoverage(wantAvatar, rc.AvatarSetMinSlots, 6) {
 		return false, nil
 	}
-	if wantPet {
-		var creatureCore []byte
-		if err := db.QueryRowContext(ctx, `SELECT item_core FROM character_inventory_items WHERE character_id=? AND list_type=? AND slot_index=?`, characterID, a21ListTypeEquipment, a21CreatureSlot).Scan(&creatureCore); err != nil {
+	return petLoadoutCompatible(ctx, db, characterID, items, rc, petSchema, creatureCore, artifactCores)
+}
+
+// petLoadoutCompatible keeps a stored pet when it satisfies the configured
+// window instead of comparing it to the freshly rolled pet: comparing random
+// selections would rewrite the whole loadout on every startup. The rules mirror
+// the startup pet compliance check.
+func petLoadoutCompatible(ctx context.Context, db *sql.DB, characterID int, items map[int]shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig, petSchema bool, creatureCore []byte, artifactCores map[int][]byte) (bool, error) {
+	if !rc.PetEnabled || !petSchema {
+		// Pets are disabled: no creature core, creature row or artifact may stay.
+		if len(creatureCore) > 0 || len(artifactCores) > 0 {
 			return false, nil
 		}
-		if len(creatureCore) < 9 || creatureCore[0] != a21ItemKindCreature || int(binary.LittleEndian.Uint32(creatureCore[1:5])) != pet.ID {
-			return false, nil
-		}
-		creatureUID := int(binary.LittleEndian.Uint32(creatureCore[5:9]))
-		if creatureUID <= 0 {
-			return false, nil
-		}
-		petCore, err := db.QueryContext(ctx, `SELECT creature_buffer FROM character_subtype0_fields WHERE character_id=?`, characterID)
-		if err != nil {
-			return false, err
-		}
-		petPresent := false
-		if petCore.Next() {
-			var raw []byte
-			if err := petCore.Scan(&raw); err != nil {
-				petCore.Close()
-				return false, err
-			}
-			petPresent = len(raw) >= 4 && binary.LittleEndian.Uint32(raw[:4]) != 0
-		}
-		if err := petCore.Err(); err != nil {
-			petCore.Close()
-			return false, err
-		}
-		petCore.Close()
-		if !petPresent {
-			return false, nil
-		}
-		var storedCreatureUID int
-		if err := db.QueryRowContext(ctx, `SELECT creature_key FROM character_creatures WHERE character_id=? AND sort_order=0`, characterID).Scan(&storedCreatureUID); err != nil || storedCreatureUID != creatureUID {
-			return false, nil
-		}
-		for itemType, item := range artifacts {
-			slot := a21ArtifactSlotBase + itemType - 31
-			raw, exists := artifactCores[slot]
-			valid := exists && len(raw) >= 5 && raw[0] == a21ItemKindArtifact && int(binary.LittleEndian.Uint32(raw[1:5])) == item.ID
-			if !valid {
-				return false, nil
-			}
-		}
+		return true, nil
 	}
-	return true, nil
+	if len(creatureCore) == 0 {
+		return len(artifactCores) == 0, nil
+	}
+	pet, ok := startupCoreItem(creatureCore, a21ItemKindCreature, items)
+	if !ok || pet.ItemType != 30 || len(creatureCore) < 9 {
+		return false, nil
+	}
+	creatureUID := int(binary.LittleEndian.Uint32(creatureCore[5:9]))
+	if creatureUID <= 0 {
+		return false, nil
+	}
+	var storedUID int
+	if err := db.QueryRowContext(ctx, `SELECT creature_key FROM character_creatures WHERE character_id=? AND sort_order=0`, characterID).Scan(&storedUID); err != nil || storedUID != creatureUID {
+		return false, nil
+	}
+	return petArtifactsCompatible(rc, items, artifactCores), nil
+}
+
+// petArtifactsCompatible mirrors startup pet compliance: only configured
+// artifact slots count and the total must stay inside the configured range.
+func petArtifactsCompatible(rc robotconfig.RuntimeConfig, items map[int]shared.EquipmentCatalogItem, artifactCores map[int][]byte) bool {
+	types := rc.PetArtifactSlots
+	if len(types) == 0 {
+		types = []int{31, 32, 33}
+	}
+	count := 0
+	for slot, core := range artifactCores {
+		itemType := 31 + (slot - a21ArtifactSlotBase)
+		if !configuredIntValue(types, itemType) {
+			continue
+		}
+		item, ok := startupCoreItem(core, a21ItemKindArtifact, items)
+		if !ok || item.ItemType != itemType || !equipmentcap.PetArtifactRenderable(item) {
+			return false
+		}
+		count++
+	}
+	if !rc.PetArtifactEnabled {
+		return count == 0
+	}
+	return count >= rc.MinPetArtifactSlots && count <= rc.MaxPetArtifactSlots
 }
 
 func requiredSetCoverage(want, configured, preferred int) int {

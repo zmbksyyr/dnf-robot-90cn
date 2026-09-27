@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
+	"sync"
 
 	robotconfig "robot/internal/capability/robotconfig"
 	foundrand "robot/internal/foundation/random"
@@ -95,11 +96,11 @@ func AvatarUsableByJob(item shared.EquipmentCatalogItem, job int) bool {
 	if len(item.UseJob) == 0 {
 		return item.ItemType == 29
 	}
-	meta := strings.ToLower(strings.TrimSpace(item.Name + " " + item.Name2 + " " + item.Path + " " + item.Icon))
-	if job >= 0 && job <= 4 && (strings.Contains(meta, "female") || strings.Contains(meta, "\u5973")) {
+	flags := avatarFlagsFor(item)
+	if job >= 0 && job <= 4 && flags.female {
 		return false
 	}
-	if job >= 5 && job <= 8 && (strings.Contains(meta, "male") || strings.Contains(meta, "\u7537")) {
+	if job >= 5 && job <= 8 && flags.male {
 		return false
 	}
 	for _, j := range item.UseJob {
@@ -110,6 +111,39 @@ func AvatarUsableByJob(item shared.EquipmentCatalogItem, job int) bool {
 	return false
 }
 
+// avatarFlags is the metadata-derived part of avatar eligibility. The values
+// are cached because the item catalog is scanned for every robot; the
+// lowercased metadata string was the dominant allocation in startup.
+type avatarFlags struct {
+	renderable bool
+	female     bool
+	male       bool
+}
+
+type avatarFlagKey struct {
+	id                      int
+	name, name2, path, icon string
+}
+
+var avatarFlagCache sync.Map // avatarFlagKey -> avatarFlags
+
+func avatarFlagsFor(item shared.EquipmentCatalogItem) avatarFlags {
+	key := avatarFlagKey{id: item.ID, name: item.Name, name2: item.Name2, path: item.Path, icon: item.Icon}
+	if cached, ok := avatarFlagCache.Load(key); ok {
+		return cached.(avatarFlags)
+	}
+	meta := strings.ToLower(strings.TrimSpace(item.Name + " " + item.Name2 + " " + item.Path + " " + item.Icon))
+	renderMeta := strings.ToLower(strings.TrimSpace(item.Name + " " + item.Path + " " + item.Icon))
+	name := strings.ToLower(strings.TrimSpace(item.Name))
+	flags := avatarFlags{
+		renderable: name != "" && name != "errorstring" && !strings.HasPrefix(name, "name_") && !strings.Contains(renderMeta, "errorstring"),
+		female:     strings.Contains(meta, "female") || strings.Contains(meta, "\u5973"),
+		male:       strings.Contains(meta, "male") || strings.Contains(meta, "\u7537"),
+	}
+	avatarFlagCache.Store(key, flags)
+	return flags
+}
+
 // AvatarRenderable filters PVF records explicitly marked as broken. Do not
 // infer validity from outfit style: tattoos, swimwear and beach pieces are
 // legitimate avatars.
@@ -117,9 +151,7 @@ func AvatarRenderable(item shared.EquipmentCatalogItem) bool {
 	if item.ID == 0 {
 		return false
 	}
-	meta := strings.ToLower(strings.TrimSpace(item.Name + " " + item.Path + " " + item.Icon))
-	name := strings.ToLower(strings.TrimSpace(item.Name))
-	return name != "" && name != "errorstring" && !strings.HasPrefix(name, "name_") && !strings.Contains(meta, "errorstring")
+	return avatarFlagsFor(item).renderable
 }
 
 // FilterAvatarSupportedJobs intersects the configured creation jobs with the
@@ -278,32 +310,97 @@ func equipmentCandidates(items []shared.EquipmentCatalogItem, level, job int, rc
 }
 
 func SelectAvatar(items []shared.EquipmentCatalogItem, job int, rc robotconfig.RuntimeConfig, randIntn func(int) int) map[int]shared.EquipmentCatalogItem {
-	slots := rc.AvatarSlots
-	if len(slots) == 0 {
-		slots = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-	}
-	candidatesBySlot := make(map[int][]shared.EquipmentCatalogItem, len(slots))
-	slotByItemType := make(map[int]int, len(slots))
+	return PrepareAvatarCatalog(items, rc).Select(job, rc, randIntn)
+}
+
+// AvatarCandidateCatalog is a prepared, immutable per-job view of one avatar
+// catalog. Preparing it once keeps repeated selections for the same catalog
+// from rescanning every item; the plain SelectAvatar helper builds a throwaway
+// catalog for callers that select only once.
+type AvatarCandidateCatalog struct {
+	items []shared.EquipmentCatalogItem
+	slots []int
+	jobs  map[int]*avatarJobCandidates
+}
+
+type avatarJobCandidates struct {
+	bySlot map[int][]shared.EquipmentCatalogItem
+	groups map[string]*setGroup
+}
+
+func PrepareAvatarCatalog(items []shared.EquipmentCatalogItem, rc robotconfig.RuntimeConfig) *AvatarCandidateCatalog {
+	slots := normalizedAvatarSlots(rc.AvatarSlots)
+	slotByType := make(map[int]int, len(slots))
 	for _, slot := range slots {
-		if slot < 0 || slot > 9 {
-			continue
+		slotByType[slot+20] = slot
+	}
+	catalog := &AvatarCandidateCatalog{items: items, slots: slots, jobs: make(map[int]*avatarJobCandidates, 9)}
+	for job := 0; job <= 8; job++ {
+		bySlot := make(map[int][]shared.EquipmentCatalogItem, len(slots))
+		for _, slot := range slots {
+			bySlot[slot] = nil
 		}
-		slotByItemType[slot+20] = slot
-		candidatesBySlot[slot] = nil
+		catalog.jobs[job] = &avatarJobCandidates{bySlot: bySlot}
 	}
 	for _, item := range items {
-		slot, wanted := slotByItemType[item.ItemType]
-		if !wanted || item.ID == 0 || item.Expire || !shared.ClientCompatibleEquipment(item) || !AvatarRenderable(item) || !AvatarUsableByJob(item, job) {
+		slot, wanted := slotByType[item.ItemType]
+		if !wanted || item.ID == 0 || item.Expire || !shared.ClientCompatibleEquipment(item) || !AvatarRenderable(item) {
 			continue
 		}
-		candidatesBySlot[slot] = append(candidatesBySlot[slot], item)
+		for job := 0; job <= 8; job++ {
+			if AvatarUsableByJob(item, job) {
+				candidates := catalog.jobs[job]
+				candidates.bySlot[slot] = append(candidates.bySlot[slot], item)
+			}
+		}
+	}
+	for _, candidates := range catalog.jobs {
+		candidates.groups = buildSetGroups(candidates.bySlot)
+	}
+	return catalog
+}
+
+func (c *AvatarCandidateCatalog) Select(job int, rc robotconfig.RuntimeConfig, randIntn func(int) int) map[int]shared.EquipmentCatalogItem {
+	if c == nil {
+		return map[int]shared.EquipmentCatalogItem{}
+	}
+	candidates, ok := c.jobs[job]
+	if !ok || !sameIntValues(c.slots, normalizedAvatarSlots(rc.AvatarSlots)) {
+		// The caller changed the avatar slot configuration after preparation.
+		// Rebuild instead of returning a selection from stale candidates.
+		return PrepareAvatarCatalog(c.items, rc).Select(job, rc, randIntn)
 	}
 	selected := make(map[int]shared.EquipmentCatalogItem)
 	if rc.PreferAvatarSets {
-		selected = SelectAvatarSetItems(candidatesBySlot, rc.AvatarSetMinSlots, randIntn)
+		selected = selectAvatarSetItemsFromGroups(candidates.groups, rc.AvatarSetMinSlots, randIntn)
 	}
-	FillRandomItems(selected, candidatesBySlot, randIntn)
+	FillRandomItems(selected, candidates.bySlot, randIntn)
 	return selected
+}
+
+func normalizedAvatarSlots(slots []int) []int {
+	if len(slots) == 0 {
+		return []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	}
+	out := make([]int, 0, len(slots))
+	for _, slot := range slots {
+		if slot >= 0 && slot <= 9 {
+			out = append(out, slot)
+		}
+	}
+	return out
+}
+
+func sameIntValues(left, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // SelectPet chooses one usable creature and a bounded subset of its artifact
@@ -504,7 +601,10 @@ func SelectSetItems(candidatesBySlot map[int][]shared.EquipmentCatalogItem, minS
 }
 
 func SelectAvatarSetItems(candidatesBySlot map[int][]shared.EquipmentCatalogItem, minSlots int, randIntn func(int) int) map[int]shared.EquipmentCatalogItem {
-	groups := buildSetGroups(candidatesBySlot)
+	return selectAvatarSetItemsFromGroups(buildSetGroups(candidatesBySlot), minSlots, randIntn)
+}
+
+func selectAvatarSetItemsFromGroups(groups map[string]*setGroup, minSlots int, randIntn func(int) int) map[int]shared.EquipmentCatalogItem {
 	coverageFloor := 6
 	if minSlots > coverageFloor {
 		coverageFloor = minSlots

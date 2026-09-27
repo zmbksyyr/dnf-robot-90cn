@@ -350,7 +350,7 @@ func TestExistingLoadoutCompatibleRejectsStaleLowLevelWeapon(t *testing.T) {
 	info := robotcap.Info{Job: 1, Level: 70}
 	byID := equipmentByID(items)
 	best := equipmentcap.BestEquipmentLevels(items, info.Level, info.Job, rc)
-	compatible, err := existingLoadoutCompatible(context.Background(), db, 9, info, byID, rc, best, 1, 0, false, shared.EquipmentCatalogItem{}, nil)
+	compatible, err := existingLoadoutCompatible(context.Background(), db, 9, info, byID, rc, best, 1, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +363,7 @@ func TestExistingLoadoutCompatibleRejectsStaleLowLevelWeapon(t *testing.T) {
 		a21ItemCore(a21ItemKindEquipment, items[1], 0, 0)); err != nil {
 		t.Fatal(err)
 	}
-	compatible, err = existingLoadoutCompatible(context.Background(), db, 9, info, byID, rc, best, 1, 0, false, shared.EquipmentCatalogItem{}, nil)
+	compatible, err = existingLoadoutCompatible(context.Background(), db, 9, info, byID, rc, best, 1, 0, false)
 	if err != nil || !compatible {
 		t.Fatalf("in-window weapon incompatible: compatible=%t err=%v", compatible, err)
 	}
@@ -415,6 +415,47 @@ func TestReconcileRobotLoadoutsReplacesStaleEquipment(t *testing.T) {
 	replaced, err = adapter.ReconcileRobotLoadouts(context.Background(), "robot", robots)
 	if err != nil || replaced != 0 {
 		t.Fatalf("second reconcile replaced=%d err=%v", replaced, err)
+	}
+}
+
+// A stored pet must satisfy the configured window instead of matching a freshly
+// rolled pet: exact matching rewrote the whole loadout on every startup.
+func TestReconcileRobotLoadoutsKeepsStoredPet(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db := openLoadoutTestDB(t, path)
+	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES(7,'robot17000009')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,grow_type,level,exp,delete_flag) VALUES(9,7,'Alpha',1,0,70,0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	rc := robotconfig.Default()
+	rc.EquipSlots = []int{1}
+	rc.AvatarSlots = nil
+	rc.MinAvatarSlots = 0
+	rc.PreferEquipSets, rc.PreferAvatarSets = false, false
+	rc.PetEnabled, rc.PetProbabilityPercent = true, 100
+	rc.PetArtifactEnabled = true
+	rc.PetArtifactSlots = []int{31}
+	rc.MinPetArtifactSlots, rc.MaxPetArtifactSlots = 1, 1
+	items := []shared.EquipmentCatalogItem{
+		{ID: 1001, ItemType: 1, Level: 40, Durability: 45, UseJob: []int{1}},
+		{ID: 3000, Name: "Creature", ItemType: 30, Icon: "creature/pet.img"},
+		{ID: 3100, Name: "Artifact", ItemType: 31, Durability: 20, Path: "equipment/creature/artifact_red/hand.equ", Icon: "Item/creature/artifact_red.img"},
+	}
+	adapter := SQLiteLoadoutApplier{
+		DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 },
+		StatTables: testStatTables(1), LevelThresholds: testLevelThresholds(),
+	}
+	info := robotcap.Info{UID: 17000009, Name: "Alpha", Job: 1, Level: 70}
+	if _, err := adapter.InitializeCharacter(context.Background(), "robot17000009", info, 70, 0); err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := adapter.ReconcileRobotLoadouts(context.Background(), "robot", []robotcap.Info{info})
+	if err != nil || replaced != 0 {
+		t.Fatalf("pet loadout reconcile replaced=%d err=%v, want 0", replaced, err)
 	}
 }
 
