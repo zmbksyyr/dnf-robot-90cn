@@ -16,7 +16,7 @@ func TestReconcileRobotGrowthFillsUntransferredRobots(t *testing.T) {
 	}
 	if _, err := db.Exec(`INSERT INTO characters(character_id,account_id,name,job,grow_type,level,exp,delete_flag) VALUES
 (9,7,'Alpha',1,0,50,0,0),
-(10,7,'Beta',1,17,50,0,0),
+(10,7,'Beta',1,34,50,0,0),
 (11,7,'Gamma',9,0,50,0,0)`); err != nil {
 		t.Fatal(err)
 	}
@@ -27,10 +27,10 @@ func TestReconcileRobotGrowthFillsUntransferredRobots(t *testing.T) {
 
 	robots := []robotcap.Info{
 		{UID: 17000009, CID: 9, Name: "Alpha", Job: 1, Grow: 0},
-		{UID: 17000010, CID: 10, Name: "Beta", Job: 1, Grow: 0x11},
+		{UID: 17000010, CID: 10, Name: "Beta", Job: 1, Grow: 0x22},
 		{UID: 17000011, CID: 11, Name: "Gamma", Job: 9, Grow: 0},
 	}
-	changed, err := ReconcileRobotGrowth(context.Background(), path, robots, []int{1}, map[int][]int{1: {2, 3}}, testStatTables(1), false, func(int) int { return 0 })
+	changed, err := ReconcileRobotGrowth(context.Background(), path, robots, []int{1, 2}, map[int][]int{1: {2, 3}}, testStatTables(1), false, func(int) int { return 0 })
 	if err != nil || changed != 1 {
 		t.Fatalf("changed=%d err=%v", changed, err)
 	}
@@ -38,8 +38,9 @@ func TestReconcileRobotGrowthFillsUntransferredRobots(t *testing.T) {
 	if robots[0].Grow != 0x12 {
 		t.Fatalf("reconciled grow=0x%02X", robots[0].Grow)
 	}
-	// Beta is transferred but unawakened; without reconcile_awakening it stays.
-	if robots[1].Grow != 0x11 || robots[2].Grow != 0 {
+	// Beta already matches the configured stage; without reconcile_awakening the
+	// remaining stage-0 robots stay untouched.
+	if robots[1].Grow != 0x22 || robots[2].Grow != 0 {
 		t.Fatalf("untouched grows=%v", []int{robots[1].Grow, robots[2].Grow})
 	}
 
@@ -55,7 +56,7 @@ func TestReconcileRobotGrowthFillsUntransferredRobots(t *testing.T) {
 	if err := db.QueryRow(`SELECT grow_type FROM characters WHERE character_id=11`).Scan(&grow11); err != nil {
 		t.Fatal(err)
 	}
-	if grow9 != 0x12 || grow10 != 0x11 || grow11 != 0 {
+	if grow9 != 0x12 || grow10 != 0x22 || grow11 != 0 {
 		t.Fatalf("persisted grows=%d/%d/%d", grow9, grow10, grow11)
 	}
 	var skills9, skills10, skills11 int
@@ -140,6 +141,7 @@ func TestReconcileRobotGrowthAwakensTransferredRobotsWhenEnabled(t *testing.T) {
 }
 
 func TestReconciledGrowMatrix(t *testing.T) {
+	tables := testStatTables(1, 9)
 	cases := []struct {
 		name       string
 		job, grow  int
@@ -152,14 +154,16 @@ func TestReconciledGrowMatrix(t *testing.T) {
 		{name: "untransferred gets a branch", job: 1, grow: 0, growTypes: []int{1}, jobGrows: map[int][]int{1: {2}}, want: 0x12, wantChange: true},
 		{name: "branch-less job stays", job: 9, grow: 0, growTypes: []int{0}, want: 0, wantChange: false},
 		{name: "unawakened gets a stage", job: 1, grow: 2, growTypes: []int{2}, jobGrows: map[int][]int{1: {2}}, reconcile: true, want: 0x22, wantChange: true},
-		{name: "awakening disabled keeps stage 0", job: 1, grow: 2, growTypes: []int{2}, reconcile: false, want: 0, wantChange: false},
-		{name: "already awakened stays", job: 1, grow: 0x22, growTypes: []int{0, 2}, reconcile: true, want: 0, wantChange: false},
-		{name: "stage not configured stays", job: 1, grow: 0x12, growTypes: []int{0}, reconcile: true, want: 0, wantChange: false},
-		{name: "invalid bytes never reconcile", job: 1, grow: 0x1F, growTypes: []int{0, 2}, reconcile: true, want: 0, wantChange: false},
+		{name: "awakening disabled keeps stage 0", job: 1, grow: 2, growTypes: []int{2}, jobGrows: map[int][]int{1: {2}}, reconcile: false, want: 0, wantChange: false},
+		{name: "already awakened stays", job: 1, grow: 0x22, growTypes: []int{0, 2}, jobGrows: map[int][]int{1: {2}}, reconcile: true, want: 0, wantChange: false},
+		{name: "stage not configured stays", job: 1, grow: 0x12, growTypes: []int{0}, jobGrows: map[int][]int{1: {2}}, reconcile: true, want: 0, wantChange: false},
+		{name: "unreleased branch is repicked", job: 1, grow: 0x1F, growTypes: []int{2}, jobGrows: map[int][]int{1: {2}}, reconcile: true, want: 0x22, wantChange: true},
+		{name: "awakening without transfer is repicked", job: 1, grow: 0x20, growTypes: []int{2}, jobGrows: map[int][]int{1: {2}}, reconcile: true, want: 0x22, wantChange: true},
+		{name: "branch-less corrupt value resets", job: 9, grow: 0x12, growTypes: []int{0}, want: 0, wantChange: true},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			grow, changed := reconciledGrow(testCase.job, testCase.grow, testCase.growTypes, testCase.jobGrows, testCase.reconcile, func(int) int { return 0 })
+			grow, changed := reconciledGrow(testCase.job, testCase.grow, testCase.growTypes, testCase.jobGrows[testCase.job], tables, testCase.reconcile, func(int) int { return 0 })
 			if changed != testCase.wantChange || grow != testCase.want {
 				t.Fatalf("grow=0x%02X changed=%t want=0x%02X/%t", grow, changed, testCase.want, testCase.wantChange)
 			}

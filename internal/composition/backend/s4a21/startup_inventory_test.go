@@ -58,8 +58,9 @@ INSERT INTO characters(character_id,account_id,name,job,grow_type,level,delete_f
 
 func TestGrowCompliantAlignsWithGrowthReconcile(t *testing.T) {
 	purger := SQLiteStartupInventory{
-		Config:   robotconfig.RuntimeConfig{GrowTypes: []int{2}, ReconcileAwakening: true},
-		JobGrows: map[int][]int{1: {2, 3}},
+		Config:     robotconfig.RuntimeConfig{GrowTypes: []int{2}, ReconcileAwakening: true},
+		JobGrows:   map[int][]int{1: {2, 3}},
+		StatTables: testStatTables(1, 9),
 	}
 	for _, test := range []struct {
 		name string
@@ -71,11 +72,11 @@ func TestGrowCompliantAlignsWithGrowthReconcile(t *testing.T) {
 		{name: "branch-less job stage 0", job: 9, grow: 0, want: true},
 		{name: "unawakened reconcilable", job: 1, grow: 2, want: true},
 		{name: "configured stage", job: 1, grow: 0x22, want: true},
-		{name: "unconfigured stage", job: 1, grow: 0x12, want: false},
-		{name: "awakening without transfer", job: 1, grow: 0x20, want: false},
-		{name: "stage out of range", job: 1, grow: 0x32, want: false},
-		{name: "branch out of range", job: 1, grow: 0x1F, want: false},
-		{name: "second nibble out of range", job: 1, grow: 0xF0, want: false},
+		{name: "unconfigured stage is not compliant", job: 1, grow: 0x12, want: false},
+		{name: "awakening without transfer is repaired", job: 1, grow: 0x20, want: true},
+		{name: "stage out of range is repaired", job: 1, grow: 0x32, want: true},
+		{name: "branch out of range is repaired", job: 1, grow: 0x1F, want: true},
+		{name: "second nibble out of range is repaired", job: 1, grow: 0xF0, want: true},
 	} {
 		if got := purger.growCompliant(startupCharacter{job: test.job, grow: test.grow}); got != test.want {
 			t.Fatalf("%s: job=%d grow=0x%02X compliant=%t want=%t", test.name, test.job, test.grow, got, test.want)

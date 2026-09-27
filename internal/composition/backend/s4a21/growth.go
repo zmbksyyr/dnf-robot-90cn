@@ -43,7 +43,7 @@ func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []rob
 		if info.CID <= 0 {
 			continue
 		}
-		grow, ok := reconciledGrow(info.Job, info.Grow, growTypes, jobGrows, reconcileAwakening, randIntn)
+		grow, ok := reconciledGrow(info.Job, info.Grow, growTypes, jobGrows[info.Job], statTables, reconcileAwakening, randIntn)
 		if !ok {
 			continue
 		}
@@ -76,27 +76,91 @@ func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []rob
 	return changed, nil
 }
 
-// reconciledGrow returns the target grow byte for one stored robot. It fills a
-// missing transfer branch for untransferred robots and, when reconcileAwakening
-// is set, a positive awakening stage for transferred robots that still carry
-// stage 0. Characters whose stored value already satisfies the configuration
-// (including jobs without released branches) are reported as unchanged.
-func reconciledGrow(job, grow int, growTypes []int, jobGrows map[int][]int, reconcileAwakening bool, randIntn func(int) int) (int, bool) {
+// reconciledGrow returns the target grow byte for one stored robot.
+// Untransferred, unreleased-branch and malformed values are re-picked from the
+// PVF catalog; a released branch at stage 0 is awakened when enabled and the
+// branch's .chr file actually contains a configured awakening row. States that
+// already satisfy the configuration are reported as unchanged.
+func reconciledGrow(job, grow int, growTypes []int, branches []int, statTables map[int]capabilitypvf.CharacterStatTables, reconcileAwakening bool, randIntn func(int) int) (int, bool) {
 	first := grow & 0x0F
 	second := (grow >> 4) & 0x0F
-	if first == 0 {
-		_, target := robotlifecycle.SelectJobGrowth(job, jobGrows, growTypes, randIntn)
-		if target == 0 || target == grow {
+	if !releasedBranch(branches, first) {
+		pick, target := robotlifecycle.SelectBranchGrowth(branches, growTypes, randIntn)
+		targetSecond := (target >> 4) & 0x0F
+		if targetSecond > 0 && !statTables[job].AwakenSet[pick+1][targetSecond] {
+			if stage, ok := availableAwakening(statTables[job], pick, growTypes, randIntn); ok {
+				target = (stage << 4) | (pick & 0x0F)
+			} else {
+				target = pick & 0x0F
+			}
+		}
+		if target == grow {
 			return 0, false
 		}
 		return target, true
 	}
-	if second == 0 && reconcileAwakening {
-		stage, ok := robotlifecycle.SelectAwakeningStage(growTypes, randIntn)
-		if !ok {
+	if second > 2 {
+		// Corrupt awakening nibble on a released branch: keep the branch and
+		// re-pick a configured stage the .chr table actually has.
+		if stage, ok := availableAwakening(statTables[job], first, growTypes, randIntn); ok {
+			target := (stage << 4) | (first & 0x0F)
+			if target == grow {
+				return 0, false
+			}
+			return target, true
+		}
+		target := first & 0x0F
+		if target == grow {
 			return 0, false
 		}
-		return (stage << 4) | (first & 0x0F), true
+		return target, true
 	}
-	return 0, false
+	if second != 0 || !reconcileAwakening {
+		return 0, false
+	}
+	stage, ok := availableAwakening(statTables[job], first, growTypes, randIntn)
+	if !ok {
+		return 0, false
+	}
+	target := (stage << 4) | (first & 0x0F)
+	if target == grow {
+		return 0, false
+	}
+	return target, true
+}
+
+// releasedBranch reports whether the job's PVF catalog contains the transfer
+// branch value.
+func releasedBranch(branches []int, first int) bool {
+	if first <= 0 {
+		return false
+	}
+	for _, branch := range branches {
+		if branch == first {
+			return true
+		}
+	}
+	return false
+}
+
+// availableAwakening picks a configured awakening stage whose [awakening N]
+// row exists in the branch's .chr table, so stat computation cannot fail on a
+// placeholder branch.
+func availableAwakening(tables capabilitypvf.CharacterStatTables, first int, growTypes []int, randIntn func(int) int) (int, bool) {
+	candidates := make([]int, 0, len(growTypes))
+	for _, stage := range growTypes {
+		if stage > 0 && stage <= 2 && tables.AwakenSet[first+1][stage] {
+			candidates = append(candidates, stage)
+		}
+	}
+	if len(candidates) == 0 {
+		return 0, false
+	}
+	pick := 0
+	if randIntn != nil {
+		if index := randIntn(len(candidates)); index > 0 && index < len(candidates) {
+			pick = index
+		}
+	}
+	return candidates[pick], true
 }

@@ -133,7 +133,13 @@ func SelectAwakeningStage(growTypes []int, randIntn func(int) int) (int, bool) {
 // awakening without a transfer, so an untransferable job stays at 0. The first
 // return value is the transfer branch used by name templates.
 func SelectJobGrowth(job int, jobGrows map[int][]int, growTypes []int, randIntn func(int) int) (int, int) {
-	first := chooseFirstGrow(jobGrows[job], randIntn)
+	return SelectBranchGrowth(jobGrows[job], growTypes, randIntn)
+}
+
+// SelectBranchGrowth is SelectJobGrowth for a job whose released branch list is
+// already resolved.
+func SelectBranchGrowth(branches []int, growTypes []int, randIntn func(int) int) (int, int) {
+	first := chooseFirstGrow(branches, randIntn)
 	awakening := chooseInt(growTypes, randIntn)
 	if awakening < 0 {
 		awakening = 0

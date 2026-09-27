@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	equipmentcap "robot/internal/capability/equipment"
+	capabilitypvf "robot/internal/capability/pvf"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
-	robotlifecycle "robot/internal/capability/robotlifecycle"
 	robotstate "robot/internal/capability/robotstate"
 	"robot/internal/foundation/charset"
 	foundationlog "robot/internal/foundation/log"
@@ -37,6 +37,7 @@ type SQLiteStartupInventory struct {
 	Config        robotconfig.RuntimeConfig
 	Equipment     []shared.EquipmentCatalogItem
 	JobGrows      map[int][]int
+	StatTables    map[int]capabilitypvf.CharacterStatTables
 }
 
 type startupAccount struct {
@@ -648,33 +649,26 @@ func hasStartupArtifactCore(cores map[int][]byte) bool {
 }
 
 // growCompliant accepts the grow states that the startup growth reconcile can
-// bring in line with the configuration: an untransferred character (stage 0) is
-// either transferred by the reconcile when its job has released branches, or is
-// the final state of a branch-less job and must not be deleted on every boot. A
-// transferred character at stage 0 is accepted while reconcile_awakening can
-// still awaken it. Everything else must already match a configured stage.
+// bring in line with the configuration: untransferred, unreleased-branch and
+// malformed values are re-picked from the PVF catalog, and a transferred
+// character at stage 0 is awakened while reconcile_awakening provides an
+// available stage. A branch-less job keeps stage 0 as its final state. Any
+// other state has to match a configured awakening stage already.
 func (s SQLiteStartupInventory) growCompliant(character startupCharacter) bool {
-	grow := character.grow
-	if grow < 0 || grow > 255 {
+	if character.grow < 0 || character.grow > 255 {
 		return false
 	}
-	first := grow & 0x0F
-	second := (grow >> 4) & 0x0F
-	if first > 5 || second > 2 || (second > 0 && first == 0) {
-		return false
-	}
-	if first == 0 {
+	branches := s.JobGrows[character.job]
+	first := character.grow & 0x0F
+	second := (character.grow >> 4) & 0x0F
+	if first == 0 && len(branches) == 0 {
 		return true
 	}
-	if configuredIntValue(s.Config.GrowTypes, second) {
+	if releasedBranch(branches, first) && configuredIntValue(s.Config.GrowTypes, second) {
 		return true
 	}
-	if second == 0 && s.Config.ReconcileAwakening {
-		if _, ok := robotlifecycle.SelectAwakeningStage(s.Config.GrowTypes, nil); ok {
-			return true
-		}
-	}
-	return false
+	target, changed := reconciledGrow(character.job, character.grow, s.Config.GrowTypes, branches, s.StatTables, s.Config.ReconcileAwakening, nil)
+	return changed && configuredIntValue(s.Config.GrowTypes, (target>>4)&0x0F)
 }
 
 func configuredIntValue(values []int, value int) bool {

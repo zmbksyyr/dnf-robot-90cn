@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"robot/internal/capability/catalog"
 	capabilitypvf "robot/internal/capability/pvf"
@@ -80,21 +81,30 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		return bundle, fmt.Errorf("S4A21 runtime requires random sources")
 	}
 
+	stageStarted := time.Now()
+	logStartupStage := func(stage string) {
+		foundationlog.Robotf("S4A21_STARTUP_STAGE stage=%s elapsed_ms=%d\n", stage, time.Since(stageStarted).Milliseconds())
+		stageStarted = time.Now()
+	}
+
 	pvfPath, pvfSource, err := resolvePVFPath(opts.ServerDirectory)
 	if err != nil {
 		return bundle, fmt.Errorf("PVF: %w", err)
 	}
 	foundationlog.Robotf("S4A21_PVF_RESOLVED path=%s source=%s\n", pvfPath, pvfSource)
+	logStartupStage("pvf_resolve")
 	catalogs, err := ReadCatalogs(pvfPath)
 	if err != nil {
 		return bundle, fmt.Errorf("PVF catalog: %w", err)
 	}
+	logStartupStage("pvf_catalog")
 	if len(catalogs.StatFallbackJobs) > 0 {
 		foundationlog.Robotf("S4A21_STAT_FALLBACK jobs=%v\n", catalogs.StatFallbackJobs)
 	}
 	if err := ExportItemCatalogs(opts.Paths, catalogs.Equipment, catalogs.Stackable); err != nil {
 		return bundle, fmt.Errorf("item catalog: %w", err)
 	}
+	logStartupStage("item_catalog_export")
 	databasePath, databaseSource, err := resolveDatabasePath(opts.ServerDirectory, opts.DatabasePath)
 	if err != nil {
 		return bundle, fmt.Errorf("loadout database: %w", err)
@@ -103,15 +113,17 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	logDatabaseSourceConflict(opts.ServerDirectory, opts.DatabasePath)
 	inventory, err := (SQLiteStartupInventory{
 		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config, Equipment: catalogs.Equipment,
-		JobGrows: catalogs.JobGrows,
+		JobGrows: catalogs.JobGrows, StatTables: catalogs.StatTables,
 	}).ScanAndClean(ctx)
 	if err != nil {
 		return bundle, fmt.Errorf("startup inventory: %w", err)
 	}
+	logStartupStage("startup_inventory")
 	reconciled, err := ReconcileRobotGrowth(ctx, databasePath, inventory.Robots, opts.Config.GrowTypes, catalogs.JobGrows, catalogs.StatTables, opts.Config.ReconcileAwakening, opts.RandIntn)
 	if err != nil {
 		return bundle, fmt.Errorf("growth reconcile: %w", err)
 	}
+	logStartupStage("growth_reconcile")
 	if reconciled > 0 {
 		foundationlog.Robotf("S4A21_GROWTH_RECONCILED count=%d\n", reconciled)
 	}
@@ -119,6 +131,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if err != nil {
 		return bundle, fmt.Errorf("quest gates: %w", err)
 	}
+	logStartupStage("quest_gates")
 	if seeded > 0 {
 		foundationlog.Robotf("S4A21_QUEST_GATES_SEEDED completed=%d active=%d robots=%d\n",
 			len(catalogs.QuestGates.CompletedQuestIDs), len(catalogs.QuestGates.ActiveQuestIDs), seeded)
@@ -127,10 +140,12 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if err := state.RegisterIdentities(ctx, inventory.Identities); err != nil {
 		return bundle, fmt.Errorf("startup identities: %w", err)
 	}
+	logStartupStage("state_identities")
 	loadouts, err := NewSQLiteLoadoutApplier(ctx, databasePath, opts.Config, catalogs.Equipment, opts.RandIntn)
 	if err != nil {
 		return bundle, fmt.Errorf("loadout applier: %w", err)
 	}
+	logStartupStage("loadout_applier")
 	loadouts.QuestGates = catalogs.QuestGates
 	loadouts.StatTables = catalogs.StatTables
 	loadouts.LevelThresholds = catalogs.LevelThresholds
@@ -139,6 +154,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		_ = loadouts.Close()
 		return bundle, fmt.Errorf("loadout reconcile: %w", err)
 	}
+	logStartupStage("loadout_reconcile")
 	if replaced > 0 {
 		foundationlog.Robotf("S4A21_LOADOUT_RECONCILED robots=%d\n", replaced)
 	}
@@ -147,6 +163,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		_ = loadouts.Close()
 		return bundle, fmt.Errorf("transport: %w", err)
 	}
+	logStartupStage("transport")
 	address := net.JoinHostPort(opts.ConnectIP, fmt.Sprint(opts.GamePort))
 	names := catalog.NameTemplates(opts.Paths.Templates)
 
