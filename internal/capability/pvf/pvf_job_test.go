@@ -8,8 +8,8 @@ import (
 func TestProjectJobGrowCatalogReadsReleasedBranches(t *testing.T) {
 	archive := testTextArchive{
 		"character/character.lst":         "0 `Swordman/Swordman.chr` 1 `Fighter/Fighter.chr` 2 `Gunner/Gunner.chr`",
-		"character/swordman/swordman.chr": "[name]\r\n`swordman`\r\n[growtype name]\r\n`鬼剑士` `剑魂` `鬼泣` `//阿修罗` `狂战士`\r\n[growtype 1]\r\n`skill`\r\n",
-		"character/fighter/fighter.chr":   "[growtype name] `格斗家` `气功师` `散打`\r\n",
+		"character/swordman/swordman.chr": "[name]\r\n`swordman`\r\n[growtype name]\r\n`鬼剑士` `剑魂` `鬼泣` `//阿修罗` `狂战士`\r\n[growtype 1]\r\n`skill`\r\n[growtype 2]\r\n`skill`\r\n[growtype 3]\r\n`skill`\r\n[growtype 5]\r\n`skill`\r\n",
+		"character/fighter/fighter.chr":   "[growtype name] `格斗家` `气功师` `散打`\r\n[growtype 2]\r\n`skill`\r\n[growtype 3]\r\n`skill`\r\n",
 		"character/gunner/gunner.chr":     "[name]\r\n`gunner`\r\n",
 	}
 
@@ -28,8 +28,13 @@ func TestParseJobGrowBranchesIgnoresMissingAndMalformedNames(t *testing.T) {
 		t.Fatalf("placeholder-only branches = %v", branches)
 	}
 	// Values above the server's first-grow guard must not be offered.
-	body := "[growtype name] `base` `a` `b` `c` `d` `e` `f`"
+	body := "[growtype name] `base` `a` `b` `c` `d` `e` `f`[growtype 2][growtype 3][growtype 4][growtype 5][growtype 6]"
 	if branches := parseJobGrowBranches(body); !reflect.DeepEqual(branches, []int{1, 2, 3, 4, 5}) {
 		t.Fatalf("guarded branches = %v", branches)
+	}
+	// Branches without their [growtype N] stat section are not offered.
+	body = "[growtype name] `base` `a` `b`[growtype 2]"
+	if branches := parseJobGrowBranches(body); !reflect.DeepEqual(branches, []int{1}) {
+		t.Fatalf("section-less branches = %v", branches)
 	}
 }

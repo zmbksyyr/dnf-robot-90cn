@@ -93,6 +93,7 @@ func TestInitializeCharacterSeedsQuestGates(t *testing.T) {
 	adapter := SQLiteLoadoutApplier{
 		DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 },
 		QuestGates: capabilitypvf.QuestGates{CompletedQuestIDs: []int{1790}, ActiveQuestIDs: []int{1791}},
+		StatTables: testStatTables(1),
 	}
 	if _, err := adapter.InitializeCharacter(context.Background(), "robot7", robotcap.Info{Name: "Alpha", Job: 1}, 70, 0x12); err != nil {
 		t.Fatal(err)

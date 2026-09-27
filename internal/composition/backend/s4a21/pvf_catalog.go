@@ -13,11 +13,14 @@ type TownMapCatalogProvider struct {
 }
 
 type Catalogs struct {
-	TownMaps   []shared.MapCatalogItem
-	Equipment  []shared.EquipmentCatalogItem
-	Stackable  []shared.EquipmentCatalogItem
-	JobGrows   map[int][]int
-	QuestGates capabilitypvf.QuestGates
+	TownMaps         []shared.MapCatalogItem
+	Equipment        []shared.EquipmentCatalogItem
+	Stackable        []shared.EquipmentCatalogItem
+	JobGrows         map[int][]int
+	QuestGates       capabilitypvf.QuestGates
+	StatTables       map[int]capabilitypvf.CharacterStatTables
+	StatFallbackJobs []int
+	LevelThresholds  []int
 }
 
 func ReadCatalogs(pvfPath string) (Catalogs, error) {
@@ -33,10 +36,14 @@ func ReadCatalogs(pvfPath string) (Catalogs, error) {
 	if err != nil {
 		return Catalogs{}, fmt.Errorf("project S4A21 item catalogs: %w", err)
 	}
+	statTables, statFallbacks := capabilitypvf.ProjectCharacterStatCatalog(archive)
 	return Catalogs{
 		TownMaps: maps, Equipment: equipment, Stackable: stackable,
-		JobGrows:   capabilitypvf.ProjectJobGrowCatalog(archive),
-		QuestGates: capabilitypvf.ProjectQuestGates(archive),
+		JobGrows:         capabilitypvf.ProjectJobGrowCatalog(archive),
+		QuestGates:       capabilitypvf.ProjectQuestGates(archive),
+		StatTables:       statTables,
+		StatFallbackJobs: statFallbacks,
+		LevelThresholds:  capabilitypvf.ProjectLevelThresholds(archive),
 	}, nil
 }
 

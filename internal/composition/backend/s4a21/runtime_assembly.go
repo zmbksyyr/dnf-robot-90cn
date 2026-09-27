@@ -87,6 +87,9 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if err != nil {
 		return bundle, fmt.Errorf("PVF catalog: %w", err)
 	}
+	if len(catalogs.StatFallbackJobs) > 0 {
+		foundationlog.Robotf("S4A21_STAT_FALLBACK jobs=%v\n", catalogs.StatFallbackJobs)
+	}
 	if err := ExportItemCatalogs(opts.Paths, catalogs.Equipment, catalogs.Stackable); err != nil {
 		return bundle, fmt.Errorf("item catalog: %w", err)
 	}
@@ -100,7 +103,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if err != nil {
 		return bundle, fmt.Errorf("startup inventory: %w", err)
 	}
-	reconciled, err := ReconcileRobotGrowth(ctx, databasePath, inventory.Robots, opts.Config.GrowTypes, catalogs.JobGrows, opts.RandIntn)
+	reconciled, err := ReconcileRobotGrowth(ctx, databasePath, inventory.Robots, opts.Config.GrowTypes, catalogs.JobGrows, catalogs.StatTables, opts.RandIntn)
 	if err != nil {
 		return bundle, fmt.Errorf("growth reconcile: %w", err)
 	}
@@ -124,6 +127,8 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		return bundle, fmt.Errorf("loadout applier: %w", err)
 	}
 	loadouts.QuestGates = catalogs.QuestGates
+	loadouts.StatTables = catalogs.StatTables
+	loadouts.LevelThresholds = catalogs.LevelThresholds
 	replaced, err := loadouts.ReconcileRobotLoadouts(ctx, prefix, inventory.Robots)
 	if err != nil {
 		_ = loadouts.Close()

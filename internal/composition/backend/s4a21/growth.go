@@ -3,9 +3,11 @@ package s4a21
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
+	capabilitypvf "robot/internal/capability/pvf"
 	robotcap "robot/internal/capability/robot"
 	robotlifecycle "robot/internal/capability/robotlifecycle"
 )
@@ -16,7 +18,7 @@ import (
 // characters, including deliberate operator assignments, are left alone. The
 // robot slice is updated in place so the in-memory directory matches the
 // database.
-func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []robotcap.Info, growTypes []int, jobGrows map[int][]int, randIntn func(int) int) (int, error) {
+func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []robotcap.Info, growTypes []int, jobGrows map[int][]int, statTables map[int]capabilitypvf.CharacterStatTables, randIntn func(int) int) (int, error) {
 	if strings.TrimSpace(databasePath) == "" || len(robots) == 0 || len(jobGrows) == 0 {
 		return 0, nil
 	}
@@ -44,7 +46,18 @@ func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []rob
 		if first == 0 {
 			continue
 		}
+		var level int
+		if err := tx.QueryRowContext(ctx, `SELECT level FROM characters WHERE character_id=? AND delete_flag=0`, info.CID).Scan(&level); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return changed, fmt.Errorf("read S4A21 growth reconcile level id=%d: %w", info.CID, err)
+		}
+		info.Level = level
 		if err := updateCharacterGrow(ctx, tx, info.CID, grow); err != nil {
+			return changed, err
+		}
+		if err := writeCombatStats(ctx, tx, info.CID, info.Job, info.Level, grow, statTables); err != nil {
 			return changed, err
 		}
 		if err := resetCharacterSkills(ctx, tx, info.CID); err != nil {

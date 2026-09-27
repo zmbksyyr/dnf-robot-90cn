@@ -57,17 +57,19 @@ type CharacterInitializer interface {
 }
 
 type SQLiteLoadoutApplier struct {
-	DatabasePath string
-	Config       robotconfig.RuntimeConfig
-	Equipment    []shared.EquipmentCatalogItem
-	QuestGates   capabilitypvf.QuestGates
-	RandIntn     func(int) int
-	db           *sql.DB
-	items        map[int]shared.EquipmentCatalogItem
-	petSchema    bool
-	executorMu   lockhub.Locker
-	executor     *persistenceExecutor
-	closed       bool
+	DatabasePath    string
+	Config          robotconfig.RuntimeConfig
+	Equipment       []shared.EquipmentCatalogItem
+	QuestGates      capabilitypvf.QuestGates
+	StatTables      map[int]capabilitypvf.CharacterStatTables
+	LevelThresholds []int
+	RandIntn        func(int) int
+	db              *sql.DB
+	items           map[int]shared.EquipmentCatalogItem
+	petSchema       bool
+	executorMu      lockhub.Locker
+	executor        *persistenceExecutor
+	closed          bool
 }
 
 func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config robotconfig.RuntimeConfig, equipment []shared.EquipmentCatalogItem, randIntn func(int) int) (*SQLiteLoadoutApplier, error) {
@@ -347,7 +349,7 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 		if err != nil {
 			return err
 		}
-		resolved, err = writeResolvedCharacterProgression(ctx, db, characterID, resolved, level, grow)
+		resolved, err = a.writeResolvedCharacterProgression(ctx, db, characterID, resolved.Job, resolved, level, grow)
 		if err != nil {
 			return err
 		}
@@ -516,7 +518,7 @@ func (a *SQLiteLoadoutApplier) reconcileResolvedCharacterLevel(ctx context.Conte
 	if actual.Level >= minLevel && actual.Level <= maxLevel {
 		return actual, nil
 	}
-	return writeResolvedCharacterLevel(ctx, db, characterID, actual, randomBetween(a.RandIntn, minLevel, maxLevel))
+	return a.writeResolvedCharacterProgression(ctx, db, characterID, actual.Job, actual, randomBetween(a.RandIntn, minLevel, maxLevel), actual.Grow)
 }
 
 func (a *SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account string, info robotcap.Info, level int) (robotcap.Info, error) {
@@ -534,32 +536,10 @@ func (a *SQLiteLoadoutApplier) writeCharacterLevel(ctx context.Context, account 
 		if err != nil {
 			return err
 		}
-		actual, err = writeResolvedCharacterLevel(ctx, db, characterID, resolved, level)
+		actual, err = a.writeResolvedCharacterProgression(ctx, db, characterID, resolved.Job, resolved, level, resolved.Grow)
 		return err
 	})
 	return actual, err
-}
-
-func writeResolvedCharacterLevel(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info, level int) (robotcap.Info, error) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return actual, err
-	}
-	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE characters
-SET level=?, exp=0, updated_at=CURRENT_TIMESTAMP
-	WHERE character_id=? AND delete_flag=0`, level, characterID)
-	if err != nil {
-		return actual, fmt.Errorf("write S4A21 character level id=%d: %w", characterID, err)
-	}
-	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
-		return actual, fmt.Errorf("write S4A21 character level id=%d affected=%d err=%v", characterID, affected, err)
-	}
-	if err := tx.Commit(); err != nil {
-		return actual, fmt.Errorf("commit S4A21 character level id=%d: %w", characterID, err)
-	}
-	actual.Level = level
-	return actual, nil
 }
 
 // validateGrowType mirrors the server's CharacterStatComputer guard: the low
@@ -574,17 +554,18 @@ func validateGrowType(grow int) error {
 	return nil
 }
 
-// writeResolvedCharacterProgression applies the planned level and transfer or
-// awakening state in one transaction. The server rebuilds the skill panel from
-// (job, grow, level) at the next character select, so skills saved under the
-// previous grow are cleared the same way the GM tool's grow overwrite does.
-func writeResolvedCharacterProgression(ctx context.Context, db *sql.DB, characterID int, actual robotcap.Info, level, grow int) (robotcap.Info, error) {
+// writeResolvedCharacterProgression applies the planned level, cumulative
+// experience and transfer/awakening state in one transaction. The server
+// rebuilds the skill panel from (job, grow, level) at the next character
+// select, so skills saved under the previous grow are cleared the same way the
+// GM tool's grow overwrite does.
+func (a *SQLiteLoadoutApplier) writeResolvedCharacterProgression(ctx context.Context, db *sql.DB, characterID, job int, actual robotcap.Info, level, grow int) (robotcap.Info, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return actual, err
 	}
 	defer tx.Rollback()
-	if err := updateCharacterProgression(ctx, tx, characterID, level, grow); err != nil {
+	if err := a.updateCharacterProgression(ctx, tx, characterID, job, level, grow); err != nil {
 		return actual, err
 	}
 	if actual.Grow != grow {
@@ -600,15 +581,73 @@ func writeResolvedCharacterProgression(ctx context.Context, db *sql.DB, characte
 	return actual, nil
 }
 
-func updateCharacterProgression(ctx context.Context, tx *sql.Tx, characterID, level, grow int) error {
+// updateCharacterProgression writes level, the cumulative experience of that
+// level and the combat stat columns. Level, experience and stats must land in
+// the same transaction: crashing between them leaves a character whose panel
+// numbers do not match its level.
+func (a *SQLiteLoadoutApplier) updateCharacterProgression(ctx context.Context, tx *sql.Tx, characterID, job, level, grow int) error {
+	exp := capabilitypvf.LevelExpFor(a.LevelThresholds, level)
 	result, err := tx.ExecContext(ctx, `UPDATE characters
-SET level=?, exp=0, grow_type=?, updated_at=CURRENT_TIMESTAMP
-	WHERE character_id=? AND delete_flag=0`, level, grow, characterID)
+SET level=?, exp=?, grow_type=?, updated_at=CURRENT_TIMESTAMP
+	WHERE character_id=? AND delete_flag=0`, level, exp, grow, characterID)
 	if err != nil {
 		return fmt.Errorf("write S4A21 character progression id=%d: %w", characterID, err)
 	}
 	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
 		return fmt.Errorf("write S4A21 character progression id=%d affected=%d err=%v", characterID, affected, err)
+	}
+	return writeCombatStats(ctx, tx, characterID, job, level, grow, a.StatTables)
+}
+
+// writeCombatStats recomputes the character_subtype1_fields stat columns from
+// the PVF growth tables, mirroring the server's CharacterStatComputer. The
+// stat blob is built from the post-write (job, level, grow) triple.
+func writeCombatStats(ctx context.Context, tx *sql.Tx, characterID, job, level, grow int, statTables map[int]capabilitypvf.CharacterStatTables) error {
+	tables, ok := statTables[job]
+	if !ok {
+		// The server falls back to its fixed table when a .chr file cannot be
+		// parsed, so provisioning stays possible instead of failing outright.
+		tables = capabilitypvf.FallbackCharacterStatTables()
+	}
+	blob, err := capabilitypvf.BuildAdditionalInfo(tables, level, grow&0x0F, (grow>>4)&0x0F)
+	if err != nil {
+		return fmt.Errorf("build S4A21 combat stats id=%d job=%d level=%d grow=0x%02X: %w", characterID, job, level, grow, err)
+	}
+	fields, err := capabilitypvf.ParseCombatStatFields(blob)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO character_subtype1_fields(character_id) VALUES(?)`, characterID); err != nil {
+		return fmt.Errorf("ensure S4A21 combat stats row id=%d: %w", characterID, err)
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE character_subtype1_fields SET
+	stat_hp_max=?, stat_mp_max=?,
+	stat_physical_attack=?, stat_physical_defense=?,
+	stat_magical_attack=?, stat_magical_defense=?,
+	stat_fire_resistance=?, stat_water_resistance=?,
+	stat_dark_resistance=?, stat_light_resistance=?,
+	stat_inventory_limit=?,
+	stat_hp_regen_speed=?, stat_mp_regen_speed=?,
+	stat_move_speed=?, stat_attack_speed=?,
+	stat_cast_speed=?, stat_hit_recovery=?,
+	stat_jump_power=?, stat_weight=?, stat_level=?
+	WHERE character_id=?`,
+		fields.HpMax, fields.MpMax,
+		fields.PhysAtk, fields.PhysDef,
+		fields.MagAtk, fields.MagDef,
+		fields.FireRes, fields.WaterRes,
+		fields.DarkRes, fields.LightRes,
+		fields.InventoryLimit,
+		fields.HpRegen, fields.MpRegen,
+		fields.MoveSpeed, fields.AttackSpeed,
+		fields.CastSpeed, fields.HitRecovery,
+		fields.JumpPower, fields.Weight, 100,
+		characterID)
+	if err != nil {
+		return fmt.Errorf("write S4A21 combat stats id=%d: %w", characterID, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		return fmt.Errorf("write S4A21 combat stats id=%d affected=%d err=%v", characterID, affected, err)
 	}
 	return nil
 }

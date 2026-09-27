@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	equipmentcap "robot/internal/capability/equipment"
+	capabilitypvf "robot/internal/capability/pvf"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/foundation/charset"
@@ -136,7 +137,10 @@ func TestSQLiteProfileAdapterPersistsPlannedAndConfiguredLevels(t *testing.T) {
 	db.Close()
 	rc := robotconfig.Default()
 	rc.LevelMin, rc.LevelMax = 50, 85
-	adapter := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, RandIntn: func(int) int { return 0 }}
+	adapter := SQLiteLoadoutApplier{
+		DatabasePath: path, Config: rc, RandIntn: func(int) int { return 0 },
+		StatTables: testStatTables(2), LevelThresholds: testLevelThresholds(),
+	}
 	info := robotcap.Info{UID: 17000007, Name: "Alpha", Job: 9, Grow: 2, Level: 70}
 
 	actual, err := adapter.ApplyPlannedCharacterLevel(context.Background(), "robot7", info, 73)
@@ -147,12 +151,19 @@ func TestSQLiteProfileAdapterPersistsPlannedAndConfiguredLevels(t *testing.T) {
 		t.Fatalf("planned profile=%+v", actual)
 	}
 	db = openLoadoutTestDB(t, path)
-	var level, exp int
+	var level, exp, statLevel, statHp int
 	if err := db.QueryRow(`SELECT level,exp FROM characters WHERE character_id=9`).Scan(&level, &exp); err != nil {
 		t.Fatal(err)
 	}
-	if level != 73 || exp != 0 {
+	if level != 73 || exp != 7200 {
 		t.Fatalf("persisted planned level=%d exp=%d", level, exp)
+	}
+	if err := db.QueryRow(`SELECT stat_level,stat_hp_max FROM character_subtype1_fields WHERE character_id=9`).Scan(&statLevel, &statHp); err != nil {
+		t.Fatal(err)
+	}
+	// base 1000 + 72 base grow-row levels (10/level) + premium 9800.
+	if statLevel != 100 || statHp != 1000+720+9800 {
+		t.Fatalf("planned stats level=%d hp=%d", statLevel, statHp)
 	}
 	if _, err := db.Exec(`UPDATE characters SET level=1,exp=456 WHERE character_id=9`); err != nil {
 		t.Fatal(err)
@@ -171,7 +182,7 @@ func TestSQLiteProfileAdapterPersistsPlannedAndConfiguredLevels(t *testing.T) {
 	if err := db.QueryRow(`SELECT level,exp FROM characters WHERE character_id=9`).Scan(&level, &exp); err != nil {
 		t.Fatal(err)
 	}
-	if level != 50 || exp != 0 {
+	if level != 50 || exp != 4900 {
 		t.Fatalf("persisted reconciled level=%d exp=%d", level, exp)
 	}
 }
@@ -198,7 +209,10 @@ func TestInitializeCharacterWritesTransferAwakeningAndResetsSkills(t *testing.T)
 	rc.PreferEquipSets = false
 	rc.PreferAvatarSets = false
 	items := []shared.EquipmentCatalogItem{{ID: 1001, Name: "Sword", ItemType: 1, Level: 40, Durability: 45, UseJob: []int{1}}}
-	adapter := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
+	adapter := SQLiteLoadoutApplier{
+		DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 },
+		StatTables: testStatTables(1), LevelThresholds: testLevelThresholds(),
+	}
 	info := robotcap.Info{UID: 17000007, Name: "Alpha", Job: 1, Grow: 0, Level: 1}
 
 	// first grow 2 (branch) + second grow 1 (awakening) = 0x12.
@@ -210,16 +224,23 @@ func TestInitializeCharacterWritesTransferAwakeningAndResetsSkills(t *testing.T)
 		t.Fatalf("initialized profile=%+v", actual)
 	}
 	db = openLoadoutTestDB(t, path)
-	var level, grow, skills int
+	var level, grow, skills, statHp int
 	if err := db.QueryRow(`SELECT level,grow_type FROM characters WHERE character_id=9`).Scan(&level, &grow); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM character_skills WHERE character_id=9`).Scan(&skills); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.QueryRow(`SELECT stat_hp_max FROM character_subtype1_fields WHERE character_id=9`).Scan(&statHp); err != nil {
+		t.Fatal(err)
+	}
 	db.Close()
 	if level != 70 || grow != 0x12 || skills != 0 {
 		t.Fatalf("persisted level=%d grow=0x%02X skills=%d", level, grow, skills)
+	}
+	// base 1000 + 14*10 + 35*20 + 20*30 (awakening row) + premium 9800.
+	if statHp != 1000+140+700+600+9800 {
+		t.Fatalf("persisted stat_hp_max=%d", statHp)
 	}
 
 	if _, err := adapter.InitializeCharacter(context.Background(), "robot7", info, 70, 0x20); err == nil {
@@ -249,7 +270,10 @@ func TestInitializeCharacterKeepsSkillsWithoutTransferChange(t *testing.T) {
 	rc.PreferEquipSets = false
 	rc.PreferAvatarSets = false
 	items := []shared.EquipmentCatalogItem{{ID: 1001, Name: "Sword", ItemType: 1, Level: 40, Durability: 45, UseJob: []int{1}}}
-	adapter := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
+	adapter := SQLiteLoadoutApplier{
+		DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 },
+		StatTables: testStatTables(1), LevelThresholds: testLevelThresholds(),
+	}
 
 	if _, err := adapter.InitializeCharacter(context.Background(), "robot7", robotcap.Info{Name: "Alpha", Job: 1}, 70, 0); err != nil {
 		t.Fatal(err)
@@ -399,7 +423,7 @@ CREATE TABLE IF NOT EXISTS character_avatar_uid_sequence(avatar_uid INTEGER PRIM
 CREATE TABLE IF NOT EXISTS character_creatures(character_id INTEGER,sort_order INTEGER,creature_key INTEGER,field04 INTEGER,mode_flag INTEGER,progress_value INTEGER,mode1_field0a INTEGER,mode1_field0b INTEGER,field_after_value INTEGER,creature_text BLOB,tail_flag INTEGER,extra_json TEXT,PRIMARY KEY(character_id,sort_order));
 CREATE TABLE IF NOT EXISTS character_creature_uid_sequence(creature_uid INTEGER PRIMARY KEY AUTOINCREMENT);
 CREATE TABLE IF NOT EXISTS character_subtype0_fields(character_id INTEGER PRIMARY KEY,creature_buffer BLOB,pet_display_flag INTEGER);
-CREATE TABLE IF NOT EXISTS character_subtype1_fields(character_id INTEGER PRIMARY KEY,equipped_creature_level INTEGER);
+CREATE TABLE IF NOT EXISTS character_subtype1_fields(character_id INTEGER PRIMARY KEY,stat_hp_max INTEGER NOT NULL DEFAULT 0,stat_mp_max INTEGER NOT NULL DEFAULT 0,stat_physical_attack INTEGER NOT NULL DEFAULT 0,stat_physical_defense INTEGER NOT NULL DEFAULT 0,stat_magical_attack INTEGER NOT NULL DEFAULT 0,stat_magical_defense INTEGER NOT NULL DEFAULT 0,stat_fire_resistance INTEGER NOT NULL DEFAULT 0,stat_water_resistance INTEGER NOT NULL DEFAULT 0,stat_dark_resistance INTEGER NOT NULL DEFAULT 0,stat_light_resistance INTEGER NOT NULL DEFAULT 0,stat_inventory_limit INTEGER NOT NULL DEFAULT 0,stat_hp_regen_speed INTEGER NOT NULL DEFAULT 0,stat_mp_regen_speed INTEGER NOT NULL DEFAULT 0,stat_move_speed INTEGER NOT NULL DEFAULT 0,stat_attack_speed INTEGER NOT NULL DEFAULT 0,stat_cast_speed INTEGER NOT NULL DEFAULT 0,stat_hit_recovery INTEGER NOT NULL DEFAULT 0,stat_jump_power INTEGER NOT NULL DEFAULT 0,stat_weight INTEGER NOT NULL DEFAULT 0,stat_level INTEGER NOT NULL DEFAULT 0,equipped_creature_level INTEGER);
 CREATE TABLE IF NOT EXISTS character_skills(character_id INTEGER,skill_index INTEGER,level INTEGER,PRIMARY KEY(character_id,skill_index));
 CREATE TABLE IF NOT EXISTS character_quest_completions(character_id INTEGER NOT NULL,quest_id INTEGER NOT NULL,completion_value INTEGER NOT NULL,PRIMARY KEY(character_id,quest_id));
 CREATE TABLE IF NOT EXISTS character_active_quests(character_id INTEGER NOT NULL,slot INTEGER NOT NULL,quest_id INTEGER NOT NULL,trigger_value INTEGER NOT NULL DEFAULT 0,version INTEGER NOT NULL DEFAULT 0,activation_id TEXT NOT NULL,PRIMARY KEY(character_id,slot),UNIQUE(character_id,quest_id),UNIQUE(character_id,activation_id));`); err != nil {
@@ -407,6 +431,42 @@ CREATE TABLE IF NOT EXISTS character_active_quests(character_id INTEGER NOT NULL
 		t.Fatal(err)
 	}
 	return db
+}
+
+// testStatTables builds a complete synthetic .chr growth graph for the given
+// jobs. HP MAX grows by 10/level up to 14, 20/level up to 49 and 30..40/level
+// afterwards, so progression writes are observable in the stat columns.
+func testStatTables(jobs ...int) map[int]capabilitypvf.CharacterStatTables {
+	table := capabilitypvf.CharacterStatTables{
+		Base: capabilitypvf.StatVector{
+			HpMax: 1000, MpMax: 500, PhysAtk: 10, PhysDef: 10, MagAtk: 5, MagDef: 5,
+			InventoryLimit: 1000, MoveSpeed: 1000, AttackSpeed: 1000, CastSpeed: 1000,
+			HitRecovery: 1000, JumpPower: 1000, Weight: 1000,
+		},
+	}
+	table.GrowtypeSet[1] = true
+	table.Growtype[1] = capabilitypvf.StatVector{HpMax: 10, MpMax: 5, PhysAtk: 1}
+	for n := 2; n <= 6; n++ {
+		table.GrowtypeSet[n] = true
+		table.Growtype[n] = capabilitypvf.StatVector{HpMax: 20, MpMax: 10, PhysAtk: 2}
+		table.AwakenSet[n][1] = true
+		table.Awakening[n][1] = capabilitypvf.StatVector{HpMax: 30, MpMax: 15, PhysAtk: 3}
+		table.AwakenSet[n][2] = true
+		table.Awakening[n][2] = capabilitypvf.StatVector{HpMax: 40, MpMax: 20, PhysAtk: 4}
+	}
+	result := make(map[int]capabilitypvf.CharacterStatTables, len(jobs))
+	for _, job := range jobs {
+		result[job] = table
+	}
+	return result
+}
+
+func testLevelThresholds() []int {
+	thresholds := make([]int, 85)
+	for index := range thresholds {
+		thresholds[index] = (index + 1) * 100
+	}
+	return thresholds
 }
 
 func TestLiveSQLiteLoadoutAgainstDatabaseClone(t *testing.T) {

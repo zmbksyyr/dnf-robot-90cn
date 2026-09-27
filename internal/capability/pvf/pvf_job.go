@@ -76,7 +76,16 @@ func parseJobGrowBranches(body string) []int {
 		if index > maxA21FirstGrow {
 			break
 		}
+		// A branch whose [growtype N] stat section is missing cannot produce
+		// character stats (the server requires that row), so do not offer it.
+		if !hasPVFTag(body, "growtype "+strconv.Itoa(index+1)) {
+			continue
+		}
 		branches = append(branches, index)
 	}
 	return branches
+}
+
+func hasPVFTag(body, tag string) bool {
+	return strings.Contains(strings.ToLower(body), "["+strings.ToLower(tag)+"]")
 }

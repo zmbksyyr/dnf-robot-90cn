@@ -30,7 +30,7 @@ func TestReconcileRobotGrowthFillsUntransferredRobots(t *testing.T) {
 		{UID: 17000010, CID: 10, Name: "Beta", Job: 1, Grow: 0x11},
 		{UID: 17000011, CID: 11, Name: "Gamma", Job: 9, Grow: 0},
 	}
-	changed, err := ReconcileRobotGrowth(context.Background(), path, robots, []int{1}, map[int][]int{1: {2, 3}}, func(int) int { return 0 })
+	changed, err := ReconcileRobotGrowth(context.Background(), path, robots, []int{1}, map[int][]int{1: {2, 3}}, testStatTables(1), func(int) int { return 0 })
 	if err != nil || changed != 1 {
 		t.Fatalf("changed=%d err=%v", changed, err)
 	}
@@ -66,16 +66,24 @@ func TestReconcileRobotGrowthFillsUntransferredRobots(t *testing.T) {
 	if skills9 != 0 || skills10 != 1 || skills11 != 1 {
 		t.Fatalf("skills reset=%d/%d/%d", skills9, skills10, skills11)
 	}
+	var statHp9 int
+	if err := db.QueryRow(`SELECT stat_hp_max FROM character_subtype1_fields WHERE character_id=9`).Scan(&statHp9); err != nil {
+		t.Fatal(err)
+	}
+	// base 1000 + 14*10 + 35*20 + premium 9800 (level 50 stays in the transfer segment).
+	if statHp9 != 1000+140+700+9800 {
+		t.Fatalf("reconciled stat_hp_max=%d", statHp9)
+	}
 
 	// A second reconcile is a no-op.
-	changed, err = ReconcileRobotGrowth(context.Background(), path, robots, []int{1}, map[int][]int{1: {2, 3}}, func(int) int { return 0 })
+	changed, err = ReconcileRobotGrowth(context.Background(), path, robots, []int{1}, map[int][]int{1: {2, 3}}, testStatTables(1), func(int) int { return 0 })
 	if err != nil || changed != 0 {
 		t.Fatalf("second reconcile changed=%d err=%v", changed, err)
 	}
 }
 
 func TestReconcileRobotGrowthSkipsWithoutBranches(t *testing.T) {
-	changed, err := ReconcileRobotGrowth(context.Background(), "", nil, []int{1}, nil, nil)
+	changed, err := ReconcileRobotGrowth(context.Background(), "", nil, []int{1}, nil, nil, nil)
 	if err != nil || changed != 0 {
 		t.Fatalf("empty reconcile changed=%d err=%v", changed, err)
 	}
