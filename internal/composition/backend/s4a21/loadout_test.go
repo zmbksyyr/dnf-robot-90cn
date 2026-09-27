@@ -53,7 +53,7 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 		{ID: 2001, Name: "Hair", ItemType: 21, UseJob: []int{1}, Icon: "avatar/b.img"},
 		{ID: 2011, Name: "Wrong job hat", ItemType: 20, UseJob: []int{11}, Icon: "avatar/c.img"},
 		{ID: 3000, Name: "Creature", ItemType: 30, Icon: "creature/pet.img"},
-		{ID: 3100, Name: "Creature artifact", ItemType: 31, Path: "equipment/creature/artifact_red/hand.equ", Icon: "Item/creature/artifact_red.img"},
+		{ID: 3100, Name: "Creature artifact", ItemType: 31, Durability: 25, Path: "equipment/creature/artifact_red/hand.equ", Icon: "Item/creature/artifact_red.img"},
 	}
 	applier := SQLiteLoadoutApplier{DatabasePath: path, Config: rc, Equipment: items, RandIntn: func(int) int { return 0 }}
 	info := robotcap.Info{Name: "机器人", Job: 10, Level: 50}
@@ -96,7 +96,7 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 	if core := got[25]; len(core) != a21ItemCoreSize || core[0] != a21ItemKindCreature || int(binary.LittleEndian.Uint32(core[1:5])) != 3000 {
 		t.Fatalf("pet slot=%v", core)
 	}
-	if core := got[26]; len(core) != a21ItemCoreSize || core[0] != a21ItemKindArtifact || int(binary.LittleEndian.Uint32(core[1:5])) != 3100 {
+	if core := got[26]; len(core) != a21ItemCoreSize || core[0] != a21ItemKindArtifact || int(binary.LittleEndian.Uint32(core[1:5])) != 3100 || binary.LittleEndian.Uint16(core[10:12]) != 25 {
 		t.Fatalf("pet artifact slot=%v", core)
 	}
 	var creatureUID int
@@ -110,8 +110,19 @@ func TestSQLiteLoadoutApplierReplacesEquipmentAndAvatarAtomically(t *testing.T) 
 	if err := db.QueryRow(`SELECT creature_buffer FROM character_subtype0_fields WHERE character_id=9`).Scan(&creatureBuffer); err != nil {
 		t.Fatal(err)
 	}
-	if len(creatureBuffer) < 4 || binary.LittleEndian.Uint32(creatureBuffer[:4]) != 3000 {
+	// creature_buffer is the name-tag window and stays cleared for robots.
+	if len(creatureBuffer) != 8 || binary.LittleEndian.Uint32(creatureBuffer[:4]) != 0 || binary.LittleEndian.Uint32(creatureBuffer[4:8]) != 0 {
 		t.Fatalf("creature buffer=%x", creatureBuffer)
+	}
+	var creatureStomach, creatureLevel, equippedCreatureLevel int
+	if err := db.QueryRow(`SELECT field04,field_after_value FROM character_creatures WHERE character_id=9 AND sort_order=0`).Scan(&creatureStomach, &creatureLevel); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT equipped_creature_level FROM character_subtype1_fields WHERE character_id=9`).Scan(&equippedCreatureLevel); err != nil {
+		t.Fatal(err)
+	}
+	if creatureStomach != 100 || creatureLevel != 1 || equippedCreatureLevel != 1 {
+		t.Fatalf("creature stomach=%d level=%d subtype1_level=%d", creatureStomach, creatureLevel, equippedCreatureLevel)
 	}
 	if got[12][9] != 7 || binary.LittleEndian.Uint16(got[12][10:12]) != 45 {
 		t.Fatalf("equipment defaults=%v", got[12][:13])

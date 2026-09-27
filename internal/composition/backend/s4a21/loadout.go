@@ -954,11 +954,13 @@ VALUES (?, ?, ?, ?, 0, 0, zeroblob(30), 0, 0, 0)`, avatarUID, accountID, charact
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO character_creatures
 (character_id,sort_order,creature_key,field04,mode_flag,progress_value,mode1_field0a,mode1_field0b,field_after_value,creature_text,tail_flag,extra_json)
-VALUES (?,0,?,0,0,0,0,0,0,NULL,0,'{}')`, characterID, creatureUID); err != nil {
+VALUES (?,0,?,100,0,0,0,0,1,x'',0,'{}')`, characterID, creatureUID); err != nil {
 			return fmt.Errorf("insert S4A21 creature character=%d uid=%d: %w", characterID, creatureUID, err)
 		}
+		// creature_buffer is the name-tag byte window of the subtype0 tail
+		// (name tag id + expire time), not pet data. Robots carry no active
+		// name tag, so the window stays cleared.
 		creatureBuffer := make([]byte, 8)
-		binary.LittleEndian.PutUint32(creatureBuffer, uint32(pet.ID))
 		if _, err := tx.ExecContext(ctx, `UPDATE character_subtype0_fields SET creature_buffer=?,pet_display_flag=1 WHERE character_id=?`, creatureBuffer, characterID); err != nil {
 			return fmt.Errorf("activate S4A21 creature character=%d: %w", characterID, err)
 		}
@@ -1016,7 +1018,7 @@ func a21ItemCore(kind byte, item shared.EquipmentCatalogItem, upgrade int, value
 		upgrade = 31
 	}
 	core[9] = byte(upgrade)
-	if kind == a21ItemKindEquipment && item.Durability > 0 {
+	if (kind == a21ItemKindEquipment || kind == a21ItemKindArtifact) && item.Durability > 0 {
 		durability := item.Durability
 		if durability > math.MaxUint16 {
 			durability = math.MaxUint16
