@@ -60,6 +60,10 @@ func BuildProtocolRobotPlans(options ProtocolPlanOptions) ([]ProtocolRobotPlan, 
 	plans := make([]ProtocolRobotPlan, 0, options.Count)
 	used := make(map[string]struct{}, options.Count)
 	env := protocolPlanRandom{randIntn: options.RandIntn, randBetween: options.RandBetween}
+	spawnMaps := options.Maps
+	if !options.Config.SpawnFixed {
+		spawnMaps = robotspawn.NormalMaps(options.Maps)
+	}
 	for index := 0; index < options.Count; index++ {
 		uid := options.IDStart + index
 		job := chooseInt(options.Config.Jobs, options.RandIntn)
@@ -76,11 +80,11 @@ func BuildProtocolRobotPlans(options ProtocolPlanOptions) ([]ProtocolRobotPlan, 
 					info.X, info.Y = x, y
 				}
 			}
-		} else if target, ok := robotspawn.BalancedLocation(env, options.Maps, level, options.Locations); ok {
+		} else if target, ok := robotspawn.BalancedLocation(env, spawnMaps, level, options.Locations); ok {
 			info.Village, info.Area = target.Map.Village, target.Map.Area
 			info.X, info.Y = target.X, target.Y
 			options.Locations = append(options.Locations, shared.MapLocation{Village: info.Village, Area: info.Area, X: info.X, Y: info.Y})
-		} else if mp, ok := robotspawn.RandomMap(env, options.Maps, level); ok {
+		} else if mp, ok := robotspawn.RandomMap(env, spawnMaps, level); ok {
 			info.Village, info.Area = mp.Village, mp.Area
 			if x, y, pointOK := robotspawn.RandomPointInMap(env, mp); pointOK {
 				info.X, info.Y = x, y

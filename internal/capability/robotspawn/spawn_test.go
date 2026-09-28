@@ -56,3 +56,18 @@ func TestHasUsableMap(t *testing.T) {
 		t.Fatal("missing village/area must not count as usable")
 	}
 }
+
+func TestNormalMapsFiltersPvPAndDisabled(t *testing.T) {
+	no := false
+	yes := true
+	maps := []shared.MapCatalogItem{
+		{Village: 1, Area: 0, Use: false, NormalEligible: &yes},
+		{Village: 2, Area: 0, Use: true, NormalEligible: &no},
+		{Village: 3, Area: 0, Use: true, NormalEligible: &yes},
+		{Village: 4, Area: 0, Use: true},
+	}
+	out := NormalMaps(maps)
+	if len(out) != 2 || out[0].Village != 3 || out[1].Village != 4 {
+		t.Fatalf("NormalMaps got %+v", out)
+	}
+}

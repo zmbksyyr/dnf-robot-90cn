@@ -104,7 +104,7 @@ func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.
 	if err != nil {
 		locations = nil
 	}
-	if target, ok := robotspawn.BalancedLocation(spawnEnv{manager: d.manager}, maps, info.Level, locations); ok {
+	if target, ok := robotspawn.BalancedLocation(spawnEnv{manager: d.manager}, robotspawn.NormalMaps(maps), info.Level, locations); ok {
 		robotLogf("[SpawnRepair] uid=%d cid=%d level=%d invalid=%d/%d -> %d/%d/%d/%d\n",
 			info.UID, info.CID, info.Level, info.Village, info.Area, target.Map.Village, target.Map.Area, target.X, target.Y)
 		info.Village, info.Area = target.Map.Village, target.Map.Area
