@@ -61,6 +61,17 @@ func (r *RobotRuntime) AddOnlineAttempt(success bool) {
 	r.manager.addAutoOnlineAttempt(success)
 }
 
+// TryAcquireOnlineAttempt and ReleaseOnlineAttempt expose the scheduler-owned
+// online attempt gate to the actor model. The actor reaches the runtime through
+// this type, so the methods must live here and not only on RobotManager.
+func (r *RobotRuntime) TryAcquireOnlineAttempt() bool {
+	return r.manager.TryAcquireOnlineAttempt()
+}
+
+func (r *RobotRuntime) ReleaseOnlineAttempt() {
+	r.manager.ReleaseOnlineAttempt()
+}
+
 func (r *RobotRuntime) AutoActionsEnabled(rc robotconfig.RuntimeConfig) bool {
 	return r.manager.autoActionsEnabled(rc)
 }
