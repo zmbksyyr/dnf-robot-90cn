@@ -408,6 +408,16 @@ func (r *RobotRuntime) AutoServerNotice(uid int, shouldStop func() bool) robotca
 			}
 		}
 		result, err := runtime.TriggerServerNotice(shared.ServerNoticeTriggerRequest{UID: uid, CID: cid, Kind: kind})
+		if err == nil && !result.Sent && strings.HasPrefix(result.Reason, "rejected") {
+			// The server rolled the action back (its SQLite commit competed
+			// with the login storm). The consumed stock is unchanged, so one
+			// short retry is safe and recovers most transient rejections.
+			robotLogf("[SERVER_NOTICE_RETRY] uid=%d cid=%d kind=%s reason=%s\n", uid, cid, kind.Name(), result.Reason)
+			if storecap.SleepWithStop(3*time.Second, shouldStop) {
+				return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateCancelled}
+			}
+			result, err = runtime.TriggerServerNotice(shared.ServerNoticeTriggerRequest{UID: uid, CID: cid, Kind: kind})
+		}
 		if err != nil {
 			r.manager.addServerNotice(0, 1, 0)
 			robotLogf("[SERVER_NOTICE_FAILED] uid=%d cid=%d kind=%s reason=%s err=%v\n", uid, cid, kind.Name(), result.Reason, err)
