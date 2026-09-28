@@ -151,6 +151,13 @@ func (m *RobotManager) restoreAutoNormalPosition(info robotcap.Info, rc robotcon
 // for the scheduler online admission token before reporting a busy failure.
 const storeOnlineGateTimeout = 20 * time.Second
 
+// disjointSetAreaStallLimit stops an action after this many consecutive
+// SET_USER_AREA timeouts. A robot parked in an area without store points would
+// otherwise burn every position try on cross-area transitions that the server
+// may answer late during a burst; cleanup re-onlines it on a fresh session
+// instead.
+const disjointSetAreaStallLimit = 3
+
 // offlineStoreSession releases the store owner's session before cleanup.
 // Native runtimes keep the character-save barrier; adapters that install a
 // protocol store runtime close the transport session and wait for the account

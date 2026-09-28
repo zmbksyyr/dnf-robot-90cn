@@ -288,6 +288,7 @@ func (r *RobotRuntime) autoDisjointStore(uid int, st robotcap.RuntimeStatus, sho
 	}
 	var failureState storecap.AttemptFailureState
 	reuseSession := false
+	setAreaStalls := 0
 	allowedPosition := func(pos storecap.Position) bool { return shared.GenericAreaAllowed(info.GuildID, pos.Village) }
 	for try := 1; try <= tries; try++ {
 		if shouldStop != nil && shouldStop() {
@@ -330,6 +331,13 @@ func (r *RobotRuntime) autoDisjointStore(uid int, st robotcap.RuntimeStatus, sho
 			robotLogf("[DISJOINT_SESSION_POINT_FAILURE] uid=%d cid=%d try=%d/%d point=%s reason=%s\n",
 				uid, info.CID, try, tries, pos.PointID, reason)
 			break
+		}
+		if reason == "set_area_failed" {
+			setAreaStalls++
+			if setAreaStalls >= disjointSetAreaStallLimit {
+				robotLogf("[DISJOINT_SET_AREA_STALLED] uid=%d cid=%d try=%d/%d\n", uid, info.CID, try, tries)
+				break
+			}
 		}
 		reuseSession = r.manager.disjointReasonRetryable(reason)
 		if !reuseSession {
