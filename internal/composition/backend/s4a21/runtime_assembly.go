@@ -102,6 +102,9 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if err := ExportItemCatalogs(opts.Paths, catalogs.Equipment, catalogs.Stackable); err != nil {
 		return bundle, fmt.Errorf("item catalog: %w", err)
 	}
+	if err := ExportTownMapCatalog(opts.Paths, catalogs.TownMaps); err != nil {
+		return bundle, fmt.Errorf("town map catalog: %w", err)
+	}
 	logStartupStage("item_catalog_export")
 	databasePath, databaseSource, err := resolveDatabasePath(opts.ServerDirectory, opts.DatabasePath)
 	if err != nil {
@@ -212,6 +215,16 @@ func ExportItemCatalogs(paths layout.Paths, equipment, stackable []shared.Equipm
 	}
 	if err := capabilitypvf.WriteJSON(paths.PVFStackable(), stackable); err != nil {
 		return fmt.Errorf("write S4A21 stackable catalog: %w", err)
+	}
+	return nil
+}
+
+// ExportTownMapCatalog publishes the projected town map catalog. The shared
+// store point coordinator reads it from disk and validates its MD5 against the
+// generated point cache.
+func ExportTownMapCatalog(paths layout.Paths, maps []shared.MapCatalogItem) error {
+	if err := capabilitypvf.WriteJSON(paths.PVFMaps(), maps); err != nil {
+		return fmt.Errorf("write S4A21 map catalog: %w", err)
 	}
 	return nil
 }

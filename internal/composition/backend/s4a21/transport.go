@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"robot/internal/foundation/lockhub"
+	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
 )
 
@@ -163,6 +164,18 @@ func (t *ActionTransport) RuntimeStatusMap() map[int]shared.RuntimeStatus {
 			if party, ok := session.(interface{ PartyActive() bool }); ok {
 				status.PartyActive = party.PartyActive()
 			}
+			if store, ok := session.(interface {
+				DisjointStoreState() (sent, directAck, active bool, lastError byte)
+			}); ok {
+				sent, directAck, active, lastError := store.DisjointStoreState()
+				if sent || directAck || active || lastError != 0 {
+					status.RobotType = 3
+					status.DisjointCreateSent = sent
+					status.DisjointDirectAck = directAck
+					status.DisjointActive = active
+					status.LastDisjointError = lastError
+				}
+			}
 		}
 		out[uid] = status
 	}
@@ -248,7 +261,96 @@ func (t *ActionTransport) ShoutLocal(ctx context.Context, command shared.Runtime
 	return session.Shout(ctx, shared.ShoutIntent{Channel: shared.ShoutChannelArea, Message: command.Message})
 }
 
+// SetAreaFrom moves one robot to a store coordinate. The scheduler passes the
+// previous area for diagnostics; the transport derives the transition from its
+// own known location, so a same-area move only sends SET_USER_POSITION.
+func (t *ActionTransport) SetAreaFrom(uid int, village, area int, x, y int, fromVillage, fromArea int) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), townAreaTransitionTimeout)
+	defer cancel()
+	if err := t.MoveTown(ctx, shared.RuntimeMoveCommand{UID: uid, Village: village, Area: area, X: x, Y: y}); err != nil {
+		foundationlog.Robotf("[S4A21_STORE_SET_AREA_FAILED] uid=%d from=%d/%d to=%d/%d/%d/%d err=%v\n",
+			uid, fromVillage, fromArea, village, area, x, y, err)
+		return false
+	}
+	return true
+}
+
+// StartDisjointStore opens the expert-job disassembler machine at the robot's
+// last confirmed position. The server acknowledgement is observed
+// asynchronously by the session and published through RuntimeStatusMap.
+func (t *ActionTransport) StartDisjointStore(uid int, cost uint32) bool {
+	session, err := t.session(uid)
+	if err != nil {
+		foundationlog.Robotf("[S4A21_DISJOINT_START_FAILED] uid=%d err=%v\n", uid, err)
+		return false
+	}
+	opener, ok := session.(interface {
+		OpenDisjointStore(context.Context, uint32, int16, int16, int16) error
+	})
+	if !ok {
+		foundationlog.Robotf("[S4A21_DISJOINT_START_FAILED] uid=%d reason=session_unsupported\n", uid)
+		return false
+	}
+	t.mu.RLock()
+	status, known := t.status[uid], t.locationKnown[uid]
+	t.mu.RUnlock()
+	if !known {
+		foundationlog.Robotf("[S4A21_DISJOINT_START_FAILED] uid=%d reason=position_unknown\n", uid)
+		return false
+	}
+	if status.X < math.MinInt16 || status.X > math.MaxInt16 || status.Y < math.MinInt16 || status.Y > math.MaxInt16 {
+		foundationlog.Robotf("[S4A21_DISJOINT_START_FAILED] uid=%d reason=position_out_of_range x=%d y=%d\n", uid, status.X, status.Y)
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), disjointStoreOpenTimeout)
+	defer cancel()
+	if err := opener.OpenDisjointStore(ctx, cost, int16(status.X), int16(status.Y), 0); err != nil {
+		foundationlog.Robotf("[S4A21_DISJOINT_START_FAILED] uid=%d err=%v\n", uid, err)
+		return false
+	}
+	return true
+}
+
+// CloseDisjointStore asks the server to remove the robot's machine. The server
+// also removes it when the owner session ends; this method exists for a prompt
+// cleanup while the session stays online.
+func (t *ActionTransport) CloseDisjointStore(uid int) bool {
+	session, err := t.session(uid)
+	if err != nil {
+		return false
+	}
+	closer, ok := session.(interface{ CloseDisjointStore(context.Context) error })
+	if !ok {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), townAreaTransitionTimeout)
+	defer cancel()
+	if err := closer.CloseDisjointStore(ctx); err != nil {
+		foundationlog.Robotf("[S4A21_DISJOINT_CLOSE_FAILED] uid=%d err=%v\n", uid, err)
+		return false
+	}
+	return true
+}
+
+// AccountOnline reports whether the transport still holds a game session for
+// uid. The A21 server keeps account sessions in memory, so the robot's own
+// attachment is the only boundary it can observe; the scheduler's relogin
+// delay still gives the server time to finish its final character save.
+func (t *ActionTransport) AccountOnline(uid int) (bool, error) {
+	if t == nil || uid <= 0 {
+		return false, nil
+	}
+	t.mu.RLock()
+	_, online := t.sessions[uid]
+	t.mu.RUnlock()
+	return online, nil
+}
+
 var _ interface {
 	MoveTown(context.Context, shared.RuntimeMoveCommand) error
 	ShoutLocal(context.Context, shared.RuntimeShoutCommand) error
+	SetAreaFrom(uid int, village, area int, x, y int, fromVillage, fromArea int) bool
+	StartDisjointStore(uid int, cost uint32) bool
+	CloseDisjointStore(uid int) bool
+	AccountOnline(uid int) (bool, error)
 } = (*ActionTransport)(nil)

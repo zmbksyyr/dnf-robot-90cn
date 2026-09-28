@@ -16,17 +16,24 @@ const s4a21DisjointStoreCostGold = 500
 // DisjointStoreCost is the gold cost of one disjoint-store attempt.
 func (StorePolicy) DisjointStoreCost() uint32 { return s4a21DisjointStoreCostGold }
 
+// ItemStoreSupported reports whether the adapter implements the private item
+// stall. S4A21 exposes the disassembler machine only, so the scheduler must not
+// alternate attempts into the unavailable item workflow.
+func (StorePolicy) ItemStoreSupported() bool { return false }
+
 // DisjointFailure maps a wire failure code to a stable reason string and
 // whether a different coordinate may retry on the same session.
 //
-//	0x13: not in town-run state, already has a disjoint object, or in party.
-//	0x14: CVillageObjectMgr::register_object rejected the machine.
-//	0x16: disjoint-machine endurance <= 0; coordinates cannot repair it.
-//	0x3e: the current area does not permit commercial transactions.
-//	0x52: the coordinate is inside a restrictive transaction zone.
-//	0xbe: private store busy, village 7, or is_available_point rejected it.
-//	0x0a: invalid disjoint cost; 0x15: expert-job object pool exhausted.
-//	-1/-2 (wire 0xff/0xfe): invalid user state or profession mismatch.
+// The codes come from the A21 ExpertJobStoreRuntimeService and its placement
+// validator:
+//
+//	0x0a (10): the server rejected the create body (adapter bug).
+//	0x13 (19): invalid state - in party, in a dungeon, profession mismatch,
+//	           cost above the PVF limit, or the machine has no endurance.
+//	0x52 (82): the coordinate is inside an NPC commercial-restricted box
+//	           (x +/- 80, y +/- 150), so another point may succeed.
+//	0xbe (190): the point is outside the movable area, or this character
+//	           already owns a store; another point may succeed.
 //
 // Only coordinate-dependent failures may retry in the same session; structural
 // and profession-data failures must stop instead of causing retry storms.
@@ -39,7 +46,7 @@ func (StorePolicy) DisjointFailure(errCode byte) (string, bool) {
 
 func s4a21DisjointRetrySameSession(errCode byte) bool {
 	switch errCode {
-	case 0x14, 0x3e, 0x52, 0xbe:
+	case 0x52, 0xbe:
 		return true
 	default:
 		return false
@@ -51,7 +58,7 @@ func s4a21DisjointRetrySameSession(errCode byte) bool {
 // reasons (set_area_failed, ack_timeout, ...) stay unclaimed.
 func (StorePolicy) DisjointReasonRetryable(reason string) (bool, bool) {
 	switch reason {
-	case "disjoint_err_0x14", "disjoint_err_0x3e", "disjoint_err_0x52", "disjoint_err_0xbe":
+	case "disjoint_err_0x52", "disjoint_err_0xbe":
 		return true, true
 	case "disjoint_failed":
 		return false, true

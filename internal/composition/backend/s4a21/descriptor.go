@@ -12,6 +12,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Enabled: true, Mode: "follower", Reason: "accepts leader invitations and mirrors the leader's town position and area projections; no active invite, party creation or dungeon room movement"}
 	capabilities[shared.CapabilityGuildInvite] = shared.CapabilityStatus{Enabled: true, Mode: "auto_accept", Reason: "automatically accepts verified A21 guild invitation notifications"}
 	capabilities[shared.CapabilityShout] = shared.CapabilityStatus{Enabled: true, Reason: "area channel only; party requires the separate party capability"}
+	capabilities[shared.CapabilityStore] = shared.CapabilityStatus{Enabled: true, Mode: "disjoint", Reason: "disassembler machine via CREATE_EXPERT_JOB_STORE; the private item stall is not implemented"}
 	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
 	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
 	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Enabled: true, Reason: "adapter-owned SQLite purge for invisible robot accounts and characters"}

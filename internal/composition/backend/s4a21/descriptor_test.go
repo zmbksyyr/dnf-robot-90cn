@@ -14,10 +14,14 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityProvision, shared.CapabilityTownMove, shared.CapabilityDungeonFollow, shared.CapabilityParty, shared.CapabilityGuildInvite,
 		shared.CapabilityShout, shared.CapabilityDatabase, shared.CapabilityCleanup, shared.CapabilityDangerousDelete,
+		shared.CapabilityStore,
 	} {
 		if !info.Supports(capability) {
 			t.Fatalf("verified capability %s is disabled", capability)
 		}
+	}
+	if info.Capabilities[shared.CapabilityStore].Mode != "disjoint" {
+		t.Fatalf("store mode = %+v", info.Capabilities[shared.CapabilityStore])
 	}
 	if info.Capabilities[shared.CapabilityDungeonFollow].Mode != "auto_accept" {
 		t.Fatalf("dungeon follower mode = %+v", info.Capabilities[shared.CapabilityDungeonFollow])
@@ -28,7 +32,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityDungeonMove, shared.CapabilityWorldShout,
 		shared.CapabilityPartyDebug,
-		shared.CapabilitySkill, shared.CapabilityStore, shared.CapabilityMarket,
+		shared.CapabilitySkill, shared.CapabilityMarket,
 		shared.CapabilityDiagnostics,
 		shared.CapabilityMailNotification,
 		shared.CapabilitySystemAnnouncement, shared.CapabilityServiceControl,

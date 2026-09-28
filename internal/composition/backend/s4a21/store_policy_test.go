@@ -7,7 +7,7 @@ func TestStorePolicyClassifiesDisjointFailures(t *testing.T) {
 	if policy.DisjointStoreCost() != 500 {
 		t.Fatalf("disjoint store cost = %d, want 500", policy.DisjointStoreCost())
 	}
-	retryable := []byte{0x14, 0x3e, 0x52, 0xbe}
+	retryable := []byte{0x52, 0xbe}
 	for _, code := range retryable {
 		reason, retry := policy.DisjointFailure(code)
 		if !retry {

@@ -53,6 +53,8 @@ type Session struct {
 	keepaliveGuard     lockhub.Locker
 	lastCheckAck       time.Time
 	checkAckSeen       bool
+	disjointGuard      lockhub.Locker
+	disjoint           disjointStoreState
 }
 
 type packetObserverRegistration struct {
@@ -99,6 +101,8 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	if request.EnablePartyDungeonFollower && identityErr != nil {
 		return nil, fmt.Errorf("S4A21 follower identity: %w", identityErr)
 	}
+	// Ordinary sessions only need the identity for expert-job store ownership;
+	// SelectCharacterUID already reports zero when the projection is missing.
 	if request.EnablePartyDungeonFollower {
 		client.SetPartyIdentity(selfUID)
 		if err := client.RegisterUDPEndpoint(openCtx); err != nil {
@@ -329,6 +333,7 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 	if packet.Type == protocol.CmdCheckConnection {
 		s.recordCheckAck(time.Now())
 	}
+	s.handleDisjointStorePacket(packet)
 	s.followerGuard.Lock()
 	followerEvents := s.followerEvents
 	s.followerGuard.Unlock()
