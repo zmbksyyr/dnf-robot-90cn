@@ -38,13 +38,35 @@ func ReadCatalogs(pvfPath string) (Catalogs, error) {
 	}
 	statTables, statFallbacks := capabilitypvf.ProjectCharacterStatCatalog(archive)
 	return Catalogs{
-		TownMaps: maps, Equipment: equipment, Stackable: stackable,
+		TownMaps: ApplyChannelSpawnPolicy(maps), Equipment: equipment, Stackable: stackable,
 		JobGrows:         capabilitypvf.ProjectJobGrowCatalog(archive),
 		QuestGates:       capabilitypvf.ProjectQuestGates(archive),
 		StatTables:       statTables,
 		StatFallbackJobs: statFallbacks,
 		LevelThresholds:  capabilitypvf.ProjectLevelThresholds(archive),
 	}, nil
+}
+
+// A21 channel policy: a normal listener refuses generic area transitions into
+// the PvP town (10) and the channel-100 town (17), so robots must never spawn
+// or be repaired there. Mark those catalog entries spawn-ineligible; movement
+// and reporting still see the raw Use flag.
+const (
+	channelPolicyPvpTownID        = 10
+	channelPolicyChannel100TownID = 17
+)
+
+func ApplyChannelSpawnPolicy(maps []shared.MapCatalogItem) []shared.MapCatalogItem {
+	filtered := make([]shared.MapCatalogItem, len(maps))
+	copy(filtered, maps)
+	for index := range filtered {
+		if filtered[index].Village != channelPolicyPvpTownID && filtered[index].Village != channelPolicyChannel100TownID {
+			continue
+		}
+		ineligible := false
+		filtered[index].NormalEligible = &ineligible
+	}
+	return filtered
 }
 
 func (p TownMapCatalogProvider) TownMapCatalog(ctx context.Context) ([]shared.MapCatalogItem, error) {
@@ -67,7 +89,7 @@ func ReadTownMapCatalog(pvfPath string) ([]shared.MapCatalogItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("project S4A21 town maps: %w", err)
 	}
-	return maps, nil
+	return ApplyChannelSpawnPolicy(maps), nil
 }
 
 func ReadItemCatalogs(pvfPath string) ([]shared.EquipmentCatalogItem, []shared.EquipmentCatalogItem, error) {
