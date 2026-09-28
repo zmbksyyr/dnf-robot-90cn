@@ -14,41 +14,45 @@ const (
 )
 
 const (
-	CmdLogin                uint16 = 0x0001
-	CmdSelectCharacter      uint16 = 0x0004
-	CmdCreateCharacter      uint16 = 0x0005
-	CmdDeleteCharacter      uint16 = 0x0006
-	CmdGetUserInfo          uint16 = 0x0008
-	CmdSendMessage          uint16 = 0x0011
-	CmdRequestPeer          uint16 = 0x000A
-	CmdResponsePeer         uint16 = 0x000B
-	CmdSetPartyInfo         uint16 = 0x000C
-	CmdLeaveParty           uint16 = 0x000D
-	CmdWalkoutPartyMember   uint16 = 0x000E
-	CmdSetUDPIPPort         uint16 = 0x0002
-	CmdAcceptQuest          uint16 = 0x001F
-	CmdSetQuestTrigger      uint16 = 0x0021
-	CmdFinishQuest          uint16 = 0x0022
-	CmdEnterSelectDungeon   uint16 = 0x000F
-	CmdSelectDungeon        uint16 = 0x0010
-	CmdChangeTutorialFlag   uint16 = 0x008F
-	CmdReplyGuildInvite     uint16 = 0x0098
-	CmdFinishLoading        uint16 = 0x0025
-	CmdSetUserPosition      uint16 = 0x0023
-	CmdSetUserArea          uint16 = 0x0024
-	CmdMoveMap              uint16 = 0x002D
-	CmdCheckCharacterName   uint16 = 0x02B5
-	CmdCheckConnection      uint16 = 0x04DD
-	NotiCharacterList       uint16 = 0x0002
-	NotiAcceptableQuestList uint16 = 0x0015
-	NotiUserPosition        uint16 = 0x0016
-	NotiUserArea            uint16 = 0x0017
-	NotiPartyInfo           uint16 = 0x0009
-	NotiRequestPeer         uint16 = 0x0007
-	NotiPartyRealtimeInfo   uint16 = 0x0099
-	NotiGuildInvite         uint16 = 0x0093
-	NotiStartMap            uint16 = 0x001D
-	NotiFinishLoading       uint16 = 0x001E
+	CmdLogin                 uint16 = 0x0001
+	CmdSelectCharacter       uint16 = 0x0004
+	CmdCreateCharacter       uint16 = 0x0005
+	CmdDeleteCharacter       uint16 = 0x0006
+	CmdGetUserInfo           uint16 = 0x0008
+	CmdSendMessage           uint16 = 0x0011
+	CmdRequestPeer           uint16 = 0x000A
+	CmdResponsePeer          uint16 = 0x000B
+	CmdSetPartyInfo          uint16 = 0x000C
+	CmdLeaveParty            uint16 = 0x000D
+	CmdWalkoutPartyMember    uint16 = 0x000E
+	CmdSetUDPIPPort          uint16 = 0x0002
+	CmdAcceptQuest           uint16 = 0x001F
+	CmdSetQuestTrigger       uint16 = 0x0021
+	CmdFinishQuest           uint16 = 0x0022
+	CmdEnterSelectDungeon    uint16 = 0x000F
+	CmdSelectDungeon         uint16 = 0x0010
+	CmdChangeTutorialFlag    uint16 = 0x008F
+	CmdReplyGuildInvite      uint16 = 0x0098
+	CmdFinishLoading         uint16 = 0x0025
+	CmdSetUserPosition       uint16 = 0x0023
+	CmdSetUserArea           uint16 = 0x0024
+	CmdMoveMap               uint16 = 0x002D
+	CmdCreateExpertJobStore  uint16 = 0x0257
+	CmdCloseExpertJobStore   uint16 = 0x0259
+	CmdCheckCharacterName    uint16 = 0x02B5
+	CmdCheckConnection       uint16 = 0x04DD
+	NotiCharacterList        uint16 = 0x0002
+	NotiAcceptableQuestList  uint16 = 0x0015
+	NotiUserPosition         uint16 = 0x0016
+	NotiUserArea             uint16 = 0x0017
+	NotiPartyInfo            uint16 = 0x0009
+	NotiRequestPeer          uint16 = 0x0007
+	NotiPartyRealtimeInfo    uint16 = 0x0099
+	NotiGuildInvite          uint16 = 0x0093
+	NotiStartMap             uint16 = 0x001D
+	NotiFinishLoading        uint16 = 0x001E
+	NotiCreateExpertJobStore uint16 = 0x021B
+	NotiCloseExpertJobStore  uint16 = 0x021C
 )
 
 type Packet struct {
@@ -291,6 +295,75 @@ func SelectCharacterUID(body []byte) (uint16, error) {
 	uid := binary.LittleEndian.Uint16(body[uidOffset : uidOffset+2])
 	if uid == 0 || uid == 0xFFFF {
 		return 0, fmt.Errorf("select character response has invalid UID %d", uid)
+	}
+	return uid, nil
+}
+
+// ExpertJobStoreKindDisjointMachine is the A21 store kind for a disassembler
+// machine. The server also defines an enchant shop kind (3), which this client
+// does not open.
+const ExpertJobStoreKindDisjointMachine byte = 0
+
+// expertJobStoreNameLimit mirrors the server parser's 255-byte store name cap.
+const expertJobStoreNameLimit = 255
+
+// CreateExpertJobStoreBody mirrors the server's CreateExpertJobStoreRequest:
+// kind, name length (int32) and bytes, gold cost (int32), position (int16) and
+// direction (int16). The wire body has no command prefix.
+func CreateExpertJobStoreBody(kind byte, name []byte, cost int32, x, y, direction int16) ([]byte, error) {
+	if cost < 0 {
+		return nil, fmt.Errorf("s4a21 expert job store cost must not be negative: %d", cost)
+	}
+	if len(name) > expertJobStoreNameLimit {
+		return nil, fmt.Errorf("s4a21 expert job store name length=%d exceeds %d", len(name), expertJobStoreNameLimit)
+	}
+	body := make([]byte, 15+len(name))
+	body[0] = kind
+	binary.LittleEndian.PutUint32(body[1:5], uint32(len(name)))
+	copy(body[5:], name)
+	offset := 5 + len(name)
+	binary.LittleEndian.PutUint32(body[offset:offset+4], uint32(cost))
+	binary.LittleEndian.PutUint16(body[offset+4:offset+6], uint16(x))
+	binary.LittleEndian.PutUint16(body[offset+6:offset+8], uint16(y))
+	binary.LittleEndian.PutUint16(body[offset+8:offset+10], uint16(direction))
+	return body, nil
+}
+
+// ParseExpertJobStoreAck reads the direct response to a create/close command.
+// The server answers success with a single 0x01 byte and failure with 0x00
+// followed by the adapter error code.
+func ParseExpertJobStoreAck(body []byte) (ok bool, errCode byte, valid bool) {
+	if len(body) == 1 && body[0] == 1 {
+		return true, 0, true
+	}
+	if len(body) >= 2 && body[0] == 0 {
+		return false, body[1], true
+	}
+	return false, 0, false
+}
+
+// ParseExpertJobStoreCreateOwner reads the owner UID from a CREATE_EXPERT_JOB_STORE
+// notification. The body starts with the store kind followed by the owner UID.
+func ParseExpertJobStoreCreateOwner(body []byte) (uint16, error) {
+	if len(body) < 3 {
+		return 0, fmt.Errorf("s4a21 expert job store create notification is truncated")
+	}
+	uid := binary.LittleEndian.Uint16(body[1:3])
+	if uid == 0 || uid == 0xFFFF {
+		return 0, fmt.Errorf("s4a21 expert job store create notification has invalid UID %d", uid)
+	}
+	return uid, nil
+}
+
+// ParseExpertJobStoreCloseOwner reads the owner UID from a
+// CLOSE_EXPERT_JOB_STORE notification.
+func ParseExpertJobStoreCloseOwner(body []byte) (uint16, error) {
+	if len(body) < 2 {
+		return 0, fmt.Errorf("s4a21 expert job store close notification is truncated")
+	}
+	uid := binary.LittleEndian.Uint16(body[0:2])
+	if uid == 0 || uid == 0xFFFF {
+		return 0, fmt.Errorf("s4a21 expert job store close notification has invalid UID %d", uid)
 	}
 	return uid, nil
 }

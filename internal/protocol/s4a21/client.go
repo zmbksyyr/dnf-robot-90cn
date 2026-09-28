@@ -269,6 +269,19 @@ func (c *Client) MoveMap(ctx context.Context, request MoveMapRequest) error {
 	return c.send(ctx, Encode(1, CmdMoveMap, MoveMapBody(request)))
 }
 
+// CreateExpertJobStore opens an expert job store (the disassembler machine when
+// the body carries ExpertJobStoreKindDisjointMachine). The caller builds the
+// body with CreateExpertJobStoreBody.
+func (c *Client) CreateExpertJobStore(ctx context.Context, body []byte) error {
+	return c.send(ctx, Encode(1, CmdCreateExpertJobStore, body))
+}
+
+// CloseExpertJobStore closes the caller's expert job store. The server parser
+// requires an empty body.
+func (c *Client) CloseExpertJobStore(ctx context.Context) error {
+	return c.send(ctx, Encode(1, CmdCloseExpertJobStore, nil))
+}
+
 func (c *Client) Read(ctx context.Context) (Packet, error) {
 	if c == nil || c.conn == nil {
 		return Packet{}, fmt.Errorf("s4a21 client is closed")
