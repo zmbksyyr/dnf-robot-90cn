@@ -39,26 +39,28 @@ const (
 )
 
 type adaptiveSchedulerSignals struct {
-	Live             bool
-	Running          int
-	Connecting       int
-	StoreRunning     int
-	StoreUnsupported bool
-	Actors           int
-	Idle             int
-	ActorIdle        int
-	ActorAssigned    int
-	ActorOnline      int
-	ActorRunning     int
-	ActorBusy        int
-	ActorReleasing   int
-	GamePortReady    bool
-	BreakerActive    bool
-	CPUPercent       float64
-	MemoryMB         int
-	Goroutines       int
-	OnlineSuccess    int
-	OnlineFailed     int
+	Live               bool
+	Running            int
+	Connecting         int
+	StoreRunning       int
+	StoreUnsupported   bool
+	Actors             int
+	Idle               int
+	ActorIdle          int
+	ActorAssigned      int
+	ActorOnline        int
+	ActorRunning       int
+	ActorBusy          int
+	ActorReleasing     int
+	GamePortReady      bool
+	BreakerActive      bool
+	CPUPercent         float64
+	MemoryMB           int
+	Goroutines         int
+	OnlineSuccess      int
+	OnlineFailed       int
+	StoreSuccessWindow int
+	StoreFailedWindow  int
 }
 
 type schedulerPolicyDecision struct {
@@ -85,30 +87,34 @@ func (m *RobotManager) adaptiveSchedulerSignals() adaptiveSchedulerSignals {
 	stats := m.autoStats
 	live := !stats.UpdatedAt.IsZero()
 	breaker := now.Before(m.autoBreakerUntil)
+	storeSuccessWindow := m.schedulerRecentStoreSuccess
+	storeFailedWindow := m.schedulerRecentStoreFailed
 	m.autoMu.Unlock()
 
 	cpu, mem, goroutines := process.ResourceSnapshot()
 	return adaptiveSchedulerSignals{
-		Live:             live,
-		Running:          stats.Running,
-		Connecting:       stats.Connecting,
-		StoreRunning:     stats.StoreRunning,
-		StoreUnsupported: m.requireBackendCapability(shared.CapabilityStore) != nil,
-		Actors:           stats.Actors,
-		Idle:             stats.Idle,
-		ActorIdle:        stats.ActorIdle,
-		ActorAssigned:    stats.ActorAssigned,
-		ActorOnline:      stats.ActorOnline,
-		ActorRunning:     stats.ActorRunning,
-		ActorBusy:        stats.ActorBusy,
-		ActorReleasing:   stats.ActorReleasing,
-		GamePortReady:    !live || stats.GamePortReady,
-		BreakerActive:    breaker,
-		CPUPercent:       cpu,
-		MemoryMB:         mem,
-		Goroutines:       goroutines,
-		OnlineSuccess:    m.schedulerRecentAttemptSuccess,
-		OnlineFailed:     m.schedulerRecentAttemptFailed,
+		Live:               live,
+		Running:            stats.Running,
+		Connecting:         stats.Connecting,
+		StoreRunning:       stats.StoreRunning,
+		StoreUnsupported:   m.requireBackendCapability(shared.CapabilityStore) != nil,
+		Actors:             stats.Actors,
+		Idle:               stats.Idle,
+		ActorIdle:          stats.ActorIdle,
+		ActorAssigned:      stats.ActorAssigned,
+		ActorOnline:        stats.ActorOnline,
+		ActorRunning:       stats.ActorRunning,
+		ActorBusy:          stats.ActorBusy,
+		ActorReleasing:     stats.ActorReleasing,
+		GamePortReady:      !live || stats.GamePortReady,
+		BreakerActive:      breaker,
+		CPUPercent:         cpu,
+		MemoryMB:           mem,
+		Goroutines:         goroutines,
+		OnlineSuccess:      m.schedulerRecentAttemptSuccess,
+		OnlineFailed:       m.schedulerRecentAttemptFailed,
+		StoreSuccessWindow: storeSuccessWindow,
+		StoreFailedWindow:  storeFailedWindow,
 	}
 }
 
@@ -274,6 +280,8 @@ func applyLiveSchedulerFeedback(rc *robotconfig.RuntimeConfig, target int, sig a
 	connectionPressure := sig.Connecting > robotconfig.Clamp(target/10, 3, 60)
 	onlineAttempts := sig.OnlineSuccess + sig.OnlineFailed
 	onlineFailurePressure := onlineAttempts >= 10 && sig.OnlineFailed*100 >= onlineAttempts*20
+	storeAttempts := sig.StoreSuccessWindow + sig.StoreFailedWindow
+	storeFailurePressure := storeAttempts >= 4 && sig.StoreFailedWindow*100 >= storeAttempts*40
 	pressure := sig.BreakerActive || !sig.GamePortReady || resourcePressure || connectionPressure || pendingPressure || onlineFailurePressure
 
 	if pressure {
@@ -325,6 +333,15 @@ func applyLiveSchedulerFeedback(rc *robotconfig.RuntimeConfig, target int, sig a
 	}
 
 	if healthyOnline && storeRoom {
+		if storeFailurePressure {
+			// Store attempts compete with the refill for area transitions and
+			// logins. Contract instead of expanding while the failure rate is
+			// too high.
+			rc.SchedulerStoreConcurrent = robotconfig.Clamp(rc.SchedulerStoreConcurrent*2/3, 5, 60)
+			rc.AutoStoreProbabilityPercent = robotconfig.Clamp(rc.AutoStoreProbabilityPercent*2/3, 1, 35)
+			rc.AutoStoreFailCooldownSec = robotconfig.Clamp(rc.AutoStoreFailCooldownSec*3/2, 60, 600)
+			return schedulerPolicyDecision{Mode: schedulerPolicyPressure, Reason: fmt.Sprintf("store_failure_pressure success=%d failed=%d store=%d/%d", sig.StoreSuccessWindow, sig.StoreFailedWindow, sig.StoreRunning, storeTarget)}
+		}
 		storeGap := storeTarget - sig.StoreRunning
 		storeBoost := robotconfig.Clamp(target/40, 2, 25)
 		if idleRoom {

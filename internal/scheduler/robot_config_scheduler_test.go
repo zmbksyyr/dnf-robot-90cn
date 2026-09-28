@@ -351,6 +351,42 @@ func TestAdaptiveSchedulerLiveFeedbackIncreasesStoreWhenHealthy(t *testing.T) {
 	}
 }
 
+func TestAdaptiveSchedulerContractsStoresOnStoreFailurePressure(t *testing.T) {
+	rc := robotconfig.RuntimeConfig{AutoTargetOnlineCount: 600, MaxOnlineRobots: 1000}
+	decision := applyAdaptiveSchedulerConfig(&rc, adaptiveSchedulerSignals{
+		Live:               true,
+		Running:            600,
+		StoreRunning:       5,
+		Actors:             600,
+		GamePortReady:      true,
+		StoreSuccessWindow: 6,
+		StoreFailedWindow:  9,
+	})
+	if decision.Mode != schedulerPolicyPressure {
+		t.Fatalf("store failure mode got %s want %s reason=%s", decision.Mode, schedulerPolicyPressure, decision.Reason)
+	}
+	if rc.SchedulerStoreConcurrent != 20 {
+		t.Fatalf("store failure concurrency got %d want 20", rc.SchedulerStoreConcurrent)
+	}
+	if rc.AutoStoreProbabilityPercent != 13 {
+		t.Fatalf("store failure probability got %d want 13", rc.AutoStoreProbabilityPercent)
+	}
+	// A healthy window still expands stores.
+	rc = robotconfig.RuntimeConfig{AutoTargetOnlineCount: 600, MaxOnlineRobots: 1000}
+	decision = applyAdaptiveSchedulerConfig(&rc, adaptiveSchedulerSignals{
+		Live:               true,
+		Running:            600,
+		StoreRunning:       5,
+		Actors:             600,
+		GamePortReady:      true,
+		StoreSuccessWindow: 9,
+		StoreFailedWindow:  1,
+	})
+	if decision.Mode != schedulerPolicyStore {
+		t.Fatalf("healthy store mode got %s want %s reason=%s", decision.Mode, schedulerPolicyStore, decision.Reason)
+	}
+}
+
 func TestAdaptiveSchedulerLiveFeedbackUsesActiveStoreTarget(t *testing.T) {
 	if got := adaptiveActiveStoreTarget(600); got != adaptiveActiveStoreCapacity {
 		t.Fatalf("adaptiveActiveStoreTarget(600) got %d want %d", got, adaptiveActiveStoreCapacity)

@@ -262,6 +262,12 @@ func (s *RobotSupervisor) updateMetrics(rc robotconfig.RuntimeConfig, signals ad
 	s.manager.schedulerLastAttemptFailed = s.manager.onlineAttemptFailed
 	s.manager.schedulerRecentAttemptSuccess = windowAttemptSuccess
 	s.manager.schedulerRecentAttemptFailed = windowAttemptFailed
+	windowStoreSuccess := stats.StoreSuccess - s.manager.schedulerLastStoreSuccess
+	windowStoreFailed := stats.StoreFailed - s.manager.schedulerLastStoreFailed
+	s.manager.schedulerLastStoreSuccess = stats.StoreSuccess
+	s.manager.schedulerLastStoreFailed = stats.StoreFailed
+	s.manager.schedulerRecentStoreSuccess = windowStoreSuccess
+	s.manager.schedulerRecentStoreFailed = windowStoreFailed
 	s.manager.autoMu.Unlock()
 	s.manager.updateAutoBreaker(now, rc, counts, running, connecting, windowAttemptSuccess, windowAttemptFailed)
 	policy := s.manager.schedulerStatus
