@@ -185,6 +185,61 @@ func mapAreaKey(mp shared.MapCatalogItem) shared.MapAreaKey {
 	return shared.MapAreaKey{Village: mp.Village, Area: mp.Area}
 }
 
+// Crowded reports whether the map family occupying village/area is denser than
+// the least dense spawn family by the given bias, with a family-size floor.
+// Mirror instances share one family, so a family can be over-full even when
+// every single instance looks acceptable.
+func Crowded(maps []shared.MapCatalogItem, locations []shared.MapLocation, village, area, floor, bias int) bool {
+	if floor <= 0 || bias <= 0 {
+		return false
+	}
+	index := make(map[shared.MapAreaKey]string, len(maps))
+	weights := make(map[string]int, len(maps))
+	for _, mp := range maps {
+		if !mp.Use {
+			continue
+		}
+		key := MapFamilyKey(mp)
+		if key == "" {
+			continue
+		}
+		index[mapAreaKey(mp)] = key
+		if weights[key] == 0 {
+			weights[key] = SmoothedRectanglesWeight(MapRectangles(mp))
+		}
+	}
+	mineKey, ok := index[shared.MapAreaKey{Village: village, Area: area}]
+	if !ok || weights[mineKey] <= 0 {
+		return false
+	}
+	counts := make(map[string]int, len(weights))
+	for _, location := range locations {
+		if key, ok := index[shared.MapAreaKey{Village: location.Village, Area: location.Area}]; ok {
+			counts[key]++
+		}
+	}
+	mine := counts[mineKey]
+	if mine <= floor {
+		return false
+	}
+	leastKey := ""
+	for key := range weights {
+		if leastKey == "" {
+			leastKey = key
+			continue
+		}
+		left := counts[key] * weights[leastKey]
+		right := counts[leastKey] * weights[key]
+		if left < right {
+			leastKey = key
+		}
+	}
+	if leastKey == "" || leastKey == mineKey {
+		return false
+	}
+	return mine*weights[leastKey] > counts[leastKey]*weights[mineKey]*bias
+}
+
 // MapFamilyKey returns a stable signature of a map's movement geometry. A21
 // town lists contain mirror instances (channels) of the same map as separate
 // areas; capacity planning must treat them as one logical map.

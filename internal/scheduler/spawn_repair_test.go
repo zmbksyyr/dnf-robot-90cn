@@ -68,6 +68,27 @@ func TestProtocolPrepareOnlineRelocatesCrowdedArea(t *testing.T) {
 	}
 }
 
+func TestProtocolPrepareOnlineRelocatesOverDenseMirrorFamily(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "[spawn]\nspawn_fixed = false\nfollow_account =\n")
+	m.SetTownMapCatalog([]shared.MapCatalogItem{
+		{Village: 2, Area: 5, Level: 0, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 100, YMin: 0, YMax: 100}}},
+		{Village: 2, Area: 6, Level: 0, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 100, YMin: 0, YMax: 100}}},
+		{Village: 3, Area: 7, Level: 0, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 1000, YMin: 0, YMax: 1000}}},
+	})
+	robots := make([]robotcap.Info, 0, 17)
+	for index := 0; index < 16; index++ {
+		robots = append(robots, robotcap.Info{UID: 100 + index, Village: 2, Area: 5 + index%2})
+	}
+	robots = append(robots, robotcap.Info{UID: 1, Village: 2, Area: 5})
+	m.SetRobotStateDirectory(robotstate.NewMemoryStore(robots))
+	driver := protocolSessionDriver{manager: m}
+
+	moved := driver.PrepareOnline(robotcap.Info{UID: 1, Level: 80, Village: 2, Area: 5, X: 10, Y: 10}, m.loadRobotConfig())
+	if moved.Village != 3 || moved.Area != 7 {
+		t.Fatalf("over-dense mirror family not relocated: %+v", moved)
+	}
+}
+
 func TestProtocolPrepareOnlineKeepsFixedSpawnBehaviour(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "[spawn]\nspawn_fixed = true\nspawn_village = 4\nspawn_area = 9\n")
 	m.SetTownMapCatalog([]shared.MapCatalogItem{

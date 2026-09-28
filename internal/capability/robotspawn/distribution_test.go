@@ -10,8 +10,7 @@ type zeroRandom struct{}
 
 func (zeroRandom) RandBetween(min, max int) int { return min }
 
-func TestBalancedFamilyLocationDoesNotMultiplyMirrorInstances(t *testing.T) {
-	maps := []shared.MapCatalogItem{
+func TestBalancedFamilyLocationDoesNotMultiplyMirrorInstances(t *testing.T) {	maps := []shared.MapCatalogItem{
 		{Village: 3, Area: 1, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 100, YMin: 0, YMax: 100}}},
 		{Village: 3, Area: 2, Use: true, Rectangles: []shared.MapRectangle{{XMin: 500, XMax: 600, YMin: 0, YMax: 100}}},
 	}
@@ -44,5 +43,26 @@ func TestBalancedFamilyLocationDoesNotMultiplyMirrorInstances(t *testing.T) {
 	}
 	if len(instances) != village2 {
 		t.Fatalf("mirror instances collided: areas=%v", instances)
+	}
+}
+
+func TestCrowdedCountsMirrorInstancesAsOneFamily(t *testing.T) {
+	maps := []shared.MapCatalogItem{
+		{Village: 2, Area: 1, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 100, YMin: 0, YMax: 100}}},
+		{Village: 2, Area: 2, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 100, YMin: 0, YMax: 100}}},
+		{Village: 3, Area: 1, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 1000, YMin: 0, YMax: 1000}}},
+	}
+	var locations []shared.MapLocation
+	for index := 0; index < 8; index++ {
+		locations = append(locations, shared.MapLocation{Village: 2, Area: 1 + index%2})
+	}
+	if !Crowded(maps, locations, 2, 1, 4, 2) {
+		t.Fatal("mirror family with an empty other village must count as crowded")
+	}
+	if Crowded(maps, nil, 2, 1, 4, 2) {
+		t.Fatal("empty directory must not be crowded")
+	}
+	if Crowded(maps, locations, 9, 9, 4, 2) {
+		t.Fatal("unknown area must not be crowded")
 	}
 }
