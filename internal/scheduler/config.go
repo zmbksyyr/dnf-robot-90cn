@@ -30,7 +30,9 @@ func (m *RobotManager) RuntimeFileEntries() []filewatch.Entry {
 		{Name: "name_templates", Path: paths.NameTemplates(), Apply: m.reloadNameTemplates},
 		{Name: "shout_templates", Path: paths.ShoutTemplates(), Apply: m.reloadShoutTemplates},
 	}
-	if m.supportsBackendCapability(shared.CapabilityStore) {
+	// Store titles belong to the private item stall; disjoint-only adapters do
+	// not ship or watch that file.
+	if m.supportsBackendCapability(shared.CapabilityStore) && m.itemStoreSupported() {
 		entries = append(entries, filewatch.Entry{Name: "store_titles", Path: paths.StoreTitles(), Apply: m.reloadStoreTitles})
 	}
 	if m.supportsBackendCapability(shared.CapabilitySkill) {
