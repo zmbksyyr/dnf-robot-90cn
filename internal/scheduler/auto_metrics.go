@@ -89,7 +89,7 @@ func (m *RobotManager) updateAutoActorSnapshot(counts actormodel.LedgerCounts) {
 	m.autoMu.Unlock()
 }
 
-func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeConfig, counts actormodel.LedgerCounts, running, connecting int) {
+func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeConfig, counts actormodel.LedgerCounts, running, connecting, windowOnlineSuccess, windowOnlineFailed int) {
 	target := rc.AutoTargetOnlineCount
 	if target <= 0 {
 		return
@@ -112,8 +112,19 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 
 	stats := m.autoStats
 	reason := ""
+	onlinePause := false
 	if readyForBreaker && connecting >= threshold {
 		reason = fmt.Sprintf("connecting_over_%dpct target=%d connecting=%d", abnormalPct, target, connecting)
+	}
+
+	// Online-failure storm protection. This branch must not wait for the actor
+	// capacity to reach the target: a cold start that cannot login at all is
+	// exactly the case the breaker has to catch. The adaptive attempt gate
+	// honors the breaker, so this pause covers every retry as well.
+	windowAttempts := windowOnlineSuccess + windowOnlineFailed
+	if windowAttempts >= 20 && windowOnlineFailed*100 >= windowAttempts*50 && m.OnlineAttemptInFlight() > 0 {
+		reason = fmt.Sprintf("online_failures_window success=%d failed=%d in_flight=%d", windowOnlineSuccess, windowOnlineFailed, m.OnlineAttemptInFlight())
+		onlinePause = true
 	}
 
 	if m.autoBreakerLastCheck.IsZero() || now.Sub(m.autoBreakerLastCheck) >= time.Minute {
@@ -139,6 +150,12 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 	pauseSec := rc.SchedulerBreakerPauseSec
 	if pauseSec <= 0 {
 		pauseSec = 300
+	}
+	if onlinePause {
+		pauseSec = rc.SchedulerOnlineBreakerPauseSec
+		if pauseSec <= 0 {
+			pauseSec = 60
+		}
 	}
 	until := now.Add(time.Duration(pauseSec) * time.Second)
 	wasActive := now.Before(m.autoBreakerUntil)
@@ -190,23 +207,26 @@ func (s *RobotSupervisor) updateMetrics(rc robotconfig.RuntimeConfig, signals ad
 	s.manager.updateAutoSnapshot(rc, summary)
 	counts := s.ledger.Counts(now, rc)
 	s.manager.updateAutoActorSnapshot(counts)
-	s.manager.updateAutoBreaker(now, rc, counts, running, connecting)
 	s.manager.autoMu.Lock()
 	stats := s.manager.autoStats
-	s.manager.schedulerRecentOnlineSuccess = stats.OnlineSuccess - s.manager.schedulerLastOnlineSuccess
-	s.manager.schedulerRecentOnlineFailed = stats.OnlineFailed - s.manager.schedulerLastOnlineFailed
+	windowOnlineSuccess := stats.OnlineSuccess - s.manager.schedulerLastOnlineSuccess
+	windowOnlineFailed := stats.OnlineFailed - s.manager.schedulerLastOnlineFailed
 	s.manager.schedulerLastOnlineSuccess = stats.OnlineSuccess
 	s.manager.schedulerLastOnlineFailed = stats.OnlineFailed
-	policy := s.manager.schedulerStatus
+	s.manager.schedulerRecentOnlineSuccess = windowOnlineSuccess
+	s.manager.schedulerRecentOnlineFailed = windowOnlineFailed
 	s.manager.autoMu.Unlock()
+	s.manager.updateAutoBreaker(now, rc, counts, running, connecting, windowOnlineSuccess, windowOnlineFailed)
+	policy := s.manager.schedulerStatus
 	dbStatus := s.manager.DatabaseStatus()
-	line := fmt.Sprintf("[RobotMetrics] policy=%s target=%d actors=%d leased=%d idle=%d state idle=%d assigned=%d online=%d running=%d busy=%d releasing=%d runtime running=%d store=%d connecting=%d recycling=%d blocked=%d cpu=%.1f mem_mb=%d goroutines=%d online=%d/%d move=%d/%d shout_local=%d/%d shout_world=%d/%d store=%d/%d expired=%d db_ms=%d db_ok=%t log_mb=%.1f\n",
+	line := fmt.Sprintf("[RobotMetrics] policy=%s target=%d actors=%d leased=%d idle=%d state idle=%d assigned=%d online=%d running=%d busy=%d releasing=%d runtime running=%d store=%d connecting=%d recycling=%d blocked=%d cpu=%.1f mem_mb=%d goroutines=%d online=%d/%d online_window=%d/%d online_inflight=%d online_retry_base_ms=%d move=%d/%d shout_local=%d/%d shout_world=%d/%d store=%d/%d expired=%d db_ms=%d db_ok=%t log_mb=%.1f\n",
 		policy.Mode,
 		rc.AutoTargetOnlineCount, counts.Auto, counts.Leased, counts.Idle,
 		counts.StateIdle, counts.StateAssigned, counts.StateOnline, counts.StateRunning, counts.StateBusy, counts.StateReleasing,
 		running, stores, connecting, counts.Releasing, counts.Blocked,
 		signals.CPUPercent, signals.MemoryMB, signals.Goroutines,
 		stats.OnlineSuccess, stats.OnlineFailed,
+		windowOnlineSuccess, windowOnlineFailed, s.manager.OnlineAttemptInFlight(), rc.SchedulerOnlineRetryBaseMS,
 		stats.MoveSuccess, stats.MoveFailed,
 		stats.ShoutLocalSuccess, stats.ShoutLocalFailed,
 		stats.ShoutWorldSuccess, stats.ShoutWorldFailed,
