@@ -5,19 +5,25 @@ import (
 	"strings"
 )
 
-// StorePolicy exposes S4A21 private-store semantics to the shared scheduler.
-// The wire error codes below come from the server disjoint-store dispatcher and
-// CDisjointer::OnCreateDisjointStore; they belong to this adapter, not to the
-// scheduler.
+// StorePolicy exposes S4A21 expert-job store semantics to the shared
+// scheduler. The wire error codes below come from the server expert-job store
+// dispatcher and its placement validator; they belong to this adapter, not to
+// the scheduler.
 type StorePolicy struct{}
 
-const s4a21DisjointStoreCostGold = 500
+const (
+	s4a21DisjointStoreCostGold = 500
+	s4a21EnchantStoreCostGold  = 500
+)
 
 // DisjointStoreCost is the gold cost of one disjoint-store attempt.
 func (StorePolicy) DisjointStoreCost() uint32 { return s4a21DisjointStoreCostGold }
 
+// EnchantStoreCost is the gold cost of one enchanter-stall attempt.
+func (StorePolicy) EnchantStoreCost() uint32 { return s4a21EnchantStoreCostGold }
+
 // ItemStoreSupported reports whether the adapter implements the private item
-// stall. S4A21 exposes the disassembler machine only, so the scheduler must not
+// stall. S4A21 exposes the expert-job stalls only, so the scheduler must not
 // alternate attempts into the unavailable item workflow.
 func (StorePolicy) ItemStoreSupported() bool { return false }
 
@@ -41,10 +47,20 @@ func (StorePolicy) DisjointFailure(errCode byte) (string, bool) {
 	if errCode == 0 {
 		return "disjoint_failed", false
 	}
-	return fmt.Sprintf("disjoint_err_0x%02x", errCode), s4a21DisjointRetrySameSession(errCode)
+	return fmt.Sprintf("disjoint_err_0x%02x", errCode), s4a21ExpertStoreRetrySameSession(errCode)
 }
 
-func s4a21DisjointRetrySameSession(errCode byte) bool {
+// EnchantFailure maps an enchanter-stall wire failure code. The enchanter shop
+// shares the server's create validation with the disassembler machine, so the
+// codes have the same meaning.
+func (StorePolicy) EnchantFailure(errCode byte) (string, bool) {
+	if errCode == 0 {
+		return "enchant_failed", false
+	}
+	return fmt.Sprintf("enchant_err_0x%02x", errCode), s4a21ExpertStoreRetrySameSession(errCode)
+}
+
+func s4a21ExpertStoreRetrySameSession(errCode byte) bool {
 	switch errCode {
 	case 0x52, 0xbe:
 		return true
@@ -64,6 +80,20 @@ func (StorePolicy) DisjointReasonRetryable(reason string) (bool, bool) {
 		return false, true
 	}
 	if strings.HasPrefix(reason, "disjoint_err_") {
+		return false, true
+	}
+	return false, false
+}
+
+// EnchantReasonRetryable classifies adapter-owned enchanter failure reasons.
+func (StorePolicy) EnchantReasonRetryable(reason string) (bool, bool) {
+	switch reason {
+	case "enchant_err_0x52", "enchant_err_0xbe":
+		return true, true
+	case "enchant_failed":
+		return false, true
+	}
+	if strings.HasPrefix(reason, "enchant_err_") {
 		return false, true
 	}
 	return false, false

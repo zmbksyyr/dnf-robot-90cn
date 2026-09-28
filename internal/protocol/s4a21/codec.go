@@ -304,6 +304,9 @@ func SelectCharacterUID(body []byte) (uint16, error) {
 // does not open.
 const ExpertJobStoreKindDisjointMachine byte = 0
 
+// ExpertJobStoreKindEnchantShop is the A21 store kind for an enchanter stall.
+const ExpertJobStoreKindEnchantShop byte = 3
+
 // expertJobStoreNameLimit mirrors the server parser's 255-byte store name cap.
 const expertJobStoreNameLimit = 255
 

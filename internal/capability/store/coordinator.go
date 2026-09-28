@@ -688,7 +688,8 @@ func newPointClaim(uid int, now time.Time, lease, reuseAfter time.Duration) poin
 func pointPenaltyReason(reason string) bool {
 	switch reason {
 	case "store_err_0x38", "store_err_0x3e", StoreReasonErr052, StoreReasonErr052Zone,
-		"disjoint_err_0x14", "disjoint_err_0x3e", "disjoint_err_0x52", "disjoint_err_0xbe":
+		"disjoint_err_0x14", "disjoint_err_0x3e", "disjoint_err_0x52", "disjoint_err_0xbe",
+		"enchant_err_0x52", "enchant_err_0xbe":
 		return true
 	default:
 		return false
@@ -697,9 +698,9 @@ func pointPenaltyReason(reason string) bool {
 
 func pointFailureRetry(reason string, lease time.Duration) (time.Duration, bool) {
 	switch reason {
-	case StoreReasonErr052, StoreReasonErr052Zone, "disjoint_err_0x52":
+	case StoreReasonErr052, StoreReasonErr052Zone, "disjoint_err_0x52", "enchant_err_0x52":
 		return 0, true
-	case "store_err_0x38", "disjoint_err_0x14", "disjoint_err_0xbe":
+	case "store_err_0x38", "disjoint_err_0x14", "disjoint_err_0xbe", "enchant_err_0xbe":
 		return normalizePointLease(lease), false
 	default:
 		return PointFailRetry, false
@@ -707,7 +708,7 @@ func pointFailureRetry(reason string, lease time.Duration) (time.Duration, bool)
 }
 
 func restrictivePointReason(reason string) bool {
-	return reason == StoreReasonErr052 || reason == "disjoint_err_0x52"
+	return reason == StoreReasonErr052 || reason == "disjoint_err_0x52" || reason == "enchant_err_0x52"
 }
 
 func ambiguousPointFailureReason(reason string) bool {

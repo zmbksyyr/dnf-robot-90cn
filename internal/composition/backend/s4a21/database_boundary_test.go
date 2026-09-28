@@ -16,14 +16,14 @@ func TestSimulatorDatabaseAccessIsIsolatedToPersistenceAdapter(t *testing.T) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
-		if entry.Name() == "loadout.go" || entry.Name() == "startup_inventory.go" || entry.Name() == "growth.go" || entry.Name() == "quests.go" || entry.Name() == "purge.go" || entry.Name() == "population.go" || entry.Name() == "descriptor.go" || entry.Name() == "runtime_assembly.go" || entry.Name() == "follow_account.go" || entry.Name() == "disjoint_profession.go" {
+		if entry.Name() == "loadout.go" || entry.Name() == "startup_inventory.go" || entry.Name() == "growth.go" || entry.Name() == "quests.go" || entry.Name() == "purge.go" || entry.Name() == "population.go" || entry.Name() == "descriptor.go" || entry.Name() == "runtime_assembly.go" || entry.Name() == "follow_account.go" || entry.Name() == "expert_job_profession.go" {
 			// runtime_assembly.go owns the database path derivation and the
 			// startup inventory composition; growth.go reconciles the persisted
 			// transfer/awakening state after that scan; quests.go seeds the
 			// gate-free quest state; follow_account.go is the adapter's
-			// read-only follow-account lookup; disjoint_profession.go is the
-			// offline expert-job preparation for the disassembler machine. All
-			// are persistence concerns.
+			// read-only follow-account lookup; expert_job_profession.go is the
+			// offline expert-job preparation for the stalls. All are
+			// persistence concerns.
 			continue
 		}
 		path := filepath.Join(".", entry.Name())

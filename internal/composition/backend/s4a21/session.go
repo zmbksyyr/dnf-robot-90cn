@@ -59,8 +59,8 @@ type Session struct {
 	keepaliveGuard     lockhub.Locker
 	lastCheckAck       time.Time
 	checkAckSeen       bool
-	disjointGuard      lockhub.Locker
-	disjoint           disjointStoreState
+	storeGuard         lockhub.Locker
+	store              expertJobStoreState
 }
 
 type packetObserverRegistration struct {
@@ -339,7 +339,7 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 	if packet.Type == protocol.CmdCheckConnection {
 		s.recordCheckAck(time.Now())
 	}
-	s.handleDisjointStorePacket(packet)
+	s.handleExpertJobStorePacket(packet)
 	s.followerGuard.Lock()
 	followerEvents := s.followerEvents
 	s.followerGuard.Unlock()

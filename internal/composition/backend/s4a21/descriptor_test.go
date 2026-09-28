@@ -20,7 +20,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 			t.Fatalf("verified capability %s is disabled", capability)
 		}
 	}
-	if info.Capabilities[shared.CapabilityStore].Mode != "disjoint" {
+	if info.Capabilities[shared.CapabilityStore].Mode != "expert_job" {
 		t.Fatalf("store mode = %+v", info.Capabilities[shared.CapabilityStore])
 	}
 	if info.Capabilities[shared.CapabilityDungeonFollow].Mode != "auto_accept" {

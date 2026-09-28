@@ -67,6 +67,7 @@ type StatusItem struct {
 	StoreDisplayItems int               `json:"store_display_items"`
 	StoreCreated      bool              `json:"store_created"`
 	DisjointActive    bool              `json:"disjoint_active"`
+	EnchantActive     bool              `json:"enchant_active"`
 	Village           int               `json:"village"`
 	VillageName       string            `json:"village_name,omitempty"`
 	Area              int               `json:"area"`
@@ -317,6 +318,7 @@ type AutoStatus struct {
 	StoreRunning         int       `json:"store_running"`
 	StoreItemRunning     int       `json:"store_item_running"`
 	StoreDisjointRunning int       `json:"store_disjoint_running"`
+	StoreEnchantRunning  int       `json:"store_enchant_running"`
 	Created              int       `json:"created"`
 	OnlineSuccess        int       `json:"online_success"`
 	OnlineFailed         int       `json:"online_failed"`

@@ -22,6 +22,10 @@ type RuntimeStatus struct {
 	DisjointDirectAck    bool
 	DisjointActive       bool
 	LastDisjointError    byte
+	EnchantCreateSent    bool
+	EnchantDirectAck     bool
+	EnchantActive        bool
+	LastEnchantError     byte
 	PartyActive          bool
 	Village              int
 	Area                 int
@@ -79,6 +83,7 @@ type RuntimeStatusSummary struct {
 	Stores         int
 	ItemStores     int
 	DisjointStores int
+	EnchantStores  int
 }
 
 func SummarizeRuntimeStatusMap(status map[int]RuntimeStatus) RuntimeStatusSummary {
@@ -103,6 +108,10 @@ func (s *RuntimeStatusSummary) Add(st RuntimeStatus) {
 		if st.RobotType == 3 && st.DisjointActive {
 			s.Stores++
 			s.DisjointStores++
+		}
+		if st.RobotType == 3 && st.EnchantActive {
+			s.Stores++
+			s.EnchantStores++
 		}
 	case RuntimeStateInit, RuntimeStateLogin:
 		s.Connecting++
