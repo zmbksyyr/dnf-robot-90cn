@@ -61,13 +61,14 @@ func TestNormalMapsFiltersPvPAndDisabled(t *testing.T) {
 	no := false
 	yes := true
 	maps := []shared.MapCatalogItem{
-		{Village: 1, Area: 0, Use: false, NormalEligible: &yes},
-		{Village: 2, Area: 0, Use: true, NormalEligible: &no},
-		{Village: 3, Area: 0, Use: true, NormalEligible: &yes},
-		{Village: 4, Area: 0, Use: true},
+		{Village: 1, Area: 0, Use: false, NormalEligible: &yes, StoreEligible: &yes},
+		{Village: 2, Area: 0, Use: true, NormalEligible: &no, StoreEligible: &no},
+		{Village: 3, Area: 0, Use: true, NormalEligible: &yes, StoreEligible: &yes},
+		{Village: 4, Area: 0, Use: true, NormalEligible: &yes, StoreEligible: &no},
+		{Village: 5, Area: 0, Use: true, NormalEligible: &yes},
 	}
 	out := NormalMaps(maps)
-	if len(out) != 2 || out[0].Village != 3 || out[1].Village != 4 {
+	if len(out) != 2 || out[0].Village != 3 || out[1].Village != 5 {
 		t.Fatalf("NormalMaps got %+v", out)
 	}
 }

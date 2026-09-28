@@ -97,9 +97,11 @@ func HasUsableMap(maps []shared.MapCatalogItem, village, area int) bool {
 	return false
 }
 
-// NormalMaps filters the catalog to maps eligible for ordinary robot spawns:
-// usable geometry and not marked PvP-only. The catalog shape is shared with the
-// store capability, but spawn eligibility stays a spawn concern.
+// NormalMaps filters the catalog to areas eligible for ordinary robot spawns:
+// usable geometry and a regular town kind (the catalog marks regular towns as
+// normal/store eligible; event, housing and PvP areas are excluded). The
+// catalog shape is shared with the store capability, but spawn eligibility
+// stays a spawn concern.
 func NormalMaps(maps []shared.MapCatalogItem) []shared.MapCatalogItem {
 	out := make([]shared.MapCatalogItem, 0, len(maps))
 	for _, mp := range maps {
@@ -107,6 +109,9 @@ func NormalMaps(maps []shared.MapCatalogItem) []shared.MapCatalogItem {
 			continue
 		}
 		if mp.NormalEligible != nil && !*mp.NormalEligible {
+			continue
+		}
+		if mp.StoreEligible != nil && !*mp.StoreEligible {
 			continue
 		}
 		out = append(out, mp)

@@ -93,18 +93,21 @@ func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.
 		d.manager.applyConfiguredLocation(&info, rc, maps)
 		return info
 	}
-	if robotspawn.HasUsableMap(maps, info.Village, info.Area) {
+	spawnMaps := robotspawn.NormalMaps(maps)
+	if len(spawnMaps) == 0 {
+		spawnMaps = maps
+	}
+	if robotspawn.HasUsableMap(spawnMaps, info.Village, info.Area) {
 		return info
 	}
 	// Adopted or freshly created characters can carry the server's default
-	// town (1/0), which is not a usable map area. Repair it with a balanced
-	// location so the login payload carries a real spawn and the character is
-	// not stuck moving inside an invalid area forever.
+	// town (1/0) or an event/housing area an older build repaired into. Neither
+	// confirms town entry, so pick a capacity-balanced regular town instead.
 	locations, err := d.manager.robotLocations()
 	if err != nil {
 		locations = nil
 	}
-	if target, ok := robotspawn.BalancedLocation(spawnEnv{manager: d.manager}, robotspawn.NormalMaps(maps), info.Level, locations); ok {
+	if target, ok := robotspawn.BalancedLocation(spawnEnv{manager: d.manager}, spawnMaps, info.Level, locations); ok {
 		robotLogf("[SpawnRepair] uid=%d cid=%d level=%d invalid=%d/%d -> %d/%d/%d/%d\n",
 			info.UID, info.CID, info.Level, info.Village, info.Area, target.Map.Village, target.Map.Area, target.X, target.Y)
 		info.Village, info.Area = target.Map.Village, target.Map.Area
