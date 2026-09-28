@@ -71,6 +71,23 @@ func (m *RobotManager) Shutdown() error {
 	return m.shutdownErr
 }
 
+// pauseAutoActions temporarily suspends automatic actions without touching the
+// persisted config. Internal operations (dangerous delete) must not flip the
+// operator's auto_actions setting: an earlier implementation disabled auto via
+// SetAutoEnabled and never restored it, so one delete left the robot in manual
+// mode until someone noticed.
+func (m *RobotManager) pauseAutoActions() func() {
+	m.autoMu.Lock()
+	wasEnabled := m.autoEnabled
+	m.autoEnabled = false
+	m.autoMu.Unlock()
+	return func() {
+		m.autoMu.Lock()
+		m.autoEnabled = wasEnabled
+		m.autoMu.Unlock()
+	}
+}
+
 func (m *RobotManager) SetAutoEnabled(enabled bool) (robotcap.AutoStatus, error) {
 	if err := m.writeRobotConfigValues(map[string]string{
 		"auto.auto_actions": strconv.FormatBool(enabled),

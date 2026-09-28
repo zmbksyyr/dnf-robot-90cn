@@ -38,15 +38,19 @@ func (m *RobotManager) DangerousDelete(req robotcap.DangerousDeleteRequest) (rob
 		Mode: plan.Mode, UID: plan.UID, CID: plan.CID, MinUID: plan.MinUID, MaxUID: plan.MaxUID,
 		AccountCount: plan.AccountCount, CharacterCount: plan.CharacterCount, RegistryCount: plan.RegistryCount,
 	}
+	var restoreAuto func()
+	var finishDelete func()
 	if len(plan.RegistryUIDs) > 0 {
-		if _, err := m.SetAutoEnabled(false); err != nil {
-			opErr = fmt.Errorf("disable automatic actions before dangerous delete: %w", err)
-			return result, opErr
+		if m.autoActionsEnabled(m.loadRobotConfig()) {
+			restoreAuto = m.pauseAutoActions()
 		}
-		finishDelete := m.prepareRobotDelete(plan.RegistryUIDs, false)
-		if finishDelete != nil {
-			defer finishDelete()
-		}
+		finishDelete = m.prepareRobotDelete(plan.RegistryUIDs, false)
+	}
+	if restoreAuto != nil {
+		defer restoreAuto()
+	}
+	if finishDelete != nil {
+		defer finishDelete()
 	}
 	result, err = m.backendRobotPurger.ExecuteDangerousDelete(context.Background(), plan)
 	if err != nil {
