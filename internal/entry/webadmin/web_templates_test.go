@@ -113,6 +113,22 @@ func TestSchedulerAndActorStoreStatusAreLocalized(t *testing.T) {
 			t.Errorf("localized dashboard is missing %q", want)
 		}
 	}
+	// The scheduler strip must stay one compact line per metric: single
+	// character labels, symbol-separated values and a full-name tooltip.
+	for _, want := range []string{
+		`'scheduler.store_policy':'摊'`,
+		`'scheduler.store_value':'{running}/{target}·{concurrent}·{probability}%'`,
+		`'scheduler.attach_value':'{rate}/s·{batch}'`,
+		`'scheduler.scale_value':'+{up}/-{down}'`,
+		`'scheduler.pressure_value':'{login}·{cpu}%'`,
+		`'scheduler.release_value':'{breaker}·{port}'`,
+		`title="Store policy: running/target · concurrency · probability"`,
+		".scheditem .k,.scheditem .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+	} {
+		if !strings.Contains(indexHTML+appCSS+i18nJS, want) {
+			t.Errorf("compact scheduler strip is missing %q", want)
+		}
+	}
 	for _, stale := range []string{"i18nEnglishFormat", "data-i18n-skip"} {
 		if strings.Contains(indexHTML+appJS, stale) {
 			t.Errorf("dashboard still forces English via %q", stale)
