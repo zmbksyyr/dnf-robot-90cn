@@ -150,6 +150,17 @@ func (m *RobotManager) StoreManaged(req robotcap.CommandRequest) (robotcap.Comma
 	return m.actorCommandManaged(req, actormodel.CommandStore, "store")
 }
 
+// ServerNoticeManaged runs one operator-requested notice action on the
+// selected robots without the fleet pacing gate.
+func (m *RobotManager) ServerNoticeManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
+	m.mutationMu.RLock()
+	defer m.mutationMu.RUnlock()
+	if err := m.requireBackendCapability(shared.CapabilityServerNotice); err != nil {
+		return robotcap.CommandResult{}, err
+	}
+	return m.actorCommandManaged(req, actormodel.CommandServerNotice, "server_notice")
+}
+
 func (m *RobotManager) LogoutManaged(req robotcap.CommandRequest) (robotcap.CommandResult, error) {
 	registry, robots, rc, early, err := m.prepareLogoutCommand(req)
 	if err != nil || early != nil {

@@ -70,6 +70,8 @@ func commandCapabilities(cmd string) []shared.BackendCapability {
 		return []shared.BackendCapability{shared.CapabilityWorldShout}
 	case "robotsStore", "robotsStoreAsync":
 		return []shared.BackendCapability{shared.CapabilityStore}
+	case "robotsServerNotice":
+		return []shared.BackendCapability{shared.CapabilityServerNotice}
 	case "cleanupRobots", "cleanupRobotsAsync":
 		return []shared.BackendCapability{shared.CapabilityCleanup}
 	case "partySkillReload":
@@ -107,6 +109,7 @@ func RequiresGameRuntime(cmd string) bool {
 		"robotsShoutLocal",
 		"robotsStore",
 		"robotsStoreAsync",
+		"robotsServerNotice",
 		"robotsLogout",
 		"robotsLogoutAsync",
 		"autoStart":

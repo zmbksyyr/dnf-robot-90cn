@@ -358,6 +358,18 @@ func (r *RobotRuntime) autoExpertJobStore(uid int, st robotcap.RuntimeStatus, sh
 // robot through the adaptive online gate, then sends the trigger packet and
 // records the observed broadcast.
 func (r *RobotRuntime) AutoServerNotice(uid int, shouldStop func() bool) robotcap.ActionResult {
+	return r.runServerNotice(uid, shouldStop, true)
+}
+
+// ForceServerNotice runs one operator-requested notice action without the
+// fleet pacing gate and without requiring the automatic schedule switch. It
+// still prepares missing stock through the offline cycle and honors the
+// adaptive online gate.
+func (r *RobotRuntime) ForceServerNotice(uid int) robotcap.ActionResult {
+	return r.runServerNotice(uid, nil, false)
+}
+
+func (r *RobotRuntime) runServerNotice(uid int, shouldStop func() bool, paced bool) robotcap.ActionResult {
 	return r.run(uid, func() robotcap.ActionResult {
 		if err := r.manager.requireBackendCapability(shared.CapabilityServerNotice); err != nil {
 			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
@@ -374,7 +386,7 @@ func (r *RobotRuntime) AutoServerNotice(uid int, shouldStop func() bool) robotca
 			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled}
 		}
 		rc := r.Config()
-		if !rc.AutoServerNotice {
+		if paced && !rc.AutoServerNotice {
 			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "disabled"}
 		}
 		// The runtime status does not carry the character id; the state
@@ -392,7 +404,7 @@ func (r *RobotRuntime) AutoServerNotice(uid int, shouldStop func() bool) robotca
 			r.manager.addServerNotice(0, 1, 0)
 			return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateFailed, Message: "port_unavailable"}
 		}
-		if !r.manager.claimServerNoticeSlot(rc) {
+		if paced && !r.manager.claimServerNoticeSlot(rc) {
 			return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateCancelled, Message: "not_due"}
 		}
 		kind := r.manager.serverNoticeKind(rc)

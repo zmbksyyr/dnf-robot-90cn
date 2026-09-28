@@ -50,7 +50,7 @@ func (a *Actor) handleCommand(cmd Command) robotcap.ActionResult {
 		return a.logoutCurrentUID()
 	}
 	switch cmd {
-	case CommandMove, CommandShoutLocal, CommandShoutWorld, CommandStore:
+	case CommandMove, CommandShoutLocal, CommandShoutWorld, CommandStore, CommandServerNotice:
 		st, _ := a.runtime.Status(uid)
 		if st.PartyActive || a.runtime.PartyActive(uid) {
 			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "party active"}
@@ -85,6 +85,10 @@ func (a *Actor) handleCommand(cmd Command) robotcap.ActionResult {
 			a.setStoreUntil(time.Now().Add(robotconfig.StoreDurationForUID(rc.AutoStoreDurationSec, uid)))
 		}
 		return res
+	case CommandServerNotice:
+		// The notice workflow prepares its stock offline and performs its own
+		// confirmed login, mirroring the store workflow's offline cycle.
+		return a.runtime.ForceServerNotice(uid)
 	}
 	return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateUnknownCommand}
 }

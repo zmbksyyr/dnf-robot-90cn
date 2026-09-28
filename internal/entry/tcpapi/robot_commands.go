@@ -76,6 +76,16 @@ func handleRobotCommand(cmd, pkt string, manager *scheduler.RobotManager) (strin
 			logRobotCommandResult("robotsStoreAsync", res, err)
 			return robotcap.CommandOperationSummary(res, err), err
 		}), true
+	case "robotsServerNotice":
+		req, err := parseRobotCommand(pkt)
+		if err != nil {
+			return wrapResult(map[string]interface{}{"ok": false, "error": err.Error()}), true
+		}
+		return queueRobotAction(manager, "robotsServerNotice", robotcap.CommandRequestScope(req), func() (string, error) {
+			res, err := manager.ServerNoticeManaged(req)
+			logRobotCommandResult("robotsServerNotice", res, err)
+			return robotcap.CommandOperationSummary(res, err), err
+		}), true
 	case "robotsStatus":
 		req, err := parseRobotCommand(pkt)
 		if err != nil {

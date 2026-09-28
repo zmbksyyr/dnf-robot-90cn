@@ -25,6 +25,7 @@ type RobotRuntime interface {
 	AutoShout(uid int, world bool, msg string) robotcap.ActionResult
 	AutoStore(uid int, shouldStop func() bool) robotcap.ActionResult
 	AutoServerNotice(uid int, shouldStop func() bool) robotcap.ActionResult
+	ForceServerNotice(uid int) robotcap.ActionResult
 	ExpireStore(uid int) robotcap.ActionResult
 }
 
@@ -42,6 +43,7 @@ const (
 	CommandShoutLocal
 	CommandShoutWorld
 	CommandStore
+	CommandServerNotice
 	CommandOnline
 	CommandLogout
 )

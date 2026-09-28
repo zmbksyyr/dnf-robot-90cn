@@ -70,6 +70,9 @@ func (actorTestRuntime) AutoStore(uid int, _ func() bool) robotcap.ActionResult 
 func (actorTestRuntime) AutoServerNotice(uid int, _ func() bool) robotcap.ActionResult {
 	return robotcap.ActionResult{UID: uid}
 }
+func (actorTestRuntime) ForceServerNotice(uid int) robotcap.ActionResult {
+	return robotcap.ActionResult{UID: uid}
+}
 func (actorTestRuntime) ExpireStore(uid int) robotcap.ActionResult {
 	return robotcap.ActionResult{UID: uid}
 }
