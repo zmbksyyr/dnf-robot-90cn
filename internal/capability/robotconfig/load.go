@@ -144,6 +144,13 @@ func decodeConfig(ini *config.INIConfig) (RuntimeConfig, error) {
 	rc.SchedulerBreakerReleaseBatch = dec.Int("scheduler", "breaker_release_batch", rc.SchedulerBreakerReleaseBatch)
 	rc.SchedulerBreakerFloorPct = dec.Int("scheduler", "breaker_floor_percent", rc.SchedulerBreakerFloorPct)
 	rc.SchedulerPortDownReleaseBatch = dec.Int("scheduler", "port_down_release_batch", rc.SchedulerPortDownReleaseBatch)
+	rc.SchedulerOnlineRetryBaseMS = dec.Int("scheduler", "online_retry_base_ms", rc.SchedulerOnlineRetryBaseMS)
+	rc.SchedulerOnlineRetryMaxMS = dec.Int("scheduler", "online_retry_max_ms", rc.SchedulerOnlineRetryMaxMS)
+	rc.SchedulerOnlineRetryJitterPct = dec.Int("scheduler", "online_retry_jitter_percent", rc.SchedulerOnlineRetryJitterPct)
+	rc.SchedulerOnlineInFlight = dec.Int("scheduler", "online_in_flight", rc.SchedulerOnlineInFlight)
+	rc.SchedulerRecycleCooldownSec = dec.Int("scheduler", "recycle_cooldown_sec", rc.SchedulerRecycleCooldownSec)
+	rc.SchedulerOnlineBreakerPauseSec = dec.Int("scheduler", "online_breaker_pause_sec", rc.SchedulerOnlineBreakerPauseSec)
+	rc.SchedulerCreateBatchSize = dec.Int("scheduler", "create_batch_size", rc.SchedulerCreateBatchSize)
 
 	rc.SystemActorPollMS = dec.Int("system", "actor_poll_ms", rc.SystemActorPollMS)
 	rc.SystemManualActionTimeoutSec = dec.Int("system", "manual_action_timeout_sec", rc.SystemManualActionTimeoutSec)

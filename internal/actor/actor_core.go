@@ -28,8 +28,10 @@ type Actor struct {
 	nextStore        time.Time
 	storeUntil       time.Time
 	lastOnlineTry    time.Time
+	nextRetryAt      time.Time
 	firstFailureAt   time.Time
 	failures         int
+	failureClass     string
 	busy             bool
 	busyKind         string
 	releaseRequested bool

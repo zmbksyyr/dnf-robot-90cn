@@ -1,5 +1,7 @@
 package robotconfig
 
+import "time"
+
 func TargetCapacity(rc RuntimeConfig) int {
 	target := rc.AutoTargetOnlineCount
 	if target < 0 {
@@ -143,4 +145,48 @@ func Clamp(value, min, max int) int {
 		return max
 	}
 	return value
+}
+
+// OnlineRetryBackoff returns the delay before the next login attempt for an
+// actor that already failed `failures` times. The scheduler owns the base and
+// cap through the adaptive config, so a load spike stretches every retry
+// instead of only the initial fill. Jitter keeps the swarm from retrying in
+// lockstep.
+func OnlineRetryBackoff(rc RuntimeConfig, failures int, randIntn func(int) int) time.Duration {
+	base := rc.SchedulerOnlineRetryBaseMS
+	if base < 1000 {
+		base = 5000
+	}
+	max := rc.SchedulerOnlineRetryMaxMS
+	if max < base {
+		max = base
+	}
+	shift := failures - 1
+	if shift < 0 {
+		shift = 0
+	}
+	if shift > 6 {
+		shift = 6
+	}
+	delay := base << shift
+	if delay > max || delay <= 0 {
+		delay = max
+	}
+	jitter := rc.SchedulerOnlineRetryJitterPct
+	if jitter < 0 {
+		jitter = 0
+	}
+	if jitter > 50 {
+		jitter = 50
+	}
+	if jitter > 0 && randIntn != nil {
+		span := delay * jitter / 100
+		if span > 0 {
+			delay += randIntn(2*span+1) - span
+		}
+	}
+	if delay < base/2 {
+		delay = base / 2
+	}
+	return time.Duration(delay) * time.Millisecond
 }

@@ -162,6 +162,11 @@ func (m *RobotManager) updateSchedulerStatus(rc robotconfig.RuntimeConfig, sig a
 		ScaleDownBatch:          robotconfig.ScaleDownBatch(sig.Actors, target),
 		BreakerReleaseBatch:     rc.SchedulerBreakerReleaseBatch,
 		PortDownReleaseBatch:    rc.SchedulerPortDownReleaseBatch,
+		OnlineInFlight:          m.OnlineAttemptInFlight(),
+		OnlineWindowSuccess:     sig.OnlineSuccess,
+		OnlineWindowFailed:      sig.OnlineFailed,
+		OnlineRetryBaseMS:       rc.SchedulerOnlineRetryBaseMS,
+		CreateBatchSize:         rc.SchedulerCreateBatchSize,
 		OperationActive:         opActive,
 		Operation:               op,
 		OperationStartedAt:      opStarted,
@@ -211,6 +216,38 @@ func applyAdaptiveSchedulerConfig(rc *robotconfig.RuntimeConfig, sig adaptiveSch
 	rc.SchedulerBreakerReleaseBatch = robotconfig.Clamp(target/30, 5, 40)
 	rc.SchedulerBreakerFloorPct = 70
 	rc.SchedulerPortDownReleaseBatch = robotconfig.Clamp(target/25, 5, 50)
+	// Retry pacing stays on the scheduler side: the configured values are
+	// re-based to defaults, clamped here and stretched by the pressure branch
+	// below, so every actor retry follows the same adaptive budget as the
+	// initial fill.
+	if rc.SchedulerOnlineRetryBaseMS <= 0 {
+		rc.SchedulerOnlineRetryBaseMS = 5000
+	}
+	rc.SchedulerOnlineRetryBaseMS = robotconfig.Clamp(rc.SchedulerOnlineRetryBaseMS, 5000, 60000)
+	if rc.SchedulerOnlineRetryMaxMS <= 0 {
+		rc.SchedulerOnlineRetryMaxMS = 300000
+	}
+	if rc.SchedulerOnlineRetryMaxMS < rc.SchedulerOnlineRetryBaseMS {
+		rc.SchedulerOnlineRetryMaxMS = rc.SchedulerOnlineRetryBaseMS
+	}
+	rc.SchedulerOnlineRetryMaxMS = robotconfig.Clamp(rc.SchedulerOnlineRetryMaxMS, rc.SchedulerOnlineRetryBaseMS, 1800000)
+	rc.SchedulerOnlineRetryJitterPct = robotconfig.Clamp(rc.SchedulerOnlineRetryJitterPct, 0, 50)
+	if rc.SchedulerOnlineInFlight <= 0 {
+		rc.SchedulerOnlineInFlight = 12
+	}
+	rc.SchedulerOnlineInFlight = robotconfig.Clamp(rc.SchedulerOnlineInFlight, 2, 24)
+	if rc.SchedulerRecycleCooldownSec <= 0 {
+		rc.SchedulerRecycleCooldownSec = 600
+	}
+	rc.SchedulerRecycleCooldownSec = robotconfig.Clamp(rc.SchedulerRecycleCooldownSec, 30, 3600)
+	if rc.SchedulerOnlineBreakerPauseSec <= 0 {
+		rc.SchedulerOnlineBreakerPauseSec = 60
+	}
+	rc.SchedulerOnlineBreakerPauseSec = robotconfig.Clamp(rc.SchedulerOnlineBreakerPauseSec, 15, 300)
+	if rc.SchedulerCreateBatchSize <= 0 {
+		rc.SchedulerCreateBatchSize = 10
+	}
+	rc.SchedulerCreateBatchSize = robotconfig.Clamp(rc.SchedulerCreateBatchSize, 1, 40)
 
 	if !sig.Live {
 		return schedulerPolicyDecision{Mode: schedulerPolicyBootstrap, Reason: fmt.Sprintf("target=%d %s", target, schedulerReasonNoLiveSnapshot)}
@@ -244,6 +281,10 @@ func applyLiveSchedulerFeedback(rc *robotconfig.RuntimeConfig, target int, sig a
 			rc.SchedulerOnlineBatchSize = robotconfig.Clamp(rc.SchedulerOnlineBatchSize/divisor, 5, 30)
 			rc.SchedulerOnlineStartRate = robotconfig.Clamp(rc.SchedulerOnlineStartRate/divisor, 2, 20)
 			rc.SchedulerOnlineFillTimeout = robotconfig.Clamp(rc.SchedulerOnlineFillTimeout*2, 60, 300)
+			rc.SchedulerOnlineRetryBaseMS = robotconfig.Clamp(rc.SchedulerOnlineRetryBaseMS*3, 5000, 60000)
+			rc.SchedulerOnlineRetryMaxMS = robotconfig.Clamp(rc.SchedulerOnlineRetryMaxMS*3, 60000, 1800000)
+			rc.SchedulerOnlineRetryJitterPct = robotconfig.Clamp(rc.SchedulerOnlineRetryJitterPct+10, 20, 50)
+			rc.SchedulerOnlineInFlight = robotconfig.Clamp(rc.SchedulerOnlineInFlight/2, 2, 24)
 			return schedulerPolicyDecision{Mode: schedulerPolicyPressure, Reason: fmt.Sprintf("online_failure_pressure success=%d failed=%d running=%d target=%d", sig.OnlineSuccess, sig.OnlineFailed, sig.Running, target)}
 		}
 		if pendingPressure && sig.GamePortReady && !sig.BreakerActive && !resourcePressure && !connectionPressure {
@@ -256,6 +297,9 @@ func applyLiveSchedulerFeedback(rc *robotconfig.RuntimeConfig, target int, sig a
 		rc.SchedulerOnlineBatchSize = robotconfig.Clamp(rc.SchedulerOnlineBatchSize/2, 5, 60)
 		rc.SchedulerOnlineStartRate = robotconfig.Clamp(rc.SchedulerOnlineStartRate/2, 4, 30)
 		rc.SchedulerOnlineFillTimeout = robotconfig.Clamp(rc.SchedulerOnlineFillTimeout*2, 60, 300)
+		rc.SchedulerOnlineRetryBaseMS = robotconfig.Clamp(rc.SchedulerOnlineRetryBaseMS*2, 5000, 60000)
+		rc.SchedulerOnlineRetryMaxMS = robotconfig.Clamp(rc.SchedulerOnlineRetryMaxMS*2, 60000, 1800000)
+		rc.SchedulerOnlineInFlight = robotconfig.Clamp(rc.SchedulerOnlineInFlight/2, 2, 24)
 		rc.AutoMoveIntervalMinSec = robotconfig.Clamp(rc.AutoMoveIntervalMinSec*3/2, 10, 45)
 		rc.AutoMoveIntervalMaxSec = robotconfig.Clamp(rc.AutoMoveIntervalMaxSec*3/2, rc.AutoMoveIntervalMinSec+12, 90)
 		rc.SchedulerStoreConcurrent = robotconfig.Clamp(rc.SchedulerStoreConcurrent/2, 2, 25)

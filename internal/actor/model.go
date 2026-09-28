@@ -73,9 +73,27 @@ type Snapshot struct {
 	BusyKind       string
 	OnlineDesired  bool
 	LastOnlineTry  time.Time
+	NextRetryAt    time.Time
 	FirstFailureAt time.Time
 	Failures       int
+	FailureClass   string
 	Quarantined    bool
+}
+
+// Failure classes decide how the scheduler reacts to an online failure.
+// Transport failures (the server or the network is slow) only back off and
+// retry; only data failures may recycle the robot's character.
+const (
+	FailureClassTransport = "transport"
+	FailureClassData      = "data"
+)
+
+// onlineAttemptGate is implemented by the scheduler runtime. It is optional so
+// the actor model still works with runtimes that do not expose the adaptive
+// attempt budget (tests, future backends without login pacing).
+type onlineAttemptGate interface {
+	TryAcquireOnlineAttempt() bool
+	ReleaseOnlineAttempt()
 }
 
 type Health string
@@ -182,7 +200,9 @@ func EvaluateStatus(snapshot Snapshot, now time.Time, cfg StatusConfig, lookup R
 	if snapshot.Failures >= cfg.BadFailures {
 		status.Health = HealthUnhealthy
 		status.HealthReason = "failure_count"
-		status.RecycleUID = true
+		// Only data-level failures justify deleting and recreating the
+		// character. Transport failures are retried with scheduler backoff.
+		status.RecycleUID = snapshot.FailureClass == FailureClassData
 		return status
 	}
 	if snapshot.State == StateOnline && !snapshot.LastOnlineTry.IsZero() {

@@ -1,6 +1,7 @@
 package actor
 
 import (
+	"strings"
 	"time"
 
 	robotcap "robot/internal/capability/robot"
@@ -192,7 +193,7 @@ func (a *Actor) tick(now time.Time) {
 				a.markOnlineHealthy()
 				a.setNextStore(time.Now().Add(time.Duration(rc.AutoStoreFailCooldownSec) * time.Second))
 			} else if res.State != robotcap.ActionStateCancelled {
-				a.recordFailure(time.Now())
+				a.recordFailure(time.Now(), FailureClassTransport)
 			}
 			return
 		}
@@ -338,18 +339,29 @@ func (a *Actor) ensureOnline(now time.Time) {
 	}
 	rc := a.runtime.Config()
 	if a.onlineAttemptTimedOut(uid, now, rc) {
-		failures := a.recordFailure(now)
+		failures := a.recordFailure(now, FailureClassTransport)
 		a.runtime.AddAutoOnline(0, 1)
-		foundationlog.Robotf("[Actor] online_confirm_timeout slot=%d uid=%d failures=%d\n", a.slotIDValue(), uid, failures)
+		delay := robotconfig.OnlineRetryBackoff(rc, failures, a.randIntn)
+		foundationlog.Robotf("[Actor] online_confirm_timeout slot=%d uid=%d failures=%d retry_in=%s\n", a.slotIDValue(), uid, failures, delay)
 		a.clearOnlineAttempt()
+		a.setNextRetryAt(now.Add(delay))
 		return
 	}
 	if a.onlineConfirmPending(uid, now, rc) {
 		a.markOnlinePending(now)
 		return
 	}
-	if now.Sub(a.lastOnlineTryValue()) < time.Duration(rc.ReconnectDelayMS)*time.Millisecond {
+	// The scheduler owns the adaptive attempt budget: the fixed per-actor
+	// reconnect delay is replaced by a scheduler-computed retry deadline and a
+	// shared rate/in-flight gate.
+	if retryAt := a.nextRetryAtValue(); !retryAt.IsZero() && now.Before(retryAt) {
 		return
+	}
+	if gate, ok := a.runtime.(onlineAttemptGate); ok {
+		if !gate.TryAcquireOnlineAttempt() {
+			return
+		}
+		defer gate.ReleaseOnlineAttempt()
 	}
 	a.setLastOnlineTry(now)
 	a.setState(StateOnline)
@@ -366,7 +378,34 @@ func (a *Actor) ensureOnline(now time.Time) {
 		a.markOnlinePending(now)
 		return
 	}
-	failures := a.recordFailure(now)
+	failures := a.recordFailure(now, classifyOnlineFailure(res))
 	a.runtime.AddAutoOnline(0, 1)
-	foundationlog.Robotf("[Actor] online_failed slot=%d uid=%d failures=%d state=%s msg=%s\n", a.slotIDValue(), uid, failures, res.State, res.Message)
+	delay := robotconfig.OnlineRetryBackoff(rc, failures, a.randIntn)
+	a.setNextRetryAt(now.Add(delay))
+	foundationlog.Robotf("[Actor] online_failed slot=%d uid=%d failures=%d class=%s retry_in=%s state=%s msg=%s\n",
+		a.slotIDValue(), uid, failures, a.failureClassValue(), delay, res.State, res.Message)
+}
+
+// classifyOnlineFailure separates failures that need a character repair from
+// failures that only need a slower retry. Markers stay conservative: anything
+// unrecognized is a transport failure so a load spike can never trigger the
+// destructive delete/recreate path.
+func classifyOnlineFailure(res robotcap.ActionResult) string {
+	if res.State == robotcap.ActionStateMissing || res.State == robotcap.ActionStateMissingActor {
+		return FailureClassData
+	}
+	message := strings.ToLower(res.Message)
+	for _, marker := range []string{
+		"no usable character",
+		"character not found",
+		"identity",
+		"profession",
+		"provision",
+		"uid range",
+	} {
+		if strings.Contains(message, marker) {
+			return FailureClassData
+		}
+	}
+	return FailureClassTransport
 }

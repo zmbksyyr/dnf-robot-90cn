@@ -27,6 +27,8 @@ func Default() RuntimeConfig {
 		AutoGamePortStableSec: 15, AutoGamePortCheckTimeoutMS: 800,
 		SchedulerBadRecoverSec: 60, SchedulerBadFailures: 3, SchedulerMetricsIntervalSec: 10, SchedulerStoreConcurrent: 30, SchedulerOnlineBatchSize: 120, SchedulerOnlineStartRate: 20, SchedulerOnlineFillTimeout: 120,
 		SchedulerBreakerAbnormalPct: 30, SchedulerBreakerPauseSec: 300, SchedulerBreakerReleaseBatch: 20, SchedulerBreakerFloorPct: 70, SchedulerPortDownReleaseBatch: 20,
+		SchedulerOnlineRetryBaseMS: 5000, SchedulerOnlineRetryMaxMS: 300000, SchedulerOnlineRetryJitterPct: 20, SchedulerOnlineInFlight: 12,
+		SchedulerRecycleCooldownSec: 600, SchedulerOnlineBreakerPauseSec: 60, SchedulerCreateBatchSize: 10,
 		SystemActorPollMS: 3000, SystemManualActionTimeoutSec: 60, SystemPacketRatePerSec: 20,
 	}
 }
@@ -312,6 +314,57 @@ func normalizeSchedulerDefaults(rc *RuntimeConfig) {
 	}
 	if rc.SchedulerPortDownReleaseBatch > 120 {
 		rc.SchedulerPortDownReleaseBatch = 120
+	}
+	// Online retry pacing. The retry budget is intentionally clamped well below
+	// the old 20-60/s fill rates: the mandatory login/select flow is expensive
+	// and a retry must never outrun the scheduler's adaptive attempt rate.
+	if rc.SchedulerOnlineRetryBaseMS < 1000 {
+		rc.SchedulerOnlineRetryBaseMS = 5000
+	}
+	if rc.SchedulerOnlineRetryBaseMS > 60000 {
+		rc.SchedulerOnlineRetryBaseMS = 60000
+	}
+	if rc.SchedulerOnlineRetryMaxMS < rc.SchedulerOnlineRetryBaseMS {
+		rc.SchedulerOnlineRetryMaxMS = 300000
+	}
+	if rc.SchedulerOnlineRetryMaxMS < rc.SchedulerOnlineRetryBaseMS {
+		rc.SchedulerOnlineRetryMaxMS = rc.SchedulerOnlineRetryBaseMS
+	}
+	if rc.SchedulerOnlineRetryMaxMS > 1800000 {
+		rc.SchedulerOnlineRetryMaxMS = 1800000
+	}
+	if rc.SchedulerOnlineRetryJitterPct < 0 {
+		rc.SchedulerOnlineRetryJitterPct = 20
+	}
+	if rc.SchedulerOnlineRetryJitterPct > 50 {
+		rc.SchedulerOnlineRetryJitterPct = 50
+	}
+	if rc.SchedulerOnlineInFlight <= 0 {
+		rc.SchedulerOnlineInFlight = 12
+	}
+	if rc.SchedulerOnlineInFlight > 64 {
+		rc.SchedulerOnlineInFlight = 64
+	}
+	if rc.SchedulerRecycleCooldownSec <= 0 {
+		rc.SchedulerRecycleCooldownSec = 600
+	}
+	if rc.SchedulerRecycleCooldownSec > 3600 {
+		rc.SchedulerRecycleCooldownSec = 3600
+	}
+	if rc.SchedulerOnlineBreakerPauseSec <= 0 {
+		rc.SchedulerOnlineBreakerPauseSec = 60
+	}
+	if rc.SchedulerOnlineBreakerPauseSec < 15 {
+		rc.SchedulerOnlineBreakerPauseSec = 15
+	}
+	if rc.SchedulerOnlineBreakerPauseSec > 300 {
+		rc.SchedulerOnlineBreakerPauseSec = 300
+	}
+	if rc.SchedulerCreateBatchSize <= 0 {
+		rc.SchedulerCreateBatchSize = 10
+	}
+	if rc.SchedulerCreateBatchSize > 40 {
+		rc.SchedulerCreateBatchSize = 40
 	}
 }
 

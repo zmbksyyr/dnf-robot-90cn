@@ -26,14 +26,29 @@ func TestActorStateConstants(t *testing.T) {
 
 func TestEvaluateStatusFailureCount(t *testing.T) {
 	now := time.Now()
-	status := EvaluateStatus(Snapshot{
+	dataStatus := EvaluateStatus(Snapshot{
 		Mode:           ModeAuto,
 		UID:            801,
 		Failures:       5,
+		FailureClass:   FailureClassData,
 		FirstFailureAt: now.Add(-10 * time.Second),
 	}, now, StatusConfig{BadFailures: 5}, nil)
-	if !status.RecycleUID || status.HealthReason != "failure_count" {
-		t.Fatalf("status got recycle=%v reason=%q, want failure_count recycle", status.RecycleUID, status.HealthReason)
+	if !dataStatus.RecycleUID || dataStatus.HealthReason != "failure_count" {
+		t.Fatalf("data failure status got recycle=%v reason=%q, want failure_count recycle", dataStatus.RecycleUID, dataStatus.HealthReason)
+	}
+
+	transportStatus := EvaluateStatus(Snapshot{
+		Mode:           ModeAuto,
+		UID:            802,
+		Failures:       5,
+		FailureClass:   FailureClassTransport,
+		FirstFailureAt: now.Add(-10 * time.Second),
+	}, now, StatusConfig{BadFailures: 5}, nil)
+	if transportStatus.RecycleUID {
+		t.Fatalf("transport failure must back off instead of recycling: %+v", transportStatus)
+	}
+	if transportStatus.Health != HealthUnhealthy || transportStatus.HealthReason != "failure_count" {
+		t.Fatalf("transport failure status got health=%s reason=%q", transportStatus.Health, transportStatus.HealthReason)
 	}
 }
 

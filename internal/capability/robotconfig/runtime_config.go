@@ -97,6 +97,16 @@ type RuntimeConfig struct {
 	SchedulerBreakerReleaseBatch  int    `json:"scheduler_breaker_release_batch"`
 	SchedulerBreakerFloorPct      int    `json:"scheduler_breaker_floor_percent"`
 	SchedulerPortDownReleaseBatch int    `json:"scheduler_port_down_release_batch"`
+	// Online retry pacing. Every login attempt - the initial fill and each
+	// actor retry - draws from the scheduler's adaptive attempt budget, so the
+	// adaptive policy owns the retry rate instead of per-actor fixed delays.
+	SchedulerOnlineRetryBaseMS     int `json:"scheduler_online_retry_base_ms"`
+	SchedulerOnlineRetryMaxMS      int `json:"scheduler_online_retry_max_ms"`
+	SchedulerOnlineRetryJitterPct  int `json:"scheduler_online_retry_jitter_percent"`
+	SchedulerOnlineInFlight        int `json:"scheduler_online_in_flight"`
+	SchedulerRecycleCooldownSec    int `json:"scheduler_recycle_cooldown_sec"`
+	SchedulerOnlineBreakerPauseSec int `json:"scheduler_online_breaker_pause_sec"`
+	SchedulerCreateBatchSize       int `json:"scheduler_create_batch_size"`
 	SystemActorPollMS             int    `json:"system_actor_poll_ms"`
 	SystemManualActionTimeoutSec  int    `json:"system_manual_action_timeout_sec"`
 	SystemPacketRatePerSec        int    `json:"system_packet_rate_per_sec"`

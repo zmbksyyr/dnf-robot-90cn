@@ -31,8 +31,10 @@ func (a *Actor) resetForUID(uid int) {
 	a.uid = uid
 	a.clearAutoScheduleLocked()
 	a.lastOnlineTry = time.Time{}
+	a.nextRetryAt = time.Time{}
 	a.firstFailureAt = time.Time{}
 	a.failures = 0
+	a.failureClass = ""
 	a.busy = false
 	a.busyKind = ""
 	a.releaseRequested = false
@@ -74,6 +76,8 @@ func (a *Actor) markOnlineHealthy() {
 	a.failures = 0
 	a.firstFailureAt = time.Time{}
 	a.lastOnlineTry = time.Time{}
+	a.nextRetryAt = time.Time{}
+	a.failureClass = ""
 	a.stateMu.Unlock()
 }
 
@@ -141,14 +145,33 @@ func (a *Actor) setLastOnlineTry(t time.Time) {
 	a.stateMu.Unlock()
 }
 
-func (a *Actor) recordFailure(now time.Time) int {
+func (a *Actor) recordFailure(now time.Time, class string) int {
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
 	a.failures++
+	a.failureClass = class
 	if a.firstFailureAt.IsZero() {
 		a.firstFailureAt = now
 	}
 	return a.failures
+}
+
+func (a *Actor) failureClassValue() string {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	return a.failureClass
+}
+
+func (a *Actor) setNextRetryAt(t time.Time) {
+	a.stateMu.Lock()
+	a.nextRetryAt = t
+	a.stateMu.Unlock()
+}
+
+func (a *Actor) nextRetryAtValue() time.Time {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	return a.nextRetryAt
 }
 
 func (a *Actor) runBusy(kind string, fn func()) {
@@ -197,8 +220,10 @@ func (a *Actor) snapshot() Snapshot {
 		BusyKind:       a.busyKind,
 		OnlineDesired:  a.onlineDesired,
 		LastOnlineTry:  a.lastOnlineTry,
+		NextRetryAt:    a.nextRetryAt,
 		FirstFailureAt: a.firstFailureAt,
 		Failures:       a.failures,
+		FailureClass:   a.failureClass,
 		Quarantined:    a.quarantined,
 	}
 }

@@ -1,6 +1,9 @@
 package robotconfig
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestOnlineStartRate(t *testing.T) {
 	tests := []struct {
@@ -92,5 +95,65 @@ func TestNormalizeRobotUIDSegment(t *testing.T) {
 	Normalize(&rc)
 	if rc.RobotUIDStart != 17000000 || rc.RobotUIDEnd != 17000999 {
 		t.Fatalf("uid segment got %d-%d want 17000000-17000999", rc.RobotUIDStart, rc.RobotUIDEnd)
+	}
+}
+
+func TestOnlineRetryBackoffGrowsAndCaps(t *testing.T) {
+	rc := RuntimeConfig{SchedulerOnlineRetryBaseMS: 5000, SchedulerOnlineRetryMaxMS: 300000, SchedulerOnlineRetryJitterPct: 0}
+	want := []int{5000, 10000, 20000, 40000, 80000, 160000, 300000, 300000}
+	for failures := 1; failures <= len(want); failures++ {
+		got := OnlineRetryBackoff(rc, failures, nil)
+		if got != time.Duration(want[failures-1])*time.Millisecond {
+			t.Fatalf("failures=%d got %s want %dms", failures, got, want[failures-1])
+		}
+	}
+}
+
+func TestOnlineRetryBackoffJitterStaysBounded(t *testing.T) {
+	rc := RuntimeConfig{SchedulerOnlineRetryBaseMS: 5000, SchedulerOnlineRetryMaxMS: 300000, SchedulerOnlineRetryJitterPct: 20}
+	centerConfig := rc
+	centerConfig.SchedulerOnlineRetryJitterPct = 0
+	randIntn := func(n int) int { return n - 1 }
+	for failures := 1; failures <= 6; failures++ {
+		center := OnlineRetryBackoff(centerConfig, failures, nil)
+		low := OnlineRetryBackoff(rc, failures, func(int) int { return 0 })
+		high := OnlineRetryBackoff(rc, failures, randIntn)
+		if low < center-center/5 || high > center+center/5 {
+			t.Fatalf("failures=%d jitter got %s..%s center %s", failures, low, high, center)
+		}
+	}
+}
+
+func TestNormalizeClampsOnlinePacing(t *testing.T) {
+	rc := RuntimeConfig{
+		SchedulerOnlineRetryBaseMS:     100,
+		SchedulerOnlineRetryMaxMS:      50,
+		SchedulerOnlineRetryJitterPct:  99,
+		SchedulerOnlineInFlight:        999,
+		SchedulerRecycleCooldownSec:    -1,
+		SchedulerOnlineBreakerPauseSec: 1,
+		SchedulerCreateBatchSize:       999,
+	}
+	Normalize(&rc)
+	if rc.SchedulerOnlineRetryBaseMS != 5000 {
+		t.Fatalf("retry base got %d want 5000", rc.SchedulerOnlineRetryBaseMS)
+	}
+	if rc.SchedulerOnlineRetryMaxMS != 300000 {
+		t.Fatalf("retry max got %d want 300000", rc.SchedulerOnlineRetryMaxMS)
+	}
+	if rc.SchedulerOnlineRetryJitterPct != 50 {
+		t.Fatalf("retry jitter got %d want 50", rc.SchedulerOnlineRetryJitterPct)
+	}
+	if rc.SchedulerOnlineInFlight != 64 {
+		t.Fatalf("online in flight got %d want 64", rc.SchedulerOnlineInFlight)
+	}
+	if rc.SchedulerRecycleCooldownSec != 600 {
+		t.Fatalf("recycle cooldown got %d want 600", rc.SchedulerRecycleCooldownSec)
+	}
+	if rc.SchedulerOnlineBreakerPauseSec != 15 {
+		t.Fatalf("online breaker pause got %d want 15", rc.SchedulerOnlineBreakerPauseSec)
+	}
+	if rc.SchedulerCreateBatchSize != 40 {
+		t.Fatalf("create batch got %d want 40", rc.SchedulerCreateBatchSize)
 	}
 }
