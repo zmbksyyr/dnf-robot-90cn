@@ -214,3 +214,35 @@ INSERT INTO characters(character_id, delete_flag) VALUES(9, 0), (10, 1);`); err 
 		t.Fatal("deleted character unexpectedly prepared")
 	}
 }
+
+func TestDisjointProfessionReadyProbe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inventory.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`PRAGMA foreign_keys=ON;
+CREATE TABLE characters(character_id INTEGER PRIMARY KEY, delete_flag INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE character_subtype0_fields(character_id INTEGER PRIMARY KEY, expert_job_type INTEGER NOT NULL DEFAULT 0, expert_job_exp INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE character_expert_job(character_id INTEGER PRIMARY KEY, giveup_count INTEGER NOT NULL DEFAULT 0, disjoint_machine_grade INTEGER NOT NULL DEFAULT 0, disjoint_machine_endurance INTEGER NOT NULL DEFAULT 0, enchanter_endurance INTEGER NOT NULL DEFAULT 0, updated_at TEXT);
+INSERT INTO characters(character_id, delete_flag) VALUES(9, 0), (10, 0), (11, 0), (12, 1);
+INSERT INTO character_subtype0_fields(character_id, expert_job_type, expert_job_exp) VALUES(10, 3, 800), (11, 3, 800), (12, 3, 800);
+INSERT INTO character_expert_job(character_id, disjoint_machine_grade, disjoint_machine_endurance) VALUES(10, 1, 300), (11, 1, 5), (12, 1, 300);`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+	writer := DisjointProfessionWriter{DatabasePath: path}
+	for cid, want := range map[int]bool{9: false, 10: true, 11: false, 12: false} {
+		ready, err := writer.DisjointProfessionReady(cid)
+		if err != nil {
+			t.Fatalf("cid=%d probe err=%v", cid, err)
+		}
+		if ready != want {
+			t.Fatalf("cid=%d ready=%t want=%t", cid, ready, want)
+		}
+	}
+	if _, err := writer.DisjointProfessionReady(0); err == nil {
+		t.Fatal("invalid character id unexpectedly probed")
+	}
+}

@@ -34,6 +34,13 @@ const (
 	// the full durability instead of a stale partially used machine.
 	s4a21DisjointMachineGrade     = 1
 	s4a21DisjointMachineEndurance = 300
+	// s4a21DisjointMachineMaxGrade mirrors the PVF [endurance repair cost] rule
+	// count the server accepts as the machine grade ceiling.
+	s4a21DisjointMachineMaxGrade = 11
+	// s4a21DisjointMachineRefreshEndurance is the floor below which a store
+	// attempt refreshes the machine offline. Above it the profession probe lets
+	// the robot open the next machine on its existing session.
+	s4a21DisjointMachineRefreshEndurance = 100
 
 	disjointProfessionWriteTimeout = 6 * time.Second
 )
@@ -112,4 +119,44 @@ func (w DisjointProfessionWriter) EnsureDisjointProfession(cid int) error {
 			cid, expertJobType, expertJobExp, grade, endurance)
 	}
 	return nil
+}
+
+// DisjointProfessionReady reports whether the character can open another
+// machine without an offline refresh. The read is used to skip the logout,
+// profession write and login cycle while the machine still has durability.
+func (w DisjointProfessionWriter) DisjointProfessionReady(cid int) (bool, error) {
+	if strings.TrimSpace(w.DatabasePath) == "" {
+		return false, fmt.Errorf("S4A21 disjoint profession database path is empty")
+	}
+	if cid <= 0 {
+		return false, fmt.Errorf("S4A21 disjoint profession character id=%d is invalid", cid)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), disjointProfessionWriteTimeout)
+	defer cancel()
+	db, err := sql.Open("sqlite", w.DatabasePath)
+	if err != nil {
+		return false, fmt.Errorf("open S4A21 disjoint profession database: %w", err)
+	}
+	defer db.Close()
+	configureSQLitePool(db)
+	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout=5000;`); err != nil {
+		return false, fmt.Errorf("configure S4A21 disjoint profession read: %w", err)
+	}
+	var jobType, grade, endurance int
+	err = db.QueryRowContext(ctx, `
+		SELECT COALESCE(f.expert_job_type, 0),
+		       COALESCE(e.disjoint_machine_grade, 0), COALESCE(e.disjoint_machine_endurance, 0)
+		FROM characters c
+		LEFT JOIN character_subtype0_fields f ON f.character_id=c.character_id
+		LEFT JOIN character_expert_job e ON e.character_id=c.character_id
+		WHERE c.character_id=? AND c.delete_flag=0`, cid).Scan(&jobType, &grade, &endurance)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, fmt.Errorf("read S4A21 disjoint profession cid=%d: %w", cid, err)
+	}
+	return jobType == s4a21DisjointerExpertJobType &&
+		grade >= 1 && grade <= s4a21DisjointMachineMaxGrade &&
+		endurance >= s4a21DisjointMachineRefreshEndurance, nil
 }

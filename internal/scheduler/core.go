@@ -283,9 +283,11 @@ type BackendStoreRuntime interface {
 // BackendDisjointProfessionWriter prepares the disassembler profession in the
 // adapter's persistence boundary. It runs while the account is offline and
 // before the next login; backends without a writer keep the capability
-// disabled instead of faking the protocol state.
+// disabled instead of faking the protocol state. The read-only probe lets the
+// scheduler skip the offline cycle while the machine still has durability.
 type BackendDisjointProfessionWriter interface {
 	EnsureDisjointProfession(cid int) error
+	DisjointProfessionReady(cid int) (bool, error)
 }
 
 // SetBackendStoreRuntime installs the selected adapter's store session
