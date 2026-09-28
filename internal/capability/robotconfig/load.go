@@ -139,6 +139,8 @@ func decodeConfig(ini *config.INIConfig) (RuntimeConfig, error) {
 	rc.ServerNoticeMaxGapSec = dec.Int("auto", "server_notice_max_gap_sec", rc.ServerNoticeMaxGapSec)
 	rc.ServerNoticeMaxPerHour = dec.Int("auto", "server_notice_max_per_hour", rc.ServerNoticeMaxPerHour)
 	rc.ServerNoticeLotteryPercent = dec.Int("auto", "server_notice_lottery_percent", rc.ServerNoticeLotteryPercent)
+	rc.ServerNoticeVillage = dec.Int("auto", "server_notice_village", rc.ServerNoticeVillage)
+	rc.ServerNoticeArea = dec.Int("auto", "server_notice_area", rc.ServerNoticeArea)
 
 	rc.SchedulerBadRecoverSec = dec.Int("scheduler", "bad_recover_sec", rc.SchedulerBadRecoverSec)
 	rc.SchedulerBadFailures = dec.Int("scheduler", "bad_failures", rc.SchedulerBadFailures)

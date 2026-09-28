@@ -139,6 +139,8 @@ func validateRuntimeConfig(dec *foundationconfig.Decoder, rc RuntimeConfig) erro
 	checkOrder("auto", "server_notice_min_gap_sec", rc.ServerNoticeMinGapSec, "server_notice_max_gap_sec", rc.ServerNoticeMaxGapSec)
 	checkRange("auto", "server_notice_max_per_hour", rc.ServerNoticeMaxPerHour, 0, 3600)
 	checkRange("auto", "server_notice_lottery_percent", rc.ServerNoticeLotteryPercent, 0, 100)
+	checkRange("auto", "server_notice_village", rc.ServerNoticeVillage, -1, 255)
+	checkRange("auto", "server_notice_area", rc.ServerNoticeArea, -1, 255)
 
 	checkRange("scheduler", "bad_recover_sec", rc.SchedulerBadRecoverSec, 1, 86400)
 	checkRange("scheduler", "bad_failures", rc.SchedulerBadFailures, 1, 100)

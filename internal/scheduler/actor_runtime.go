@@ -378,7 +378,7 @@ func (r *RobotRuntime) runServerNotice(uid int, shouldStop func() bool, paced bo
 		if !ok || st.StateName != robotcap.RuntimeStateRunning || st.DisconnectReason != 0 || st.PartyActive || r.PartyActive(uid) {
 			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateOffline}
 		}
-		if st.RobotType == 2 || st.RobotType == 3 || st.StoreDisplayAck {
+		if paced && (st.RobotType == 2 || st.RobotType == 3 || st.StoreDisplayAck) {
 			// Never disturb an active stall; the action timer retries later.
 			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "store_active"}
 		}
@@ -386,6 +386,12 @@ func (r *RobotRuntime) runServerNotice(uid int, shouldStop func() bool, paced bo
 			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled}
 		}
 		rc := r.Config()
+		if paced && rc.ServerNoticeVillage > 0 && st.Village != rc.ServerNoticeVillage {
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "area_filtered"}
+		}
+		if paced && rc.ServerNoticeArea >= 0 && st.Area != rc.ServerNoticeArea {
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "area_filtered"}
+		}
 		if paced && !rc.AutoServerNotice {
 			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "disabled"}
 		}

@@ -79,6 +79,8 @@ type RuntimeConfig struct {
 	ServerNoticeMaxGapSec           int    `json:"server_notice_max_gap_sec"`
 	ServerNoticeMaxPerHour          int    `json:"server_notice_max_per_hour"`
 	ServerNoticeLotteryPercent      int    `json:"server_notice_lottery_percent"`
+	ServerNoticeVillage             int    `json:"server_notice_village"`
+	ServerNoticeArea                int    `json:"server_notice_area"`
 	AutoTargetOnlineCount           int    `json:"auto_target_online_count"`
 	AutoMoveIntervalMinSec          int    `json:"auto_move_interval_min_sec"`
 	AutoMoveIntervalMaxSec          int    `json:"auto_move_interval_max_sec"`

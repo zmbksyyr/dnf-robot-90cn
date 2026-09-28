@@ -30,6 +30,8 @@ func Default() RuntimeConfig {
 		ServerNoticeMaxGapSec:           1200,
 		ServerNoticeMaxPerHour:          10,
 		ServerNoticeLotteryPercent:      60,
+		ServerNoticeVillage:             -1,
+		ServerNoticeArea:                -1,
 		AutoMoveIntervalMinSec:          6, AutoMoveIntervalMaxSec: 18, AutoShoutIntervalMinSec: 45, AutoShoutIntervalMaxSec: 120,
 		AutoStoreProbabilityPercent: 5, AutoStoreIntervalMinSec: 120, AutoStoreIntervalMaxSec: 180, AutoStoreDurationSec: 120, AutoStoreTickSec: 10, AutoStoreMaxPositionTries: 10, AutoStoreFailCooldownSec: 60,
 		AutoGamePortStableSec: 15, AutoGamePortCheckTimeoutMS: 800,
@@ -239,6 +241,12 @@ func normalizeServerNotice(rc *RuntimeConfig) {
 	}
 	if rc.ServerNoticeMaxPerHour > 3600 {
 		rc.ServerNoticeMaxPerHour = 3600
+	}
+	if rc.ServerNoticeVillage != -1 && rc.ServerNoticeVillage < 0 {
+		rc.ServerNoticeVillage = -1
+	}
+	if rc.ServerNoticeArea < -1 {
+		rc.ServerNoticeArea = -1
 	}
 }
 
