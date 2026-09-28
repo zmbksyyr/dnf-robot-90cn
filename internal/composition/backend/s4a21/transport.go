@@ -263,9 +263,11 @@ func (t *ActionTransport) ShoutLocal(ctx context.Context, command shared.Runtime
 
 // SetAreaFrom moves one robot to a store coordinate. The scheduler passes the
 // previous area for diagnostics; the transport derives the transition from its
-// own known location, so a same-area move only sends SET_USER_POSITION.
+// own known location, so a same-area move only sends SET_USER_POSITION. Store
+// transitions use a longer confirmation window than normal movement because
+// they run during store-pressure bursts.
 func (t *ActionTransport) SetAreaFrom(uid int, village, area int, x, y int, fromVillage, fromArea int) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), townAreaTransitionTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), storeAreaTransitionTimeout)
 	defer cancel()
 	if err := t.MoveTown(ctx, shared.RuntimeMoveCommand{UID: uid, Village: village, Area: area, X: x, Y: y}); err != nil {
 		foundationlog.Robotf("[S4A21_STORE_SET_AREA_FAILED] uid=%d from=%d/%d to=%d/%d/%d/%d err=%v\n",

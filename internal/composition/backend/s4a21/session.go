@@ -23,6 +23,12 @@ type SessionFactory struct {
 
 const sessionKeepaliveInterval = 5 * time.Second
 const townAreaTransitionTimeout = 5 * time.Second
+
+// storeAreaTransitionTimeout bounds a disjoint-store area transition. The store
+// slot is held for the whole attempt and the server may answer the area
+// notification late during an online burst, so it gets a wider window than
+// ordinary movement.
+const storeAreaTransitionTimeout = 12 * time.Second
 const guildInviteQueueSize = 4
 
 // sessionKeepaliveAckTimeout is how long the server may stop answering
