@@ -122,7 +122,7 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 	// exactly the case the breaker has to catch. The adaptive attempt gate
 	// honors the breaker, so this pause covers every retry as well.
 	windowAttempts := windowOnlineSuccess + windowOnlineFailed
-	if windowAttempts >= 20 && windowOnlineFailed*100 >= windowAttempts*50 && m.OnlineAttemptInFlight() > 0 {
+	if windowAttempts >= 20 && windowOnlineFailed*100 >= windowAttempts*50 {
 		reason = fmt.Sprintf("online_failures_window success=%d failed=%d in_flight=%d", windowOnlineSuccess, windowOnlineFailed, m.OnlineAttemptInFlight())
 		onlinePause = true
 	}

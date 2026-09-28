@@ -134,6 +134,15 @@ func (a *Actor) tick(now time.Time) {
 	}
 	rc := a.runtime.Config()
 	if !a.runtime.IsActive(uid) {
+		// A previously live session disappeared (keepalive stall or server
+		// disconnect). Count one transport failure so the reconnect backs off
+		// instead of immediately hammering the server again.
+		if a.clearOnlineEstablished() {
+			failures := a.recordFailure(now, FailureClassTransport)
+			delay := robotconfig.OnlineRetryBackoff(rc, failures, a.randIntn)
+			a.setNextRetryAt(now.Add(delay))
+			foundationlog.Robotf("[Actor] online_lost slot=%d uid=%d failures=%d retry_in=%s\n", a.slotIDValue(), uid, failures, delay)
+		}
 		a.ensureOnline(now)
 		return
 	}

@@ -32,6 +32,7 @@ type Actor struct {
 	firstFailureAt   time.Time
 	failures         int
 	failureClass     string
+	onlineEstablished bool
 	busy             bool
 	busyKind         string
 	releaseRequested bool

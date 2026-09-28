@@ -92,9 +92,12 @@ func (r *reconnectRuntime) disconnect() {
 
 func TestActorReconnectsAfterRuntimeDisconnect(t *testing.T) {
 	runtime := &reconnectRuntime{config: robotconfig.RuntimeConfig{
-		SystemActorPollMS:      100,
-		ReconnectDelayMS:       0,
-		OnlineConfirmTimeoutMS: 1000,
+		SystemActorPollMS:             100,
+		ReconnectDelayMS:              0,
+		OnlineConfirmTimeoutMS:        1000,
+		SchedulerOnlineRetryBaseMS:    1000,
+		SchedulerOnlineRetryMaxMS:     1000,
+		SchedulerOnlineRetryJitterPct: 0,
 	}}
 	actor := NewActor(1, ModeAuto, runtime)
 	actor.Start()

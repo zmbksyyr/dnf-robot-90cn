@@ -35,6 +35,7 @@ func (a *Actor) resetForUID(uid int) {
 	a.firstFailureAt = time.Time{}
 	a.failures = 0
 	a.failureClass = ""
+	a.onlineEstablished = false
 	a.busy = false
 	a.busyKind = ""
 	a.releaseRequested = false
@@ -78,7 +79,26 @@ func (a *Actor) markOnlineHealthy() {
 	a.lastOnlineTry = time.Time{}
 	a.nextRetryAt = time.Time{}
 	a.failureClass = ""
+	a.onlineEstablished = true
 	a.stateMu.Unlock()
+}
+
+// markOnlineEstablished records that the session was observed live.
+func (a *Actor) markOnlineEstablished() {
+	a.stateMu.Lock()
+	a.onlineEstablished = true
+	a.stateMu.Unlock()
+}
+
+// clearOnlineEstablished reports whether a live session was lost. Callers use
+// it to count one transport failure so a keepalive stall or server disconnect
+// backs off instead of reconnecting immediately.
+func (a *Actor) clearOnlineEstablished() bool {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	was := a.onlineEstablished
+	a.onlineEstablished = false
+	return was
 }
 
 func (a *Actor) clearOnlineAttempt() {
