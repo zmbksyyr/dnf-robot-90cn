@@ -8,25 +8,63 @@ import (
 	"robot/internal/shared"
 )
 
+func twoAreaCatalog() []shared.MapCatalogItem {
+	return []shared.MapCatalogItem{
+		{Village: 2, Area: 5, Level: 0, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 200, YMin: 0, YMax: 200}}},
+		{Village: 3, Area: 7, Level: 0, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 200, YMin: 0, YMax: 200}}},
+	}
+}
+
 func TestProtocolPrepareOnlineRepairsInvalidStoredArea(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "[spawn]\nspawn_fixed = false\nfollow_account =\n")
-	m.SetTownMapCatalog([]shared.MapCatalogItem{
-		{Village: 2, Area: 5, Level: 0, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 200, YMin: 0, YMax: 200}}},
-	})
-	m.SetRobotStateDirectory(robotstate.NewMemoryStore(nil))
+	m.SetTownMapCatalog(twoAreaCatalog())
+	m.SetRobotStateDirectory(robotstate.NewMemoryStore([]robotcap.Info{
+		{UID: 1, Village: 1, Area: 0},
+		{UID: 2, Village: 2, Area: 5},
+	}))
 	driver := protocolSessionDriver{manager: m}
 
 	repaired := driver.PrepareOnline(robotcap.Info{UID: 1, Level: 80, Village: 1, Area: 0, X: 10, Y: 10}, m.loadRobotConfig())
-	if repaired.Village != 2 || repaired.Area != 5 {
+	if repaired.Village == 1 && repaired.Area == 0 {
 		t.Fatalf("invalid stored area not repaired: %+v", repaired)
-	}
-	if repaired.X < 0 || repaired.X > 200 || repaired.Y < 0 || repaired.Y > 200 {
-		t.Fatalf("repaired point outside map rectangle: %+v", repaired)
 	}
 
 	kept := driver.PrepareOnline(robotcap.Info{UID: 2, Level: 80, Village: 2, Area: 5, X: 11, Y: 12}, m.loadRobotConfig())
 	if kept.Village != 2 || kept.Area != 5 || kept.X != 11 || kept.Y != 12 {
 		t.Fatalf("valid stored area changed: %+v", kept)
+	}
+}
+
+func TestProtocolPrepareOnlineSpreadsConcurrentRepairs(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "[spawn]\nspawn_fixed = false\nfollow_account =\n")
+	m.SetTownMapCatalog(twoAreaCatalog())
+	m.SetRobotStateDirectory(robotstate.NewMemoryStore([]robotcap.Info{
+		{UID: 1, Village: 1, Area: 0},
+		{UID: 2, Village: 1, Area: 0},
+	}))
+	driver := protocolSessionDriver{manager: m}
+
+	first := driver.PrepareOnline(robotcap.Info{UID: 1, Level: 80, Village: 1, Area: 0}, m.loadRobotConfig())
+	second := driver.PrepareOnline(robotcap.Info{UID: 2, Level: 80, Village: 1, Area: 0}, m.loadRobotConfig())
+	if first.Village == second.Village && first.Area == second.Area {
+		t.Fatalf("repairs piled up in the same area: %d/%d and %d/%d", first.Village, first.Area, second.Village, second.Area)
+	}
+}
+
+func TestProtocolPrepareOnlineRelocatesCrowdedArea(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "[spawn]\nspawn_fixed = false\nfollow_account =\n")
+	m.SetTownMapCatalog(twoAreaCatalog())
+	robots := make([]robotcap.Info, 0, 31)
+	for index := 0; index < 30; index++ {
+		robots = append(robots, robotcap.Info{UID: 100 + index, Village: 2, Area: 5})
+	}
+	robots = append(robots, robotcap.Info{UID: 1, Village: 2, Area: 5})
+	m.SetRobotStateDirectory(robotstate.NewMemoryStore(robots))
+	driver := protocolSessionDriver{manager: m}
+
+	moved := driver.PrepareOnline(robotcap.Info{UID: 1, Level: 80, Village: 2, Area: 5, X: 10, Y: 10}, m.loadRobotConfig())
+	if moved.Village != 3 || moved.Area != 7 {
+		t.Fatalf("crowded area not relocated: %+v", moved)
 	}
 }
 

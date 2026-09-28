@@ -87,6 +87,14 @@ type protocolSessionDriver struct {
 
 func (protocolSessionDriver) EnsureWorldHorn(int) error { return nil }
 
+const (
+	// spawnCrowdFloor/Bias bound when an online character is relocated out of
+	// an over-crowded map: it must hold more than spawnCrowdFloor robots and
+	// more than spawnCrowdBias times the least crowded spawn area.
+	spawnCrowdFloor = 20
+	spawnCrowdBias  = 4
+)
+
 func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.RuntimeConfig) robotcap.Info {
 	maps := d.manager.loadMapCatalog()
 	if rc.SpawnFixed || strings.TrimSpace(rc.FollowAccount) != "" {
@@ -97,21 +105,42 @@ func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.
 	if len(spawnMaps) == 0 {
 		spawnMaps = maps
 	}
-	if robotspawn.HasUsableMap(spawnMaps, info.Village, info.Area) {
-		return info
-	}
-	// Adopted or freshly created characters can carry the server's default
-	// town (1/0) or an event/housing area an older build repaired into. Neither
-	// confirms town entry, so pick a capacity-balanced regular town instead.
 	locations, err := d.manager.robotLocations()
 	if err != nil {
 		locations = nil
 	}
+	valid := robotspawn.HasUsableMap(spawnMaps, info.Village, info.Area)
+	crowded := false
+	if valid && len(locations) > 0 {
+		counts := make(map[shared.MapAreaKey]int, len(locations))
+		for _, location := range locations {
+			counts[shared.MapAreaKey{Village: location.Village, Area: location.Area}]++
+		}
+		mine := counts[shared.MapAreaKey{Village: info.Village, Area: info.Area}]
+		least := mine
+		for _, mp := range spawnMaps {
+			if count := counts[shared.MapAreaKey{Village: mp.Village, Area: mp.Area}]; count < least {
+				least = count
+				if least == 0 {
+					break
+				}
+			}
+		}
+		crowded = mine > spawnCrowdFloor && mine > least*spawnCrowdBias
+	}
+	if valid && !crowded {
+		return info
+	}
+	// Adopted or freshly created characters can carry the server's default
+	// town (1/0), an event/housing area, or pile up in a single map. None of
+	// those are stable homes, so pick a capacity-balanced regular town and
+	// record it immediately so concurrent decisions see the same occupancy.
 	if target, ok := robotspawn.BalancedLocation(spawnEnv{manager: d.manager}, spawnMaps, info.Level, locations); ok {
-		robotLogf("[SpawnRepair] uid=%d cid=%d level=%d invalid=%d/%d -> %d/%d/%d/%d\n",
-			info.UID, info.CID, info.Level, info.Village, info.Area, target.Map.Village, target.Map.Area, target.X, target.Y)
+		robotLogf("[SpawnRepair] uid=%d cid=%d level=%d from=%d/%d -> %d/%d/%d/%d crowded=%t\n",
+			info.UID, info.CID, info.Level, info.Village, info.Area, target.Map.Village, target.Map.Area, target.X, target.Y, crowded)
 		info.Village, info.Area = target.Map.Village, target.Map.Area
 		info.X, info.Y = target.X, target.Y
+		d.manager.rememberRobotLocation(info.UID, info.Village, info.Area, info.X, info.Y)
 	}
 	return info
 }

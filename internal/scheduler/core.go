@@ -403,6 +403,20 @@ func (m *RobotManager) robotLocations() ([]shared.MapLocation, error) {
 	return nil, errSchedulerStorageUnavailable
 }
 
+// rememberRobotLocation records an intended location in the robot directory so
+// concurrent spawn/repair decisions share the same occupancy view. Movement
+// keeps flowing through the position batcher; this is only for planning-time
+// placements that would otherwise pile up because nobody sees them yet.
+func (m *RobotManager) rememberRobotLocation(uid, village, area, x, y int) {
+	if m == nil || m.robotState == nil || uid <= 0 {
+		return
+	}
+	update := robotcap.PositionUpdate{UID: uid, Village: village, Area: area, X: x, Y: y}
+	if err := m.robotState.UpdateRobotPositions(context.Background(), []robotcap.PositionUpdate{update}); err != nil {
+		robotLogf("SPAWN_LOCATION_WRITE_FAILED uid=%d err=%v\n", uid, err)
+	}
+}
+
 func (m *RobotManager) positionRepo() robotPositionWriter {
 	if m.robotState != nil {
 		return m.robotState
