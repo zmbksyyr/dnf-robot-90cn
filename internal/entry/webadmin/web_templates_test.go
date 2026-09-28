@@ -113,10 +113,12 @@ func TestSchedulerAndActorStoreStatusAreLocalized(t *testing.T) {
 			t.Errorf("localized dashboard is missing %q", want)
 		}
 	}
-	// The scheduler strip must stay one compact line per metric: single
-	// character labels, symbol-separated values and a full-name tooltip.
+	// The scheduler strip keeps full labels but uses symbol-separated values so
+	// each metric stays on one line, with the long form in a tooltip.
 	for _, want := range []string{
-		`'scheduler.store_policy':'摊'`,
+		`'scheduler.policy_mode':'策略模式'`,
+		`'scheduler.store_policy':'摆摊策略'`,
+		`'scheduler.store_policy':'Store policy'`,
 		`'scheduler.store_value':'{running}/{target}·{concurrent}·{probability}%'`,
 		`'scheduler.attach_value':'{rate}/s·{batch}'`,
 		`'scheduler.scale_value':'+{up}/-{down}'`,
