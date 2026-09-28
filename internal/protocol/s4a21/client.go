@@ -19,26 +19,18 @@ const DefaultMaxPacketLength = 1024 * 1024
 const defaultWriteTimeout = 15 * time.Second
 
 type Client struct {
-	conn            net.Conn
-	udpConn         *net.UDPConn
-	sendMu          lockhub.Locker
-	udpMu           lockhub.Locker
-	udpPeers        map[string]*partyUDPPeer
-	udpPeerDrops    int
-	udpTraceEvents  int
-	udpSendCounter  uint32
-	partySlots      map[uint16]byte
-	partyTownKnown  bool
-	partyTownFlag   uint32
-	partyTown       uint32
-	partyTownArea   uint32
-	partyAppHandler func(PartyAppPosition)
-	startedAt       time.Time
-	selfUID         uint16
-	selfSlot        byte
-	slotKnown       bool
-	maxSize         int
-	writeTimeout    time.Duration
+	conn           net.Conn
+	udpConn        *net.UDPConn
+	sendMu         lockhub.Locker
+	udpMu          lockhub.Locker
+	udpPeers       map[string]*partyUDPPeer
+	udpPeerDrops   int
+	udpTraceEvents int
+	selfUID        uint16
+	selfSlot       byte
+	slotKnown      bool
+	maxSize        int
+	writeTimeout   time.Duration
 }
 
 func Dial(ctx context.Context, address string) (*Client, error) {
@@ -60,8 +52,6 @@ func NewClient(conn net.Conn) *Client {
 		maxSize:      DefaultMaxPacketLength,
 		writeTimeout: defaultWriteTimeout,
 		udpPeers:     make(map[string]*partyUDPPeer),
-		partySlots:   make(map[uint16]byte),
-		startedAt:    time.Now(),
 	}
 }
 
@@ -73,7 +63,6 @@ func (c *Client) SetPartyIdentity(uid uint16) {
 	c.selfSlot = 0
 	c.slotKnown = false
 	c.udpPeers = make(map[string]*partyUDPPeer)
-	c.partySlots = make(map[uint16]byte)
 	c.udpPeerDrops = 0
 	c.udpMu.Unlock()
 }
@@ -230,12 +219,6 @@ func (c *Client) FinishLoading(ctx context.Context) error {
 	return c.send(ctx, Encode(1, CmdFinishLoading, FinishLoadingBody()))
 }
 
-// ChangePartyHost delegates party leadership to the member in the given roster
-// slot. The A21 command carries the target slot, not the user id.
-func (c *Client) ChangePartyHost(ctx context.Context, slot byte) error {
-	return c.send(ctx, Encode(1, CmdChangePartyHost, []byte{slot}))
-}
-
 func (c *Client) SetUserPosition(ctx context.Context, x, y int16, direction byte, motion uint16) error {
 	return c.send(ctx, Encode(1, CmdSetUserPosition, SetUserPositionBody(x, y, direction, motion)))
 }
@@ -305,13 +288,8 @@ func (c *Client) Read(ctx context.Context) (Packet, error) {
 
 func (c *Client) readFrame() (Packet, error) {
 	packet, err := ReadFrame(c.conn, c.maxSize)
-	if err == nil {
-		switch packet.Type {
-		case NotiPartyRealtimeInfo:
-			c.applyPartyRealtimeInfo(packet.Body)
-		case NotiUserUDPIPPort:
-			c.StartPartyUDPExchange(packet.Body)
-		}
+	if err == nil && packet.Type == NotiPartyRealtimeInfo {
+		c.applyPartyRealtimeInfo(packet.Body)
 	}
 	return packet, err
 }

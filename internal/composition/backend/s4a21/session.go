@@ -41,21 +41,11 @@ type Session struct {
 	packetObservers    []*packetObserverRegistration
 	terminationGuard   lockhub.Locker
 	termination        func()
-	dungeonStateGuard  lockhub.Locker
-	dungeonState       *dungeonRunState
 	followerGuard      lockhub.Locker
 	followerCancel     context.CancelFunc
 	followerEvents     chan protocol.Packet
 	followerDone       chan struct{}
 	followerStarting   bool
-	followerTraceCount int
-	followerUDPKnown   bool
-	followerUDPX       int32
-	followerUDPY       int32
-	followerBaseKnown  bool
-	followerBaseX      int32
-	followerBaseY      int32
-	followerRoomStart  time.Time
 	selfUID            uint16
 	partyID            uint16
 	partyLeaderUID     uint16
@@ -260,9 +250,6 @@ func (s *Session) Close() error {
 	// still done before waiting so a worker blocked in a protocol write can
 	// leave promptly.
 	s.stopDungeonFollower(false)
-	s.dungeonStateGuard.Lock()
-	s.dungeonState = nil
-	s.dungeonStateGuard.Unlock()
 	err := s.client.Close()
 	if s.done != nil {
 		<-s.done
@@ -356,8 +343,7 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 	if followerEvents != nil {
 		queueFollowerPacket := false
 		switch packet.Type {
-		case protocol.NotiRequestPeer, protocol.NotiPartyInfo,
-			protocol.NotiStartMap, protocol.NotiFinishLoading:
+		case protocol.NotiRequestPeer, protocol.NotiPartyInfo:
 			queueFollowerPacket = true
 		case protocol.NotiUserPosition, protocol.NotiUserArea:
 			if len(packet.Body) >= 2 {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	foundationlog "robot/internal/foundation/log"
@@ -14,44 +12,12 @@ import (
 
 const dungeonFollowerPrepareTimeout = 5 * time.Second
 
-// followerTraceEnv enables bounded follower diagnostics when set to
-// 1/true/yes/on. The trace records the party-follow TCP packets and mirror
-// sends, which tells whether the server projects leader positions to dungeon
-// followers or whether only the client UDP data plane carries them.
-const followerTraceEnv = "S4A21_PARTY_FOLLOW_TRACE"
-
-const followerTraceLimit = 8192
-
-func followerTraceEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(followerTraceEnv))) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-func (s *Session) traceFollower(format string, args ...any) {
-	if s == nil || !followerTraceEnabled() {
-		return
-	}
-	s.followerGuard.Lock()
-	allowed := s.followerTraceCount < followerTraceLimit
-	if allowed {
-		s.followerTraceCount++
-	}
-	s.followerGuard.Unlock()
-	if allowed {
-		foundationlog.Robotf(format, args...)
-	}
-}
-
 // EnableDungeonFollower explicitly opts a session into the small party
-// follower workflow. It persists the tutorial-skip flag through the server
-// protocol, accepts ordinary party invitations, and follows server-projected
-// START_MAP notifications. It never sends MOVE_MAP or combat packets. The
-// follower lifetime is owned by the session, so the caller's context is not
-// used for cancellation.
+// follower workflow: it persists the tutorial-skip flag through the server
+// protocol and accepts ordinary party invitations. Dungeon room movement and
+// the in-dungeon position plane are deliberately not implemented. The follower
+// lifetime is owned by the session, so the caller's context is not used for
+// cancellation.
 func (s *Session) EnableDungeonFollower(_ context.Context) error {
 	if s == nil || s.client == nil {
 		return fmt.Errorf("S4A21 session is not ready")
@@ -79,16 +45,10 @@ func (s *Session) EnableDungeonFollower(_ context.Context) error {
 	s.followerCancel = followerCancel
 	s.followerEvents = events
 	s.followerDone = done
-	s.followerUDPKnown = false
-	s.followerBaseKnown = false
 	s.followerGuard.Unlock()
-	// In-dungeon positions travel on the party UDP data plane, so the follower
-	// consumes the decoded application frames in addition to the TCP
-	// projections. The handler is cleared again by DisableDungeonFollower.
-	s.client.SetPartyAppHandler(s.handlePartyAppPosition)
 	go s.followerLoop(followerCtx, events, done)
 	// Party invitations must be handled immediately. Tutorial preparation is
-	// only needed for dungeon entry and can be delayed by a busy server, so it
+	// only needed for party entry and can be delayed by a busy server, so it
 	// runs independently without blocking the invitation consumer.
 	go s.prepareDungeonFollowerEventually(followerCtx)
 	return nil
@@ -113,22 +73,14 @@ func (s *Session) prepareDungeonFollowerEventually(ctx context.Context) {
 }
 
 // DisableDungeonFollower removes the opt-in packet consumer. It is useful to
-// stop following while keeping the authenticated town session alive.
+// stop accepting party work while keeping the authenticated town session alive.
 func (s *Session) DisableDungeonFollower() {
-	if s != nil && s.client != nil {
-		s.client.SetPartyAppHandler(nil)
-	}
 	s.stopDungeonFollower(true)
 	s.followerGuard.Lock()
 	s.partyActive = false
 	s.partyID = 0
 	s.partyLeaderUID = 0
-	s.followerUDPKnown = false
-	s.followerBaseKnown = false
 	s.followerGuard.Unlock()
-	s.dungeonStateGuard.Lock()
-	s.dungeonState = nil
-	s.dungeonStateGuard.Unlock()
 }
 
 func (s *Session) prepareDungeonFollower(ctx context.Context) error {
@@ -175,31 +127,7 @@ func (s *Session) followerLoop(ctx context.Context, events <-chan protocol.Packe
 		case <-s.Done():
 			return
 		case packet := <-events:
-			if packet.Type == protocol.NotiUserPosition {
-				var deferred *protocol.Packet
-				packet, deferred = coalesceFollowerPosition(packet, events)
-				s.handleFollowerPacket(ctx, packet)
-				if deferred != nil {
-					s.handleFollowerPacket(ctx, *deferred)
-				}
-				continue
-			}
 			s.handleFollowerPacket(ctx, packet)
-		}
-	}
-}
-
-func coalesceFollowerPosition(latest protocol.Packet, events <-chan protocol.Packet) (protocol.Packet, *protocol.Packet) {
-	for {
-		select {
-		case packet := <-events:
-			if packet.Type == protocol.NotiUserPosition {
-				latest = packet
-				continue
-			}
-			return latest, &packet
-		default:
-			return latest, nil
 		}
 	}
 }
@@ -242,11 +170,6 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 				s.partyLeaderUID = 0
 			}
 			s.followerGuard.Unlock()
-			if !active {
-				s.dungeonStateGuard.Lock()
-				s.dungeonState = nil
-				s.dungeonStateGuard.Unlock()
-			}
 			if active && (!wasActive || memberPartyID != previousPartyID) {
 				foundationlog.Robotf("S4A21_PARTY_JOINED uid=%d party_id=%d leader_uid=%d\n", selfUID, memberPartyID, leaderUID)
 			} else if !active && wasActive {
@@ -257,13 +180,12 @@ func (s *Session) handleFollowerPacket(ctx context.Context, packet protocol.Pack
 		s.followLeaderPosition(ctx, packet)
 	case protocol.NotiUserArea:
 		s.followLeaderArea(ctx, packet)
-	case protocol.NotiStartMap:
-		s.acceptFollowerStartMap(ctx, packet)
-	case protocol.NotiFinishLoading:
-		s.commitFollowerFinishLoading(packet)
 	}
 }
 
+// followLeaderPosition mirrors the leader's town position projection so the
+// party companion walks with the inviter. Dungeon in-room positions travel on
+// the client UDP plane, which this robot intentionally does not implement.
 func (s *Session) followLeaderPosition(ctx context.Context, packet protocol.Packet) {
 	if packet.Command != 0 || len(packet.Body) < 9 {
 		return
@@ -277,104 +199,8 @@ func (s *Session) followLeaderPosition(ctx context.Context, packet protocol.Pack
 	}
 	x := int16(binary.LittleEndian.Uint16(packet.Body[2:4]))
 	y := int16(binary.LittleEndian.Uint16(packet.Body[4:6]))
-	s.traceFollower("S4A21_FOLLOW_TRACE_POS uid=%d leader=%d x=%d y=%d dir=%d motion=%d\n",
-		selfUID, uid, x, y, packet.Body[6], binary.LittleEndian.Uint16(packet.Body[7:9]))
 	if err := s.client.SetUserPosition(ctx, x, y, packet.Body[6], binary.LittleEndian.Uint16(packet.Body[7:9])); err != nil {
-		s.traceFollower("S4A21_FOLLOW_TRACE_POS_FAILED uid=%d leader=%d err=%v\n", selfUID, uid, err)
 		s.abortFollowerSession(ctx)
-	}
-}
-
-// partyLeaderDefaultSlot is the roster slot the leader keeps while no explicit
-// transfer has happened. A transfer preserves member slots, so the follower
-// resolves the leader's slot from the realtime roster when it can.
-const partyLeaderDefaultSlot = 0
-
-// partyFollowerDirection matches the server default facing for mirrored moves.
-const partyFollowerDirection = 0x05
-
-// partyFollowerOffsetX keeps the follower beside the leader instead of on top
-// of them: mirroring the exact coordinates hides the companion inside the
-// leader's own sprite and reads as "the robot never moves" on the client.
-const partyFollowerOffsetX = 50
-
-// followerUDPWriteTimeout bounds one mirror write issued from the UDP read
-// loop so a stalled server cannot block party packet processing forever.
-const followerUDPWriteTimeout = 3 * time.Second
-
-// handlePartyAppPosition mirrors the leader's in-dungeon position broadcast.
-// The retail client sends in-room positions on the party UDP data plane and
-// the server never projects those frames over TCP, so following has to consume
-// them here. The mirrored move is echoed back on the same data plane, which is
-// what lets the real client render the robot walking behind it.
-func (s *Session) handlePartyAppPosition(position protocol.PartyAppPosition) {
-	if s == nil || s.client == nil {
-		return
-	}
-	if !position.Valid() {
-		return
-	}
-	if !s.PartyActive() {
-		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_SKIP uid=%d reason=party_inactive sub=%02X\n", s.selfUID, position.Sub)
-		return
-	}
-	s.followerGuard.Lock()
-	leaderUID := s.partyLeaderUID
-	s.followerGuard.Unlock()
-	if leaderUID == 0 || leaderUID == s.selfUID {
-		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_SKIP uid=%d reason=leader_unknown leader=%d\n", s.selfUID, leaderUID)
-		return
-	}
-	leaderSlot, ok := s.client.PartySlotOf(leaderUID)
-	if !ok {
-		leaderSlot = partyLeaderDefaultSlot
-	}
-	if position.Slot != leaderSlot {
-		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_SKIP uid=%d reason=slot_mismatch sender=%d leader_slot=%d sub=%02X\n",
-			s.selfUID, position.Slot, leaderSlot, position.Sub)
-		return
-	}
-	selfSlot, slotKnown := s.client.PartySelfSlot()
-	if !slotKnown || selfSlot == leaderSlot {
-		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_SKIP uid=%d reason=self_slot known=%t slot=%d leader_slot=%d\n",
-			s.selfUID, slotKnown, selfSlot, leaderSlot)
-		return
-	}
-	s.followerGuard.Lock()
-	if s.followerUDPKnown && s.followerUDPX == position.X && s.followerUDPY == position.Y {
-		s.followerGuard.Unlock()
-		return
-	}
-	s.followerUDPKnown = true
-	s.followerUDPX = position.X
-	s.followerUDPY = position.Y
-	if !s.followerBaseKnown {
-		// The retail member keeps the first position of each room as the
-		// interpolation anchor for every frame in that room.
-		s.followerBaseKnown = true
-		s.followerBaseX = position.X
-		s.followerBaseY = position.Y
-		s.followerRoomStart = time.Now()
-	}
-	baseX, baseY := s.followerBaseX, s.followerBaseY
-	roomStart := s.followerRoomStart
-	selfUID := s.selfUID
-	s.followerGuard.Unlock()
-
-	x, y := int16(position.X)-partyFollowerOffsetX, int16(position.Y)
-	tickMS := uint32(time.Since(roomStart).Milliseconds())
-	ctx, cancel := context.WithTimeout(context.Background(), followerUDPWriteTimeout)
-	defer cancel()
-	if err := s.client.SetUserPosition(ctx, x, y, partyFollowerDirection, 0); err != nil {
-		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_POS_FAILED uid=%d x=%d y=%d err=%v\n",
-			selfUID, x, y, err)
-		return
-	}
-	s.traceFollower("S4A21_FOLLOW_TRACE_UDP_POS uid=%d leader_x=%d leader_y=%d x=%d y=%d\n",
-		selfUID, position.X, position.Y, x, y)
-	if err := s.client.SendPartyPosition(x, y, baseX, baseY, tickMS); err != nil {
-		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_BROADCAST_FAILED uid=%d x=%d y=%d err=%v\n",
-			selfUID, x, y, err)
 	}
 }
 
@@ -389,46 +215,10 @@ func (s *Session) followLeaderArea(ctx context.Context, packet protocol.Packet) 
 	if !active || leaderUID == 0 || uid != leaderUID || uid == selfUID || packet.Body[2] == 0xFF || packet.Body[3] == 0xFF {
 		return
 	}
-	s.traceFollower("S4A21_FOLLOW_TRACE_AREA uid=%d leader=%d town=%d area=%d x=%d y=%d\n",
-		selfUID, uid, packet.Body[2], packet.Body[3],
-		int16(binary.LittleEndian.Uint16(packet.Body[4:6])), int16(binary.LittleEndian.Uint16(packet.Body[6:8])))
 	if err := s.client.SetUserArea(ctx, packet.Body[2], packet.Body[3],
 		int16(binary.LittleEndian.Uint16(packet.Body[4:6])),
 		int16(binary.LittleEndian.Uint16(packet.Body[6:8]))); err != nil {
-		s.traceFollower("S4A21_FOLLOW_TRACE_AREA_FAILED uid=%d leader=%d err=%v\n", selfUID, uid, err)
 		s.abortFollowerSession(ctx)
-	}
-}
-
-func (s *Session) acceptFollowerStartMap(ctx context.Context, packet protocol.Packet) {
-	if packet.Command != 0 || !s.PartyActive() {
-		return
-	}
-	s.dungeonStateGuard.Lock()
-	if s.dungeonState == nil {
-		s.dungeonState = &dungeonRunState{}
-		if err := s.dungeonState.BeginFollowerEntry(); err != nil {
-			s.dungeonState = nil
-			s.dungeonStateGuard.Unlock()
-			return
-		}
-	}
-	state := s.dungeonState
-	err := state.AcceptStartMap(packet.Body)
-	s.dungeonStateGuard.Unlock()
-	if err == nil {
-		// A new room restarts the retail member's interpolation anchor.
-		s.followerGuard.Lock()
-		s.followerBaseKnown = false
-		s.followerGuard.Unlock()
-		s.traceFollower("S4A21_FOLLOW_TRACE_START_MAP uid=%d room=%d,%d party=%d body=%X\n",
-			s.selfUID, packet.Body[0], packet.Body[1], len(packet.Body), packet.Body)
-		// This is deliberately outside the drain callback and outside the
-		// dungeon state lock. The server expects a follower to acknowledge
-		// loading, but never expects a follower MOVE_MAP.
-		if err := s.client.FinishLoading(ctx); err != nil {
-			s.abortFollowerSession(ctx)
-		}
 	}
 }
 
@@ -458,18 +248,6 @@ func (s *Session) abortFollowerQueue(events chan protocol.Packet) {
 	s.followerEvents = nil
 	s.followerGuard.Unlock()
 	s.abortFollowerSession(context.Background())
-}
-
-func (s *Session) commitFollowerFinishLoading(packet protocol.Packet) {
-	accepted := false
-	s.dungeonStateGuard.Lock()
-	if s.dungeonState != nil {
-		accepted = s.dungeonState.AcceptFinishLoading(packet.Body) == nil
-	}
-	s.dungeonStateGuard.Unlock()
-	if accepted {
-		s.traceFollower("S4A21_FOLLOW_TRACE_FINISH_LOADING uid=%d body=%X\n", s.selfUID, packet.Body)
-	}
 }
 
 // parsePartyInvite decodes the verified A21 invite notification: u16 inviter
@@ -641,8 +419,8 @@ func (s *Session) stopDungeonFollower(wait bool) {
 }
 
 // PartyActive is deliberately an optional adapter observation, not a shared
-// party capability. It lets the scheduler suppress town actions for an opted
-// in follower while the server owns dungeon movement.
+// party capability. It lets the scheduler suppress town actions while the
+// session is inside a party.
 func (s *Session) PartyActive() bool {
 	if s == nil {
 		return false

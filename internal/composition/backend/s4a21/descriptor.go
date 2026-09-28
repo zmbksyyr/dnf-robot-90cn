@@ -9,7 +9,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true}
 	capabilities[shared.CapabilityTownMove] = shared.CapabilityStatus{Enabled: true, Reason: "coordinates and verified town-area transitions"}
 	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Enabled: true, Mode: "auto_accept", Reason: "accepts ordinary party invitations without filtering by inviter account"}
-	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Enabled: true, Mode: "follower", Reason: "accepts leader invitations and follows server party projections; no active invite or party creation"}
+	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Enabled: true, Mode: "follower", Reason: "accepts leader invitations and mirrors the leader's town position and area projections; no active invite, party creation or dungeon room movement"}
 	capabilities[shared.CapabilityGuildInvite] = shared.CapabilityStatus{Enabled: true, Mode: "auto_accept", Reason: "automatically accepts verified A21 guild invitation notifications"}
 	capabilities[shared.CapabilityShout] = shared.CapabilityStatus{Enabled: true, Reason: "area channel only; party requires the separate party capability"}
 	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "S4A21 SEND_MESSAGE has no generic world-recipient path"}
@@ -21,7 +21,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "S4A21 diagnostics are not implemented"}
 	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}
 	capabilities[shared.CapabilityServiceControl] = shared.CapabilityStatus{Reason: "S4A21 service control is not implemented"}
-	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "only server-directed party following is available; active dungeon movement is unsupported"}
+	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "dungeon room movement and the in-dungeon position plane are not implemented"}
 	capabilities[shared.CapabilityMarket] = shared.CapabilityStatus{Reason: "S4A21 exposes auction opcode enums only; no verified auction or gold-consignment handler/service is present"}
 	return shared.BackendInfo{
 		ID: BackendID, DisplayName: "S4A21", SupportedOS: []string{"linux", "windows"}, Selectable: true,

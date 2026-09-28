@@ -12,7 +12,20 @@ import (
 	protocol "robot/internal/protocol/s4a21"
 )
 
-func TestDungeonFollowerAcceptsInviteAndFollowsServerMap(t *testing.T) {
+// testSessionWithDrain wires a session to conn and starts the packet drain the
+// follower worker depends on. The returned cancel stops the drain.
+func testSessionWithDrain(conn net.Conn) (*Session, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	session := &Session{
+		client: protocol.NewClient(conn),
+		cancel: cancel,
+		done:   make(chan struct{}),
+	}
+	go session.drain(ctx)
+	return session, cancel
+}
+
+func TestDungeonFollowerAcceptsInvite(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()
 	session, stopDrain := testSessionWithDrain(clientConn)
@@ -54,38 +67,7 @@ func TestDungeonFollowerAcceptsInviteAndFollowsServerMap(t *testing.T) {
 			serverDone <- err
 			return
 		}
-		if _, err := serverConn.Write(protocol.EncodeResponse(0, protocol.NotiStartMap, []byte{2, 4})); err != nil {
-			serverDone <- err
-			return
-		}
-		packet, err = protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
-		if err != nil {
-			serverDone <- err
-			return
-		}
-		if packet.Type != protocol.CmdFinishLoading || len(packet.Body) != 0 {
-			serverDone <- fmt.Errorf("follower loading request = type 0x%04X body %X", packet.Type, packet.Body)
-			return
-		}
-		if _, err = serverConn.Write(protocol.EncodeResponse(0, protocol.NotiFinishLoading, []byte{0, 0, 0, 0, 0})); err != nil {
-			serverDone <- err
-			return
-		}
-		if _, err = serverConn.Write(protocol.EncodeResponse(0, protocol.NotiStartMap, []byte{3, 4})); err != nil {
-			serverDone <- err
-			return
-		}
-		packet, err = protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength)
-		if err != nil {
-			serverDone <- err
-			return
-		}
-		if packet.Type != protocol.CmdFinishLoading || len(packet.Body) != 0 {
-			serverDone <- fmt.Errorf("second follower request = type 0x%04X body %X; follower must not send MOVE_MAP", packet.Type, packet.Body)
-			return
-		}
-		_, err = serverConn.Write(protocol.EncodeResponse(0, protocol.NotiFinishLoading, []byte{0, 0, 0, 0, 0}))
-		serverDone <- err
+		serverDone <- nil
 	}()
 
 	if err := session.EnableDungeonFollower(context.Background()); err != nil {
@@ -97,25 +79,12 @@ func TestDungeonFollowerAcceptsInviteAndFollowsServerMap(t *testing.T) {
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		session.dungeonStateGuard.Lock()
-		state := session.dungeonState
-		var snapshot dungeonRunSnapshot
-		if state != nil {
-			snapshot = state.Snapshot()
-		}
-		session.dungeonStateGuard.Unlock()
-		if snapshot.Phase == uint8(dungeonPhaseReady) && snapshot.RoomX == 3 {
-			if snapshot.RoomY != 4 {
-				t.Fatalf("follower snapshot = %+v", snapshot)
-			}
-			if !session.PartyActive() {
-				t.Fatal("party info did not activate follower party state")
-			}
+		if session.PartyActive() {
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("follower did not commit START_MAP after FINISH_LOADING")
+	t.Fatal("party info did not activate follower party state")
 }
 
 func TestDungeonFollowerIsExplicitlyOptIn(t *testing.T) {
@@ -132,24 +101,6 @@ func TestDungeonFollowerIsExplicitlyOptIn(t *testing.T) {
 		t.Fatal("unconfigured session sent a party response")
 	}
 	session.DisableDungeonFollower()
-}
-
-func TestDungeonFollowerIgnoresStartMapBeforeOwnPartyIsConfirmed(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-	session := &Session{client: protocol.NewClient(clientConn), selfUID: 0x1234}
-
-	session.handleFollowerPacket(context.Background(), protocol.Packet{
-		Type: protocol.NotiStartMap, Body: []byte{2, 4},
-	})
-	if session.dungeonState != nil {
-		t.Fatalf("unconfirmed START_MAP created dungeon state: %+v", session.dungeonState)
-	}
-	_ = serverConn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
-	if packet, err := protocol.ReadRequestFrame(serverConn, protocol.DefaultMaxPacketLength); err == nil {
-		t.Fatalf("unconfirmed START_MAP produced request type=0x%04X", packet.Type)
-	}
 }
 
 func TestDungeonFollowerTracksLeaderTownPositionAndArea(t *testing.T) {
@@ -333,27 +284,6 @@ func TestDungeonFollowerQueuesOnlyLeaderTownMovement(t *testing.T) {
 	}
 }
 
-func TestDungeonFollowerCoalescesQueuedTownPositions(t *testing.T) {
-	events := make(chan protocol.Packet, 4)
-	first := protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{1}}
-	events <- protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{2}}
-	events <- protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{3}}
-	control := protocol.Packet{Type: protocol.NotiPartyInfo, Body: []byte{4}}
-	events <- control
-	events <- protocol.Packet{Type: protocol.NotiUserPosition, Body: []byte{5}}
-
-	latest, deferred := coalesceFollowerPosition(first, events)
-	if len(latest.Body) != 1 || latest.Body[0] != 3 {
-		t.Fatalf("latest position=%X want=03", latest.Body)
-	}
-	if deferred == nil || deferred.Type != protocol.NotiPartyInfo {
-		t.Fatalf("deferred control=%+v", deferred)
-	}
-	if len(events) != 1 {
-		t.Fatalf("events after control=%d want=1", len(events))
-	}
-}
-
 func TestStaleFollowerEventOverflowKeepsDisabledTownSession(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
@@ -453,24 +383,24 @@ func TestParsePartyInfoProjectionRequiresOwnRosterMembership(t *testing.T) {
 }
 
 func TestDungeonFollowerIgnoresPublicPartyRosterAndUnrelatedClear(t *testing.T) {
-	session := &Session{selfUID: 12, partyID: 7, partyActive: true, dungeonState: &dungeonRunState{phase: dungeonPhaseReady}}
+	session := &Session{selfUID: 12, partyID: 7, partyActive: true}
 	session.handleFollowerPacket(context.Background(), protocol.Packet{
 		Type: protocol.NotiPartyInfo, Body: followerPartyRosterBody(8, 21, 22),
 	})
-	if !session.PartyActive() || session.partyID != 7 || session.dungeonState == nil {
-		t.Fatalf("public roster changed follower state: active=%t party=%d state=%v", session.PartyActive(), session.partyID, session.dungeonState)
+	if !session.PartyActive() || session.partyID != 7 {
+		t.Fatalf("public roster changed follower state: active=%t party=%d", session.PartyActive(), session.partyID)
 	}
 	session.handleFollowerPacket(context.Background(), protocol.Packet{
 		Type: protocol.NotiPartyInfo, Body: []byte{1, 0, 8, 0, 3},
 	})
-	if !session.PartyActive() || session.partyID != 7 || session.dungeonState == nil {
-		t.Fatalf("unrelated clear changed follower state: active=%t party=%d state=%v", session.PartyActive(), session.partyID, session.dungeonState)
+	if !session.PartyActive() || session.partyID != 7 {
+		t.Fatalf("unrelated clear changed follower state: active=%t party=%d", session.PartyActive(), session.partyID)
 	}
 	session.handleFollowerPacket(context.Background(), protocol.Packet{
 		Type: protocol.NotiPartyInfo, Body: []byte{1, 0, 7, 0, 3},
 	})
-	if session.PartyActive() || session.partyID != 0 || session.dungeonState != nil {
-		t.Fatalf("matching clear did not reset follower: active=%t party=%d state=%v", session.PartyActive(), session.partyID, session.dungeonState)
+	if session.PartyActive() || session.partyID != 0 {
+		t.Fatalf("matching clear did not reset follower: active=%t party=%d", session.PartyActive(), session.partyID)
 	}
 }
 

@@ -22,7 +22,6 @@ const (
 	CmdSendMessage          uint16 = 0x0011
 	CmdRequestPeer          uint16 = 0x000A
 	CmdResponsePeer         uint16 = 0x000B
-	CmdChangePartyHost      uint16 = 0x0079
 	CmdSetPartyInfo         uint16 = 0x000C
 	CmdLeaveParty           uint16 = 0x000D
 	CmdWalkoutPartyMember   uint16 = 0x000E
