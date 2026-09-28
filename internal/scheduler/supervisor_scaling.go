@@ -98,6 +98,12 @@ func (s *RobotSupervisor) assignIdleAutoActors(rc robotconfig.RuntimeConfig) {
 	if len(idle) == 0 {
 		return
 	}
+	// Provision first. While the robot directory is short of the fixed target,
+	// the supervisor spends this tick creating characters instead of dispatching
+	// logins, so provisioning/loadout DB writes never run inside a login storm.
+	if s.provisionMissingRobots(rc) {
+		return
+	}
 	sort.Slice(idle, func(i, j int) bool {
 		return idle[i].SlotIDValue() < idle[j].SlotIDValue()
 	})
@@ -113,6 +119,61 @@ func (s *RobotSupervisor) assignIdleAutoActors(rc robotconfig.RuntimeConfig) {
 		s.ledger.UnleaseUID(pair.uid, pair.actor)
 		robotLogf("[RobotSupervisor] assign_failed slot=%d uid=%d\n", pair.actor.SlotIDValue(), pair.uid)
 	}
+}
+
+// provisionMissingRobots runs one bounded create batch when the robot directory
+// is below the fixed target. It reports whether this tick was spent
+// provisioning (the caller then skips online assignment).
+func (s *RobotSupervisor) provisionMissingRobots(rc robotconfig.RuntimeConfig) bool {
+	target := robotconfig.TargetCapacity(rc)
+	if target <= 0 {
+		return false
+	}
+	robots, err := s.manager.selectRobots(robotcap.CommandRequest{Count: target + 1})
+	if err != nil {
+		robotLogf("[RobotSupervisor] provision_select_failed err=%v\n", err)
+		return false
+	}
+	if len(robots) >= target {
+		return false
+	}
+	if !s.createNext.IsZero() && time.Now().Before(s.createNext) {
+		return true
+	}
+	need := target - len(robots)
+	batch := rc.SchedulerCreateBatchSize
+	if batch <= 0 {
+		batch = 10
+	}
+	if batch > need {
+		batch = need
+	}
+	created, err := s.manager.CreateRobots(robotcap.CreateRequest{Count: batch})
+	if len(created) > 0 {
+		s.manager.addAutoCreated(len(created))
+	}
+	if err != nil {
+		s.createFailures++
+		delays := [...]time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second}
+		index := s.createFailures - 1
+		if index >= len(delays) {
+			index = len(delays) - 1
+		}
+		delay := delays[index]
+		if rc.SchedulerOnlineRetryBaseMS > 5000 {
+			delay *= time.Duration(rc.SchedulerOnlineRetryBaseMS / 5000)
+		}
+		s.createNext = time.Now().Add(delay)
+		robotLogf("[RobotSupervisor] provision_failed count=%d err=%v\n", batch, err)
+		return true
+	}
+	s.createFailures = 0
+	s.createNext = time.Time{}
+	if len(created) == 0 {
+		return false
+	}
+	robotLogf("[RobotSupervisor] provision_batch created=%d existing=%d target=%d\n", len(created), len(robots), target)
+	return true
 }
 
 func (s *RobotSupervisor) idleAutoActors() []*actormodel.Actor {
