@@ -153,6 +153,9 @@ func (a *Actor) tick(now time.Time) {
 	if a.stateValue() != StateRunning {
 		a.runtime.AddAutoOnline(1, 0)
 	}
+	if !a.onlineEstablishedValue() {
+		a.recordOnlineAttempt(true)
+	}
 	a.markOnlineHealthy()
 	a.setState(StateRunning)
 	if st.PartyActive || a.runtime.PartyActive(uid) {
@@ -341,6 +344,9 @@ func (a *Actor) ensureOnline(now time.Time) {
 		return
 	}
 	if a.runtime.IsActive(uid) {
+		if !a.onlineEstablishedValue() {
+			a.recordOnlineAttempt(true)
+		}
 		a.markOnlineHealthy()
 		a.setState(StateRunning)
 		a.runtime.AddAutoOnline(1, 0)
@@ -350,6 +356,7 @@ func (a *Actor) ensureOnline(now time.Time) {
 	if a.onlineAttemptTimedOut(uid, now, rc) {
 		failures := a.recordFailure(now, FailureClassTransport)
 		a.runtime.AddAutoOnline(0, 1)
+		a.recordOnlineAttempt(false)
 		delay := robotconfig.OnlineRetryBackoff(rc, failures, a.randIntn)
 		foundationlog.Robotf("[Actor] online_confirm_timeout slot=%d uid=%d failures=%d retry_in=%s\n", a.slotIDValue(), uid, failures, delay)
 		a.clearOnlineAttempt()

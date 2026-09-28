@@ -83,6 +83,12 @@ func (a *Actor) markOnlineHealthy() {
 	a.stateMu.Unlock()
 }
 
+func (a *Actor) onlineEstablishedValue() bool {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	return a.onlineEstablished
+}
+
 // markOnlineEstablished records that the session was observed live.
 func (a *Actor) markOnlineEstablished() {
 	a.stateMu.Lock()
