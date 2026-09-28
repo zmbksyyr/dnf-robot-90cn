@@ -12,8 +12,8 @@ func TestEmbeddedAssetsContainCoreS4A21UI(t *testing.T) {
 		name, content string
 		required      []string
 	}{
-		{"index", indexHTML, []string{"openAutoDialog", "openBackendDialog", "runAction('robotsMove')", "runAction('robotsShout')"}},
-		{"javascript", appJS, []string{"robotsOnlineAsync", "robotsMove", "robotsShout", "robotsLogoutAsync", "cleanupRobotsAsync", "dangerousDeleteAsync", "backendCapabilities", "stopRobot"}},
+		{"index", indexHTML, []string{"openAutoDialog", "openBackendDialog", "runAction('robotsMove')", "runAction('robotsShout')", "runAction('robotsStoreAsync')", `id="mStoreCard"`}},
+		{"javascript", appJS, []string{"robotsOnlineAsync", "robotsMove", "robotsShout", "robotsStoreAsync", "robotsLogoutAsync", "cleanupRobotsAsync", "dangerousDeleteAsync", "backendCapabilities", "stopRobot"}},
 		{"i18n", i18nJS, []string{"I18N_MESSAGES", "toggleLanguage", "auto.target_online", "auto.shout_interval", "backend.recovery"}},
 	}
 	for _, check := range checks {
@@ -108,8 +108,8 @@ func TestI18nLocalesHaveMatchingKeys(t *testing.T) {
 }
 
 func TestSchedulerAndActorStoreStatusAreLocalized(t *testing.T) {
-	for _, want := range []string{`data-i18n="scheduler.policy_mode"`, "i18nFormat('scheduler.attach_value'", `data-i18n="robots.store"`, "i18nFormat('status.'+store)"} {
-		if !strings.Contains(indexHTML+appJS, want) {
+	for _, want := range []string{`data-i18n="scheduler.policy_mode"`, "i18nFormat('scheduler.attach_value'", `data-i18n="robots.store"`, "i18nFormat('status.'+store)", `data-i18n="scheduler.store_policy"`, "i18nFormat('scheduler.store_value'", `data-i18n="card.store"`, `data-i18n="action.store"`} {
+		if !strings.Contains(indexHTML+appJS+i18nJS, want) {
 			t.Errorf("localized dashboard is missing %q", want)
 		}
 	}
@@ -121,14 +121,14 @@ func TestSchedulerAndActorStoreStatusAreLocalized(t *testing.T) {
 }
 
 func TestDashboardRenderingOnlyReferencesPresentElements(t *testing.T) {
-	for _, want := range []string{`id="mRobot"`, `id="mDB"`, `class="scheduler"`, `id="sMode"`, `id="sReason"`} {
+	for _, want := range []string{`id="mRobot"`, `id="mDB"`, `class="scheduler"`, `id="sMode"`, `id="sReason"`, `id="mStoreCard"`, `id="mStore"`, `id="sStore"`} {
 		if !strings.Contains(indexHTML, want) {
 			t.Errorf("dashboard element is missing %q", want)
 		}
 	}
-	for _, stale := range []string{"byId('mStore')", "byId('sStore')", `id="sStore"`} {
-		if strings.Contains(indexHTML+appJS, stale) {
-			t.Errorf("dashboard rendering still depends on removed element %q", stale)
+	for _, want := range []string{"byId('mStore')", "byId('sStore')", "byId('mStoreCard')"} {
+		if !strings.Contains(appJS, want) {
+			t.Errorf("dashboard rendering is missing %q", want)
 		}
 	}
 }
