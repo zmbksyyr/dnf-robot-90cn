@@ -127,6 +127,7 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 	stats := m.autoStats
 	reason := ""
 	onlinePause := false
+	onlinePauseSec := 0
 	if readyForBreaker && connecting >= threshold {
 		reason = fmt.Sprintf("connecting_over_%dpct target=%d connecting=%d", abnormalPct, target, connecting)
 	}
@@ -138,13 +139,29 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 	// login attempts count here; session losses and confirm timeouts would
 	// otherwise keep extending the pause while live sessions drain. An active
 	// pause is never extended by this branch: it expires, probes the server
-	// again, and only re-triggers if the fresh attempts fail.
+	// again, and only re-triggers if the fresh attempts fail. Repeated failed
+	// windows escalate the pause (up to 5 minutes) so a backlogged server gets
+	// time to drain instead of being probed at full pressure.
+	windowAttempts := windowAttemptSuccess + windowAttemptFailed
 	if !now.Before(m.autoBreakerUntil) {
-		windowAttempts := windowAttemptSuccess + windowAttemptFailed
 		if windowAttempts >= 20 && windowAttemptFailed*100 >= windowAttempts*50 {
 			reason = fmt.Sprintf("online_attempts_window success=%d failed=%d in_flight=%d", windowAttemptSuccess, windowAttemptFailed, m.OnlineAttemptInFlight())
 			onlinePause = true
+			onlinePauseSec = rc.SchedulerOnlineBreakerPauseSec
+			if onlinePauseSec <= 0 {
+				onlinePauseSec = 60
+			}
+			if m.onlineBreakerStreak > 0 {
+				onlinePauseSec = onlinePauseSec << m.onlineBreakerStreak
+				if onlinePauseSec > 300 {
+					onlinePauseSec = 300
+				}
+			}
+			m.onlineBreakerStreak++
 		}
+	}
+	if windowAttempts > 0 && windowAttemptSuccess*100 >= windowAttempts*50 {
+		m.onlineBreakerStreak = 0
 	}
 
 	if m.autoBreakerLastCheck.IsZero() || now.Sub(m.autoBreakerLastCheck) >= time.Minute {
@@ -175,8 +192,9 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 		pauseSec = 300
 	}
 	if onlinePause {
-		pauseSec = rc.SchedulerOnlineBreakerPauseSec
+		pauseSec = onlinePauseSec
 		if pauseSec <= 0 {
+			onlinePauseSec = 60
 			pauseSec = 60
 		}
 	}

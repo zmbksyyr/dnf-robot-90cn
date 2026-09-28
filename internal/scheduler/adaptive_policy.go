@@ -248,6 +248,10 @@ func applyAdaptiveSchedulerConfig(rc *robotconfig.RuntimeConfig, sig adaptiveSch
 		rc.SchedulerCreateBatchSize = 10
 	}
 	rc.SchedulerCreateBatchSize = robotconfig.Clamp(rc.SchedulerCreateBatchSize, 1, 40)
+	if rc.SchedulerScaleDownBatch <= 0 {
+		rc.SchedulerScaleDownBatch = 15
+	}
+	rc.SchedulerScaleDownBatch = robotconfig.Clamp(rc.SchedulerScaleDownBatch, 1, 50)
 
 	if !sig.Live {
 		return schedulerPolicyDecision{Mode: schedulerPolicyBootstrap, Reason: fmt.Sprintf("target=%d %s", target, schedulerReasonNoLiveSnapshot)}

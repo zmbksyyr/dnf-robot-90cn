@@ -28,7 +28,7 @@ func Default() RuntimeConfig {
 		SchedulerBadRecoverSec: 60, SchedulerBadFailures: 3, SchedulerMetricsIntervalSec: 10, SchedulerStoreConcurrent: 30, SchedulerOnlineBatchSize: 120, SchedulerOnlineStartRate: 20, SchedulerOnlineFillTimeout: 120,
 		SchedulerBreakerAbnormalPct: 30, SchedulerBreakerPauseSec: 300, SchedulerBreakerReleaseBatch: 20, SchedulerBreakerFloorPct: 70, SchedulerPortDownReleaseBatch: 20,
 		SchedulerOnlineRetryBaseMS: 5000, SchedulerOnlineRetryMaxMS: 300000, SchedulerOnlineRetryJitterPct: 20, SchedulerOnlineInFlight: 12,
-		SchedulerRecycleCooldownSec: 600, SchedulerOnlineBreakerPauseSec: 60, SchedulerCreateBatchSize: 10,
+		SchedulerRecycleCooldownSec: 600, SchedulerOnlineBreakerPauseSec: 60, SchedulerCreateBatchSize: 10, SchedulerScaleDownBatch: 15,
 		SystemActorPollMS: 3000, SystemManualActionTimeoutSec: 60, SystemPacketRatePerSec: 20,
 	}
 }
@@ -365,6 +365,12 @@ func normalizeSchedulerDefaults(rc *RuntimeConfig) {
 	}
 	if rc.SchedulerCreateBatchSize > 40 {
 		rc.SchedulerCreateBatchSize = 40
+	}
+	if rc.SchedulerScaleDownBatch <= 0 {
+		rc.SchedulerScaleDownBatch = 15
+	}
+	if rc.SchedulerScaleDownBatch > 50 {
+		rc.SchedulerScaleDownBatch = 50
 	}
 }
 

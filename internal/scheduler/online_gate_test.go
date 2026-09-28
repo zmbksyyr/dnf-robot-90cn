@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	actormodel "robot/internal/actor"
 	robotconfig "robot/internal/capability/robotconfig"
 )
 
@@ -97,5 +98,38 @@ func TestAdaptivePolicyKeepsBaseRetryPacingWhenHealthy(t *testing.T) {
 	}
 	if rc.SchedulerOnlineRetryMaxMS != 300000 {
 		t.Fatalf("healthy retry max got %d want 300000", rc.SchedulerOnlineRetryMaxMS)
+	}
+}
+
+func TestOnlineBreakerPauseEscalatesOnRepeatedFailures(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "[auto]\nauto_target_online_count = 1500\n[scheduler]\nonline_breaker_pause_sec = 30\n")
+	rc := m.loadRobotConfig()
+	counts := actormodel.LedgerCounts{Auto: 1500, Leased: 1500}
+	now := time.Now()
+
+	m.updateAutoBreaker(now, rc, counts, 1400, 0, 0, 30)
+	first := time.Until(m.autoBreakerUntil)
+	if first < 25*time.Second || first > 35*time.Second {
+		t.Fatalf("first pause got %s want ~30s", first)
+	}
+
+	m.autoMu.Lock()
+	m.autoBreakerUntil = now.Add(-time.Second)
+	m.autoMu.Unlock()
+	m.updateAutoBreaker(now, rc, counts, 1400, 0, 0, 30)
+	second := time.Until(m.autoBreakerUntil)
+	if second < 55*time.Second {
+		t.Fatalf("second pause got %s want escalated ~60s", second)
+	}
+
+	m.autoMu.Lock()
+	m.autoBreakerUntil = now.Add(-time.Second)
+	m.autoMu.Unlock()
+	m.updateAutoBreaker(now, rc, counts, 1400, 0, 30, 0)
+	m.autoMu.Lock()
+	streak := m.onlineBreakerStreak
+	m.autoMu.Unlock()
+	if streak != 0 {
+		t.Fatalf("healthy window left streak %d want 0", streak)
 	}
 }

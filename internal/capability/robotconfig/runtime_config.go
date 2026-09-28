@@ -107,6 +107,7 @@ type RuntimeConfig struct {
 	SchedulerRecycleCooldownSec    int `json:"scheduler_recycle_cooldown_sec"`
 	SchedulerOnlineBreakerPauseSec int `json:"scheduler_online_breaker_pause_sec"`
 	SchedulerCreateBatchSize       int `json:"scheduler_create_batch_size"`
+	SchedulerScaleDownBatch        int `json:"scheduler_scale_down_batch"`
 	SystemActorPollMS             int    `json:"system_actor_poll_ms"`
 	SystemManualActionTimeoutSec  int    `json:"system_manual_action_timeout_sec"`
 	SystemPacketRatePerSec        int    `json:"system_packet_rate_per_sec"`

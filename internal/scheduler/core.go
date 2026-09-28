@@ -76,6 +76,7 @@ type RobotManager struct {
 	onlineTokens                    float64
 	onlineTokenAt                   time.Time
 	onlineInFlight                  int
+	onlineBreakerStreak             int
 	schedulerLastOnlineSuccess      int
 	schedulerLastOnlineFailed       int
 	schedulerRecentOnlineSuccess    int

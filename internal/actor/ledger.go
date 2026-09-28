@@ -295,6 +295,12 @@ func (l *Ledger) EnsureAutoActorSlots(runtime RobotRuntime, rc robotconfig.Runti
 	if removeCount > robotconfig.ScaleDownBatch(current, target) {
 		removeCount = robotconfig.ScaleDownBatch(current, target)
 	}
+	// Lowering the target must not close hundreds of sessions in one burst:
+	// the server has to run a full teardown per closed session and its login
+	// path starves while that backlog drains.
+	if cap := rc.SchedulerScaleDownBatch; cap > 0 && removeCount > cap {
+		removeCount = cap
+	}
 	if removeCount > len(candidates) {
 		removeCount = len(candidates)
 	}

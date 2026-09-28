@@ -36,6 +36,26 @@ func testLedgerActor(slotID int, mode Mode, uid int) *Actor {
 	return actor
 }
 
+func TestEnsureAutoActorSlotsHonorsScaleDownBatchCap(t *testing.T) {
+	ledger := NewLedger()
+	for i := 0; i < 200; i++ {
+		addTestLedgerActor(&ledger, testLedgerActor(i+1, ModeAuto, 17000000+i))
+	}
+	extra := ledger.EnsureAutoActorSlots(nil, robotconfig.RuntimeConfig{SchedulerScaleDownBatch: 5, SchedulerOnlineBatchSize: 120}, 50, nil)
+	if len(extra) != 5 {
+		t.Fatalf("scale down got %d want configured cap 5", len(extra))
+	}
+
+	ledger = NewLedger()
+	for i := 0; i < 200; i++ {
+		addTestLedgerActor(&ledger, testLedgerActor(i+1, ModeAuto, 17000000+i))
+	}
+	extra = ledger.EnsureAutoActorSlots(nil, robotconfig.RuntimeConfig{SchedulerScaleDownBatch: 50, SchedulerOnlineBatchSize: 120}, 50, nil)
+	if len(extra) != 8 {
+		t.Fatalf("scale down got %d want computed batch 8", len(extra))
+	}
+}
+
 func addTestLedgerActor(ledger *Ledger, actor *Actor) {
 	ledger.actors[actor.slotIDValue()] = actor
 }

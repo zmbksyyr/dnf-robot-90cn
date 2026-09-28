@@ -151,6 +151,7 @@ func decodeConfig(ini *config.INIConfig) (RuntimeConfig, error) {
 	rc.SchedulerRecycleCooldownSec = dec.Int("scheduler", "recycle_cooldown_sec", rc.SchedulerRecycleCooldownSec)
 	rc.SchedulerOnlineBreakerPauseSec = dec.Int("scheduler", "online_breaker_pause_sec", rc.SchedulerOnlineBreakerPauseSec)
 	rc.SchedulerCreateBatchSize = dec.Int("scheduler", "create_batch_size", rc.SchedulerCreateBatchSize)
+	rc.SchedulerScaleDownBatch = dec.Int("scheduler", "scale_down_batch", rc.SchedulerScaleDownBatch)
 
 	rc.SystemActorPollMS = dec.Int("system", "actor_poll_ms", rc.SystemActorPollMS)
 	rc.SystemManualActionTimeoutSec = dec.Int("system", "manual_action_timeout_sec", rc.SystemManualActionTimeoutSec)
