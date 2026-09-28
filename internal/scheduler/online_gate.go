@@ -72,6 +72,28 @@ func (m *RobotManager) ReleaseOnlineAttempt() {
 	m.onlineGateMu.Unlock()
 }
 
+// acquireOnlineAttemptWait waits for one admission token so store-driven
+// reconnects share the adaptive attempt budget with actor retries. It returns
+// false on timeout, cancellation or an active breaker.
+func (m *RobotManager) acquireOnlineAttemptWait(timeout time.Duration, shouldStop func() bool) bool {
+	if m == nil {
+		return false
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		if m.TryAcquireOnlineAttempt() {
+			return true
+		}
+		if shouldStop != nil && shouldStop() {
+			return false
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func (m *RobotManager) OnlineAttemptInFlight() int {
 	if m == nil {
 		return 0

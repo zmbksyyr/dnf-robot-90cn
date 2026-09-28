@@ -134,6 +134,17 @@ func (r *RobotRuntime) Shout(uid int, world bool) robotcap.ActionResult {
 }
 
 func (r *RobotRuntime) Store(uid int) robotcap.ActionResult {
+	if !r.manager.itemStoreSupported() {
+		// Disjoint-only adapters route the manual store command to the
+		// disassembler machine instead of the unavailable private stall.
+		return r.run(uid, func() robotcap.ActionResult {
+			st, ok := r.Status(uid)
+			if !ok || !robotcap.ActiveRuntimeStatus(st) || st.PartyActive || r.PartyActive(uid) {
+				return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateOffline}
+			}
+			return r.autoDisjointStore(uid, st, nil)
+		})
+	}
 	return r.run(uid, func() robotcap.ActionResult {
 		res, err := r.manager.storeWorkflow().Store(robotcap.CommandRequest{UIDs: []int{uid}})
 		return firstActionResult(uid, res, err)
@@ -348,11 +359,32 @@ func (r *RobotRuntime) tryDisjointPosition(info robotcap.Info, rc robotconfig.Ru
 	if cancelled {
 		return false, "cancelled"
 	}
-	// Disjoint-store persistence is adapter-owned. Without an installed
-	// persistence port the capability is disabled, so the profession and
-	// position writes must not be faked here.
-	robotLogf("[DISJOINT_PERSISTENCE_UNAVAILABLE] uid=%d cid=%d\n", info.UID, info.CID)
-	return false, "profession_failed"
+	// Disjoint-store persistence is adapter-owned: the profession rows load at
+	// character select, so the write must happen between logout and the next
+	// login. A backend without this port keeps the capability disabled.
+	writer := r.manager.disjointWriter()
+	if writer == nil {
+		robotLogf("[DISJOINT_PERSISTENCE_UNAVAILABLE] uid=%d cid=%d\n", info.UID, info.CID)
+		return false, "profession_failed"
+	}
+	if err := writer.EnsureDisjointProfession(info.CID); err != nil {
+		robotLogf("[DISJOINT_PROFESSION_ERROR] uid=%d cid=%d err=%v\n", info.UID, info.CID, err)
+		return false, "profession_failed"
+	}
+	// Share the scheduler's adaptive login budget: store reconnects must not
+	// bypass the breaker or the in-flight cap that protects the server.
+	if !r.manager.acquireOnlineAttemptWait(storeOnlineGateTimeout, shouldStop) {
+		robotLogf("[DISJOINT_ONLINE_GATE_BUSY] uid=%d cid=%d\n", info.UID, info.CID)
+		return false, "online_gate_busy"
+	}
+	online, err := r.manager.sessionService().Online(robotcap.CommandRequest{UIDs: []int{info.UID}}, true, rc)
+	r.manager.ReleaseOnlineAttempt()
+	if err != nil || online.Confirmed != 1 {
+		robotLogf("[DISJOINT_ONLINE_ERROR] uid=%d confirmed=%d failed=%d err=%v\n", info.UID, online.Confirmed, online.Failed, err)
+		return false, "online_failed"
+	}
+	r.manager.invalidateRuntimeStatusCache()
+	return r.tryDisjointPositionInCurrentSession(info, shouldStop)
 }
 
 func (r *RobotRuntime) tryDisjointPositionInCurrentSession(info robotcap.Info, shouldStop func() bool) (bool, string) {
@@ -363,13 +395,17 @@ func (r *RobotRuntime) tryDisjointPositionInCurrentSession(info robotcap.Info, s
 	if points := r.manager.storePoints(); points == nil || !points.HasArea(info.Village, info.Area) {
 		return false, "set_area_failed"
 	}
-	if !r.manager.doll.SetAreaFrom(info.UID, info.Village, info.Area, info.X, info.Y, st.Village, st.Area) {
+	runtime := r.manager.storeSessionRuntime()
+	if runtime == nil {
+		return false, "set_area_failed"
+	}
+	if !runtime.SetAreaFrom(info.UID, info.Village, info.Area, info.X, info.Y, st.Village, st.Area) {
 		return false, "set_area_failed"
 	}
 	if storecap.SleepWithStop(1800*time.Millisecond, shouldStop) {
 		return false, "cancelled"
 	}
-	if !r.manager.doll.StartDisjointStore(info.UID, r.manager.disjointStoreCost()) {
+	if !runtime.StartDisjointStore(info.UID, r.manager.disjointStoreCost()) {
 		return false, "start_failed"
 	}
 	r.manager.invalidateRuntimeStatusCache()
@@ -420,7 +456,8 @@ func (r *RobotRuntime) waitDisjointPositionResult(info robotcap.Info, shouldStop
 			}
 			if !compatibilitySendTried && !st.DisjointCreateSent && st.RobotType != 3 && time.Since(runningSince) >= 500*time.Millisecond {
 				compatibilitySendTried = true
-				if r.manager.doll.StartDisjointStore(info.UID, r.manager.disjointStoreCost()) {
+				runtime := r.manager.storeSessionRuntime()
+				if runtime != nil && runtime.StartDisjointStore(info.UID, r.manager.disjointStoreCost()) {
 					robotLogf("[DISJOINT_LOGIN_FALLBACK_SENT] uid=%d cid=%d pos=%d/%d/%d/%d\n",
 						info.UID, info.CID, st.Village, st.Area, st.X, st.Y)
 				} else {
@@ -465,7 +502,7 @@ func (r *RobotRuntime) ExpireStore(uid int) robotcap.ActionResult {
 // online robot. This prevents the final server snapshot from restoring stale
 // inventory or the private-store entitlement (the visible pack-animal state).
 func (r *RobotRuntime) cleanupStoreSession(info robotcap.Info, rc robotconfig.RuntimeConfig, reason string) bool {
-	if _, err := r.manager.offlineCharacterForWrite(info.UID, nil); err != nil {
+	if err := r.manager.offlineStoreSession(info.UID); err != nil {
 		robotLogf("[STORE_CLEANUP_OFFLINE_ERROR] uid=%d cid=%d reason=%s err=%v\n", info.UID, info.CID, reason, err)
 		return false
 	}

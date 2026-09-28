@@ -101,7 +101,8 @@ func (e storeWorkflowEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.
 }
 
 func (e storeWorkflowEnv) SetAreaFrom(uid int, village, area int, x, y int, fromVillage, fromArea int) bool {
-	return e.manager.doll.SetAreaFrom(uid, village, area, x, y, fromVillage, fromArea)
+	runtime := e.manager.storeSessionRuntime()
+	return runtime != nil && runtime.SetAreaFrom(uid, village, area, x, y, fromVillage, fromArea)
 }
 
 func (e storeWorkflowEnv) StartPrivateStore(uid int, title string) bool {
@@ -251,11 +252,18 @@ func (e storeMaintenanceEnv) ResetPrivateStore(uid int) {
 }
 
 func (e storeMaintenanceEnv) RestoreDummyNormal(info robotcap.Info) error {
-	return errSchedulerStorageUnavailable
+	// Protocol adapters keep no dummylist table; recording the planned normal
+	// position in the robot directory is what the next online selection reads.
+	e.manager.rememberRobotLocation(info.UID, info.Village, info.Area, info.X, info.Y)
+	return nil
 }
 
 func (e storeMaintenanceEnv) RevokeStorePermission(uid, cid int) error {
-	return errSchedulerStorageUnavailable
+	if uid <= 0 {
+		return nil
+	}
+	// Without the private item stall there is no store entitlement to revoke.
+	return nil
 }
 
 func (e storeMaintenanceEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.Info, error) {
@@ -263,5 +271,7 @@ func (e storeMaintenanceEnv) SelectRobots(req robotcap.CommandRequest) ([]robotc
 }
 
 func (e storeMaintenanceEnv) SyncCharacterVillage(cid int, village int) (int, error) {
-	return 0, errSchedulerStorageUnavailable
+	// The A21 position plane is applied through the game session; there is no
+	// character village column in this adapter's persistence boundary.
+	return village, nil
 }

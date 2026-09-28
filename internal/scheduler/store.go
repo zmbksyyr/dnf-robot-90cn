@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -146,6 +147,38 @@ func (m *RobotManager) restoreAutoNormalPosition(info robotcap.Info, rc robotcon
 	return normal, err
 }
 
+// storeOnlineGateTimeout bounds how long store preparation and cleanup wait
+// for the scheduler online admission token before reporting a busy failure.
+const storeOnlineGateTimeout = 20 * time.Second
+
+// offlineStoreSession releases the store owner's session before cleanup.
+// Native runtimes keep the character-save barrier; adapters that install a
+// protocol store runtime close the transport session and wait for the account
+// to disappear from the adapter's online view.
+func (m *RobotManager) offlineStoreSession(uid int) error {
+	if m == nil || uid <= 0 {
+		return fmt.Errorf("invalid store session uid=%d", uid)
+	}
+	if _, ok := m.doll.(characterRefreshRuntime); ok {
+		_, err := m.offlineCharacterForWrite(uid, nil)
+		return err
+	}
+	if m.storeRuntime == nil {
+		_, err := m.offlineCharacterForWrite(uid, nil)
+		return err
+	}
+	if m.sessions == nil {
+		return fmt.Errorf("session driver is not configured")
+	}
+	if err := m.sessions.SendLogout(uid); err != nil {
+		return err
+	}
+	if _, err := m.waitAccountOffline(uid, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (m *RobotManager) restoreAutoNormalOnline(info robotcap.Info, rc robotconfig.RuntimeConfig, reason string) (robotcap.Info, bool) {
 	started := time.Now()
 	if m.isCleanupPending(info.UID) {
@@ -163,7 +196,12 @@ func (m *RobotManager) restoreAutoNormalOnline(info robotcap.Info, rc robotconfi
 			normal.UID, reason, time.Since(started).Milliseconds(), err)
 		return normal, false
 	}
+	if !m.acquireOnlineAttemptWait(storeOnlineGateTimeout, nil) {
+		robotLogf("[AutoStore] uid=%d restore_normal_online_gate_busy reason=%s\n", normal.UID, reason)
+		return normal, false
+	}
 	result, err := m.sessionService().Online(robotcap.CommandRequest{UIDs: []int{normal.UID}}, true, rc)
+	m.ReleaseOnlineAttempt()
 	recovered := err == nil && result.Confirmed == 1
 	elapsedMS := time.Since(started).Milliseconds()
 	if !recovered {

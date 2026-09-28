@@ -76,8 +76,21 @@ func (m *RobotManager) endStoreBusy(uid int) {
 
 // beginAdaptiveStoreType is restored from the first proven disjoint/item
 // split. It balances active plus in-flight stalls, so failed or slower branches
-// do not permanently skew all subsequent choices toward one type.
+// do not permanently skew all subsequent choices toward one type. Adapters that
+// implement only one stall kind skip the balancing entirely.
 func (m *RobotManager) beginAdaptiveStoreType() (disjoint bool, done func()) {
+	if !m.itemStoreSupported() {
+		m.autoMu.Lock()
+		m.autoStoreDisjointPending++
+		m.autoMu.Unlock()
+		return true, func() {
+			m.autoMu.Lock()
+			if m.autoStoreDisjointPending > 0 {
+				m.autoStoreDisjointPending--
+			}
+			m.autoMu.Unlock()
+		}
+	}
 	itemRunning, disjointRunning := m.autoStoreTypeCounts()
 	m.autoMu.Lock()
 	itemPlanned := itemRunning + m.autoStoreItemPending
@@ -101,6 +114,14 @@ func (m *RobotManager) beginAdaptiveStoreType() (disjoint bool, done func()) {
 		}
 		m.autoMu.Unlock()
 	}
+}
+
+// itemStoreSupported reports whether the installed adapter implements the
+// private item stall. A missing declaration keeps the historical both-kinds
+// behavior for legacy runtimes.
+func (m *RobotManager) itemStoreSupported() bool {
+	support, ok := m.storePolicy.(interface{ ItemStoreSupported() bool })
+	return !ok || support.ItemStoreSupported()
 }
 
 func (m *RobotManager) autoStoreTypeCounts() (item, disjoint int) {

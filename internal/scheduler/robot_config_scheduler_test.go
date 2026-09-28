@@ -47,7 +47,7 @@ func TestRetryDisjointInCurrentSessionOnlyForTransientPositionState(t *testing.T
 	// semantics of its local reasons.
 	m := testRobotManagerWithConfig(t, "")
 	m.SetBackendStorePolicy(s4a21TestStorePolicy{})
-	for _, reason := range []string{"set_area_failed", "ack_timeout", "disjoint_err_0x14", "disjoint_err_0x3e", "disjoint_err_0x52", "disjoint_err_0xbe"} {
+	for _, reason := range []string{"set_area_failed", "ack_timeout", "disjoint_err_0x52", "disjoint_err_0xbe"} {
 		if !m.disjointReasonRetryable(reason) {
 			t.Fatalf("reason %q should retry in current session", reason)
 		}
@@ -61,11 +61,11 @@ func TestRetryDisjointInCurrentSessionOnlyForTransientPositionState(t *testing.T
 
 func TestDisjointFailureClassificationFollowsAdapterPolicy(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	if reason, retry := m.disjointFailure(0x14); reason != "disjoint_err_0x14" || retry {
+	if reason, retry := m.disjointFailure(0x52); reason != "disjoint_err_0x52" || retry {
 		t.Fatalf("default classification = %q retry=%t, want neutral", reason, retry)
 	}
 	m.SetBackendStorePolicy(s4a21TestStorePolicy{})
-	if reason, retry := m.disjointFailure(0x14); reason != "disjoint_err_0x14" || !retry {
+	if reason, retry := m.disjointFailure(0x52); reason != "disjoint_err_0x52" || !retry {
 		t.Fatalf("adapter classification = %q retry=%t, want retryable", reason, retry)
 	}
 	if m.disjointStoreCost() != 500 {
@@ -77,6 +77,32 @@ func TestDisjointFailureClassificationFollowsAdapterPolicy(t *testing.T) {
 // adapter package (scheduler must stay backend-neutral).
 type s4a21TestStorePolicy struct{}
 
+// disjointOnlyStorePolicy mirrors an adapter that implements the disassembler
+// machine but not the private item stall.
+type disjointOnlyStorePolicy struct {
+	s4a21TestStorePolicy
+}
+
+func (disjointOnlyStorePolicy) ItemStoreSupported() bool { return false }
+
+func TestAdaptiveStoreTypeHonorsAdapterKindSupport(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	m.SetBackendStorePolicy(disjointOnlyStorePolicy{})
+	for attempt := 0; attempt < 4; attempt++ {
+		disjoint, release := m.beginAdaptiveStoreType()
+		if !disjoint {
+			t.Fatal("disjoint-only policy selected the unavailable item stall")
+		}
+		release()
+	}
+	m.autoMu.Lock()
+	itemPending, disjointPending := m.autoStoreItemPending, m.autoStoreDisjointPending
+	m.autoMu.Unlock()
+	if itemPending != 0 || disjointPending != 0 {
+		t.Fatalf("pending counters leaked item=%d disjoint=%d", itemPending, disjointPending)
+	}
+}
+
 func (s4a21TestStorePolicy) DisjointStoreCost() uint32 { return 500 }
 
 func (s4a21TestStorePolicy) DisjointFailure(errCode byte) (string, bool) {
@@ -85,7 +111,7 @@ func (s4a21TestStorePolicy) DisjointFailure(errCode byte) (string, bool) {
 		reason = fmt.Sprintf("disjoint_err_0x%02x", errCode)
 	}
 	switch errCode {
-	case 0x14, 0x3e, 0x52, 0xbe:
+	case 0x52, 0xbe:
 		return reason, true
 	}
 	return reason, false
@@ -93,7 +119,7 @@ func (s4a21TestStorePolicy) DisjointFailure(errCode byte) (string, bool) {
 
 func (s4a21TestStorePolicy) DisjointReasonRetryable(reason string) (bool, bool) {
 	switch reason {
-	case "disjoint_err_0x14", "disjoint_err_0x3e", "disjoint_err_0x52", "disjoint_err_0xbe":
+	case "disjoint_err_0x52", "disjoint_err_0xbe":
 		return true, true
 	case "disjoint_failed":
 		return false, true

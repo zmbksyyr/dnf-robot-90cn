@@ -110,6 +110,8 @@ type RobotManager struct {
 	nameTemplateSnapshot            atomic.Pointer[robottemplate.NameTemplates]
 	supervisor                      *RobotSupervisor
 	storePolicy                     shared.BackendStorePolicy
+	storeRuntime                    BackendStoreRuntime
+	disjointProfessionWriter        BackendDisjointProfessionWriter
 	followAccountLocator            shared.FollowAccountLocator
 	accountOnlineChecker            shared.AccountOnlineChecker
 	storePointsCoord                *storecap.PointCoordinator
@@ -268,6 +270,75 @@ func (m *RobotManager) SetBackendStorePolicy(policy shared.BackendStorePolicy) {
 	}
 	m.storePolicy = policy
 }
+
+// BackendStoreRuntime is the adapter-owned session surface for store actions.
+// Adapters with a protocol session implement it directly; legacy backends fall
+// back to the doll runtime through storeSessionRuntime.
+type BackendStoreRuntime interface {
+	SetAreaFrom(uid int, village, area int, x, y int, fromVillage, fromArea int) bool
+	StartDisjointStore(uid int, cost uint32) bool
+	CloseDisjointStore(uid int) bool
+}
+
+// BackendDisjointProfessionWriter prepares the disassembler profession in the
+// adapter's persistence boundary. It runs while the account is offline and
+// before the next login; backends without a writer keep the capability
+// disabled instead of faking the protocol state.
+type BackendDisjointProfessionWriter interface {
+	EnsureDisjointProfession(cid int) error
+}
+
+// SetBackendStoreRuntime installs the selected adapter's store session
+// operations.
+func (m *RobotManager) SetBackendStoreRuntime(runtime BackendStoreRuntime) {
+	if m != nil && runtime != nil {
+		m.storeRuntime = runtime
+	}
+}
+
+// SetBackendDisjointProfessionWriter installs the selected adapter's offline
+// profession preparation.
+func (m *RobotManager) SetBackendDisjointProfessionWriter(writer BackendDisjointProfessionWriter) {
+	if m != nil && writer != nil {
+		m.disjointProfessionWriter = writer
+	}
+}
+
+// storeSessionRuntime prefers the adapter store runtime and falls back to the
+// legacy doll runtime so native test doubles keep working.
+func (m *RobotManager) storeSessionRuntime() BackendStoreRuntime {
+	if m == nil {
+		return nil
+	}
+	if m.storeRuntime != nil {
+		return m.storeRuntime
+	}
+	if m.doll == nil {
+		return nil
+	}
+	return dollStoreRuntime{runtime: m.doll}
+}
+
+func (m *RobotManager) disjointWriter() BackendDisjointProfessionWriter {
+	if m == nil {
+		return nil
+	}
+	return m.disjointProfessionWriter
+}
+
+type dollStoreRuntime struct {
+	runtime Runtime
+}
+
+func (d dollStoreRuntime) SetAreaFrom(uid int, village, area int, x, y int, fromVillage, fromArea int) bool {
+	return d.runtime.SetAreaFrom(uid, village, area, x, y, fromVillage, fromArea)
+}
+
+func (d dollStoreRuntime) StartDisjointStore(uid int, cost uint32) bool {
+	return d.runtime.StartDisjointStore(uid, cost)
+}
+
+func (dollStoreRuntime) CloseDisjointStore(int) bool { return false }
 
 // SetBackendFollowAccountLocator installs the adapter's follow-account lookup.
 func (m *RobotManager) SetBackendFollowAccountLocator(locator shared.FollowAccountLocator) {

@@ -212,3 +212,9 @@ func (d protocolSessionDriver) closeOpened(uids []int) {
 func (d protocolSessionDriver) ForceClose(uid int) bool {
 	return d.transport.Close(uid) == nil
 }
+
+// CharacterCacheBoundaryIsSessionClose reports that closing the game session
+// already releases the server-side character snapshot. Protocol backends have
+// no separate NoCache command, so the scheduler must not require one before an
+// offline database write.
+func (protocolSessionDriver) CharacterCacheBoundaryIsSessionClose() bool { return true }
