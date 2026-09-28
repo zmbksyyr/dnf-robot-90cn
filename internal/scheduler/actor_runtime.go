@@ -354,10 +354,14 @@ func (r *RobotRuntime) autoDisjointStore(uid int, st robotcap.RuntimeStatus, sho
 func (r *RobotRuntime) tryDisjointPosition(info robotcap.Info, rc robotconfig.RuntimeConfig, shouldStop func() bool) (bool, string) {
 	// A prepared disjointer with a durable machine opens the next store on the
 	// live session. The offline profession cycle below only runs when the probe
-	// fails or the machine needs its endurance refreshed.
-	if writer := r.manager.disjointWriter(); writer != nil {
-		if ready, err := writer.DisjointProfessionReady(info.CID); err == nil && ready {
-			return r.tryDisjointPositionInCurrentSession(info, shouldStop)
+	// fails, the machine needs its endurance refreshed, or the live area cannot
+	// host a point: the next login lets the spawn repair relocate the robot
+	// instead of forcing a cross-area transition under load.
+	if points := r.manager.storePoints(); points != nil && points.HasArea(info.Village, info.Area) {
+		if writer := r.manager.disjointWriter(); writer != nil {
+			if ready, err := writer.DisjointProfessionReady(info.CID); err == nil && ready {
+				return r.tryDisjointPositionInCurrentSession(info, shouldStop)
+			}
 		}
 	}
 	// The first coordinate establishes the account session. After the
