@@ -24,7 +24,7 @@ func TestBalancedFamilyLocationDoesNotMultiplyMirrorInstances(t *testing.T) {	ma
 
 	var locations []shared.MapLocation
 	for index := 0; index < 6; index++ {
-		target, ok := BalancedFamilyLocation(zeroRandom{}, maps, 80, locations)
+		target, ok := BalancedFamilyLocation(zeroRandom{}, maps, 80, locations, "")
 		if !ok {
 			t.Fatal("BalancedFamilyLocation returned no target")
 		}

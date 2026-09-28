@@ -270,8 +270,11 @@ func MapFamilyKey(mp shared.MapCatalogItem) string {
 // BalancedFamilyLocation chooses a logical map family (unique geometry) by
 // least density, then the least crowded mirror instance inside it. Families
 // with no robots are taken first so coverage grows before load balancing.
-func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level int, locations []shared.MapLocation) (BalancedTarget, bool) {
+// excludeFamily (a MapFamilyKey) is skipped when other families are available,
+// so a relocation always changes the logical map.
+func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level int, locations []shared.MapLocation, excludeFamily string) (BalancedTarget, bool) {
 	type family struct {
+		key        string
 		weight     int
 		candidates []mapCandidate
 		count      int
@@ -293,7 +296,7 @@ func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level
 		key := MapFamilyKey(mp)
 		group := families[key]
 		if group == nil {
-			group = &family{weight: SmoothedRectanglesWeight(rectangles)}
+			group = &family{key: key, weight: SmoothedRectanglesWeight(rectangles)}
 			families[key] = group
 			order = append(order, group)
 		}
@@ -302,26 +305,39 @@ func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level
 	if len(order) == 0 {
 		return BalancedTarget{}, false
 	}
+	eligible := order
+	if excludeFamily != "" && len(order) > 1 {
+		filtered := make([]*family, 0, len(order))
+		for _, group := range order {
+			if group.key == excludeFamily {
+				continue
+			}
+			filtered = append(filtered, group)
+		}
+		if len(filtered) > 0 {
+			eligible = filtered
+		}
+	}
 	for _, group := range order {
 		for _, candidate := range group.candidates {
 			group.count += areaCounts[mapAreaKey(candidate.mp)]
 		}
 	}
 
-	emptyFamilies := make([]int, 0, len(order))
-	for index, group := range order {
+	emptyFamilies := make([]int, 0, len(eligible))
+	for index, group := range eligible {
 		if group.count == 0 {
 			emptyFamilies = append(emptyFamilies, index)
 		}
 	}
 	var chosen *family
 	if len(emptyFamilies) > 0 {
-		chosen = order[randomIndex(env, emptyFamilies)]
+		chosen = eligible[randomIndex(env, emptyFamilies)]
 	} else {
 		best := []int{0}
-		for index := 1; index < len(order); index++ {
-			left := order[index].count * order[best[0]].weight
-			right := order[best[0]].count * order[index].weight
+		for index := 1; index < len(eligible); index++ {
+			left := eligible[index].count * eligible[best[0]].weight
+			right := eligible[best[0]].count * eligible[index].weight
 			switch {
 			case left < right:
 				best = []int{index}
@@ -329,7 +345,7 @@ func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level
 				best = append(best, index)
 			}
 		}
-		chosen = order[randomIndex(env, best)]
+		chosen = eligible[randomIndex(env, best)]
 	}
 
 	instanceIndexes := make([]int, len(chosen.candidates))

@@ -105,6 +105,10 @@ func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.
 	if len(spawnMaps) == 0 {
 		spawnMaps = maps
 	}
+	// Serialize repair decisions: each one must see the previous location
+	// write-back, otherwise concurrent logins pile into the same mirror.
+	d.manager.spawnRepairMu.Lock()
+	defer d.manager.spawnRepairMu.Unlock()
 	locations, err := d.manager.robotLocations()
 	if err != nil {
 		locations = nil
@@ -140,7 +144,14 @@ func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.
 	// town (1/0), an event/housing area, or pile up in a single map. None of
 	// those are stable homes, so pick a capacity-balanced regular town and
 	// record it immediately so concurrent decisions see the same occupancy.
-	if target, ok := robotspawn.BalancedFamilyLocation(spawnEnv{manager: d.manager}, spawnMaps, info.Level, locations); ok {
+	currentFamily := ""
+	for _, mp := range maps {
+		if mp.Village == info.Village && mp.Area == info.Area {
+			currentFamily = robotspawn.MapFamilyKey(mp)
+			break
+		}
+	}
+	if target, ok := robotspawn.BalancedFamilyLocation(spawnEnv{manager: d.manager}, spawnMaps, info.Level, locations, currentFamily); ok {
 		robotLogf("[SpawnRepair] uid=%d cid=%d level=%d from=%d/%d -> %d/%d/%d/%d crowded=%t\n",
 			info.UID, info.CID, info.Level, info.Village, info.Area, target.Map.Village, target.Map.Area, target.X, target.Y, crowded)
 		info.Village, info.Area = target.Map.Village, target.Map.Area

@@ -77,6 +77,7 @@ type RobotManager struct {
 	onlineTokenAt                   time.Time
 	onlineInFlight                  int
 	onlineBreakerStreak             int
+	spawnRepairMu                   lockhub.Locker
 	schedulerLastOnlineSuccess      int
 	schedulerLastOnlineFailed       int
 	schedulerRecentOnlineSuccess    int
