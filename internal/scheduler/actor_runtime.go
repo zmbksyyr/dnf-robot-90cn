@@ -377,32 +377,41 @@ func (r *RobotRuntime) AutoServerNotice(uid int, shouldStop func() bool) robotca
 		if !rc.AutoServerNotice {
 			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "disabled"}
 		}
+		// The runtime status does not carry the character id; the state
+		// directory owns the UID/CID mapping used by every adapter write.
+		cid := st.CID
+		if robots, err := r.manager.selectRobots(robotcap.CommandRequest{UIDs: []int{uid}}); err == nil && len(robots) > 0 {
+			cid = robots[0].CID
+		}
+		if cid <= 0 {
+			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: "cid_missing"}
+		}
 		runtime := r.manager.serverNoticeRuntime()
 		writer := r.manager.serverNoticeStockWriter()
 		if runtime == nil || writer == nil {
 			r.manager.addServerNotice(0, 1, 0)
-			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateFailed, Message: "port_unavailable"}
+			return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateFailed, Message: "port_unavailable"}
 		}
 		if !r.manager.claimServerNoticeSlot(rc) {
-			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "not_due"}
+			return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateCancelled, Message: "not_due"}
 		}
 		kind := r.manager.serverNoticeKind(rc)
-		ready, err := writer.ServerNoticeStockReady(st.CID, kind)
+		ready, err := writer.ServerNoticeStockReady(cid, kind)
 		if err != nil || !ready {
-			if ok, reason := r.prepareServerNoticeStock(st, rc, kind, shouldStop); !ok {
+			if ok, reason := r.prepareServerNoticeStock(uid, cid, rc, kind, shouldStop); !ok {
 				r.manager.addServerNotice(0, 1, 0)
 				if reason == "cancelled" {
-					return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled}
+					return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateCancelled}
 				}
-				robotLogf("[SERVER_NOTICE_PREPARE_FAILED] uid=%d cid=%d kind=%s reason=%s err=%v\n", uid, st.CID, kind.Name(), reason, err)
-				return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateStorePrepareFailed, Message: reason}
+				robotLogf("[SERVER_NOTICE_PREPARE_FAILED] uid=%d cid=%d kind=%s reason=%s err=%v\n", uid, cid, kind.Name(), reason, err)
+				return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateStorePrepareFailed, Message: reason}
 			}
 		}
-		result, err := runtime.TriggerServerNotice(shared.ServerNoticeTriggerRequest{UID: uid, CID: st.CID, Kind: kind})
+		result, err := runtime.TriggerServerNotice(shared.ServerNoticeTriggerRequest{UID: uid, CID: cid, Kind: kind})
 		if err != nil {
 			r.manager.addServerNotice(0, 1, 0)
-			robotLogf("[SERVER_NOTICE_FAILED] uid=%d cid=%d kind=%s reason=%s err=%v\n", uid, st.CID, kind.Name(), result.Reason, err)
-			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateFailed, Message: firstNonEmpty(result.Reason, err.Error())}
+			robotLogf("[SERVER_NOTICE_FAILED] uid=%d cid=%d kind=%s reason=%s err=%v\n", uid, cid, kind.Name(), result.Reason, err)
+			return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateFailed, Message: firstNonEmpty(result.Reason, err.Error())}
 		}
 		if result.Broadcast {
 			r.manager.addServerNotice(1, 0, 1)
@@ -414,10 +423,10 @@ func (r *RobotRuntime) AutoServerNotice(uid int, shouldStop func() bool) robotca
 		robotLogf("[SERVER_NOTICE] kind=%s uid=%d cid=%d sent=%t accepted=%t broadcast=%t item=0x%X level=%d reason=%s\n",
 			result.Kind.Name(), result.UID, result.CID, result.Sent, result.Accepted, result.Broadcast, result.ItemID, result.Level, result.Reason)
 		if !result.Sent || !result.Accepted {
-			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateFailed, Message: firstNonEmpty(result.Reason, "rejected")}
+			return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateFailed, Message: firstNonEmpty(result.Reason, "rejected")}
 		}
 		r.manager.invalidateRuntimeStatusCache()
-		return robotcap.ActionResult{UID: uid, CID: st.CID, OK: true, State: robotcap.ActionStateNoticed}
+		return robotcap.ActionResult{UID: uid, CID: cid, OK: true, State: robotcap.ActionStateNoticed}
 	})
 }
 
@@ -425,7 +434,7 @@ func (r *RobotRuntime) AutoServerNotice(uid int, shouldStop func() bool) robotca
 // The stock only loads at character select, so it must run between logout and
 // the next login; the adaptive online gate keeps the reconnect inside the same
 // budget as every other login.
-func (r *RobotRuntime) prepareServerNoticeStock(st robotcap.RuntimeStatus, rc robotconfig.RuntimeConfig, kind shared.ServerNoticeKind, shouldStop func() bool) (bool, string) {
+func (r *RobotRuntime) prepareServerNoticeStock(uid, cid int, rc robotconfig.RuntimeConfig, kind shared.ServerNoticeKind, shouldStop func() bool) (bool, string) {
 	writer := r.manager.serverNoticeStockWriter()
 	if writer == nil {
 		return false, "port_unavailable"
@@ -433,7 +442,7 @@ func (r *RobotRuntime) prepareServerNoticeStock(st robotcap.RuntimeStatus, rc ro
 	closed := false
 	closeDeadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(closeDeadline) {
-		if r.ForceClose(st.UID) {
+		if r.ForceClose(uid) {
 			closed = true
 			break
 		}
@@ -442,29 +451,29 @@ func (r *RobotRuntime) prepareServerNoticeStock(st robotcap.RuntimeStatus, rc ro
 	if !closed {
 		return false, "logout_failed"
 	}
-	r.manager.markSessionLogout(st.UID, time.Now())
-	if err := r.manager.invalidateClosedCharacterCache(st.UID); err != nil {
+	r.manager.markSessionLogout(uid, time.Now())
+	if err := r.manager.invalidateClosedCharacterCache(uid); err != nil {
 		return false, "cache_invalidation_failed"
 	}
-	cancelled, err := r.manager.waitAccountOffline(st.UID, shouldStop)
+	cancelled, err := r.manager.waitAccountOffline(uid, shouldStop)
 	if err != nil {
 		return false, "offline_failed"
 	}
 	if cancelled {
 		return false, "cancelled"
 	}
-	if err := writer.EnsureServerNoticeStock(st.CID, kind); err != nil {
-		robotLogf("[SERVER_NOTICE_STOCK_ERROR] uid=%d cid=%d kind=%s err=%v\n", st.UID, st.CID, kind.Name(), err)
+	if err := writer.EnsureServerNoticeStock(cid, kind); err != nil {
+		robotLogf("[SERVER_NOTICE_STOCK_ERROR] uid=%d cid=%d kind=%s err=%v\n", uid, cid, kind.Name(), err)
 		return false, "stock_write_failed"
 	}
 	if !r.manager.acquireOnlineAttemptWait(storeOnlineGateTimeout, shouldStop) {
 		return false, "online_gate_busy"
 	}
-	online, err := r.manager.sessionService().Online(robotcap.CommandRequest{UIDs: []int{st.UID}}, true, rc)
+	online, err := r.manager.sessionService().Online(robotcap.CommandRequest{UIDs: []int{uid}}, true, rc)
 	r.manager.ReleaseOnlineAttempt()
 	if err != nil || online.Confirmed != 1 {
 		robotLogf("[SERVER_NOTICE_ONLINE_ERROR] uid=%d cid=%d kind=%s confirmed=%d failed=%d err=%v\n",
-			st.UID, st.CID, kind.Name(), online.Confirmed, online.Failed, err)
+			uid, cid, kind.Name(), online.Confirmed, online.Failed, err)
 		return false, "online_failed"
 	}
 	r.manager.invalidateRuntimeStatusCache()

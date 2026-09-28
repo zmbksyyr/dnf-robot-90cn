@@ -10,10 +10,12 @@ import (
 )
 
 // server notice trigger pacing on the live session. The ack follows the
-// request immediately; the 0x0056 broadcast arrives with the same handler.
+// request immediately when the server is idle; under a login storm the
+// handler can queue for several seconds, so the wait is generous and a
+// broadcast without an ack still counts as processed.
 const (
-	serverNoticeAckTimeout       = 5 * time.Second
-	serverNoticeBroadcastTimeout = 2 * time.Second
+	serverNoticeAckTimeout       = 15 * time.Second
+	serverNoticeBroadcastTimeout = 4 * time.Second
 	serverNoticePollInterval     = 100 * time.Millisecond
 	serverNoticeDedupeWindow     = 30 * time.Second
 	serverNoticeHistorySize      = 50
@@ -139,6 +141,15 @@ func (t *ActionTransport) TriggerServerNotice(request shared.ServerNoticeTrigger
 		return result, nil
 	}
 	result.Accepted = state.accepted
+	if state.broadcast {
+		// A broadcast is proof the server processed the action even when the
+		// ack was lost to a queued handler.
+		result.Accepted = true
+		result.Broadcast = true
+		result.ItemID = state.event.ItemID
+		result.Level = state.event.Level
+		return result, nil
+	}
 	if state.rejected {
 		result.Reason = fmt.Sprintf("rejected_%d", state.lastError)
 		return result, nil
@@ -161,13 +172,13 @@ func (t *ActionTransport) TriggerServerNotice(request shared.ServerNoticeTrigger
 	return result, nil
 }
 
-// waitServerNoticeState polls the session until the ack lands.
+// waitServerNoticeState polls the session until the ack or a broadcast lands.
 func waitServerNoticeState(session shared.RobotSession, timeout time.Duration) (serverNoticeState, bool) {
 	deadline := time.Now().Add(timeout)
 	for {
 		if provider, ok := session.(interface{ ServerNoticeState() serverNoticeState }); ok {
 			state := provider.ServerNoticeState()
-			if state.accepted || state.rejected {
+			if state.accepted || state.rejected || state.broadcast {
 				return state, true
 			}
 		}
