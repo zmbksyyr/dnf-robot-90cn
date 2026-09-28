@@ -70,14 +70,6 @@ func (d runtimeSessionDriver) SendLogout(uid int) error {
 }
 
 func (d runtimeSessionDriver) SendOnline(users []shared.RuntimeOnlineUser) error {
-	maps := d.manager.loadMapCatalog()
-	for index := range users {
-		if gateArea, ok := gateAreaForVillage(maps, users[index].BirthVillage); ok {
-			users[index].BirthGateArea = gateArea
-		} else {
-			users[index].BirthGateArea = users[index].BirthArea
-		}
-	}
 	d.manager.waitSessionRelogin(users)
 	return d.manager.doll.Online(users)
 }

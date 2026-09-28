@@ -14,14 +14,12 @@ const (
 )
 
 type StallItem struct {
-	ItemID int
-	Count  int
-	Price  int
+	Count int
+	Price int
 }
 
 type StallResult struct {
-	StallRows  int
-	ConfigRows int
+	StallRows int
 }
 
 type PermissionStatus struct {

@@ -18,11 +18,10 @@ var ErrDuplicateIdentity = errors.New("robot identity already registered")
 // Identity records only robot-owned linkage. Backend-specific IDs are optional
 // because some protocols may expose a slot/name but no persistent UID/CID.
 type Identity struct {
-	Backend            shared.BackendID
-	Account            string
-	CharacterName      string
-	Slot               *uint16
-	BackendCharacterID string
+	Backend       shared.BackendID
+	Account       string
+	CharacterName string
+	Slot          *uint16
 }
 
 type IdentityDirectory interface {

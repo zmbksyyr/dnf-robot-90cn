@@ -128,7 +128,6 @@ func (s SQLiteStartupInventory) ScanAndClean(ctx context.Context) (StartupInvent
 		result.Robots = append(result.Robots, robot)
 		result.Identities = append(result.Identities, robotstate.Identity{
 			Backend: BackendID, Account: account.name, CharacterName: name, Slot: &slot,
-			BackendCharacterID: strconv.Itoa(character.id),
 		})
 	}
 

@@ -53,7 +53,6 @@ func (m *RobotManager) acquireAutoStoreSlot(rc robotconfig.RuntimeConfig) (func(
 	limit := normalizedStoreConcurrent(rc)
 	acquired := false
 	_ = m.lockHub().WithResource(lockScopeScheduler, lockResourceSchedulerStoreSlots, "acquire_auto_store_slot", func() error {
-		m.autoStoreCap = limit
 		if m.autoStoreActive < limit {
 			m.autoStoreActive++
 			acquired = true
@@ -78,7 +77,6 @@ func (m *RobotManager) acquireAutoItemStoreSlot(rc robotconfig.RuntimeConfig) (f
 	itemLimit := m.effectiveAutoItemStoreLimit(rc)
 	itemAcquired := false
 	_ = m.lockHub().WithResource(lockScopeScheduler, lockResourceSchedulerStoreSlots, "acquire_auto_item_store_slot", func() error {
-		m.autoItemStoreCap = itemLimit
 		if m.autoItemStoreActive < itemLimit {
 			m.autoItemStoreActive++
 			itemAcquired = true

@@ -35,7 +35,6 @@ type EquipmentRecord struct {
 
 type PositionUpdate struct {
 	UID     int
-	CID     int
 	Village int
 	Area    int
 	X       int

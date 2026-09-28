@@ -121,7 +121,6 @@ func (b *positionBatcher) Queue(info robotcap.Info, village, area, x, y int) err
 	}
 	update := robotcap.PositionUpdate{
 		UID:     info.UID,
-		CID:     info.CID,
 		Village: village,
 		Area:    area,
 		X:       x,

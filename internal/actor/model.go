@@ -67,7 +67,6 @@ const (
 type Snapshot struct {
 	SlotID         int
 	UID            int
-	Generation     uint64
 	Mode           Mode
 	State          State
 	Busy           bool

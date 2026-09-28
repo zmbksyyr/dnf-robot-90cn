@@ -63,11 +63,10 @@ func (e shoutActionEnv) SelectRobots(req robotcap.CommandRequest) ([]robotcap.In
 	return e.manager.selectRobots(req)
 }
 
-func (e shoutActionEnv) SendLocalShout(_ string, uid int, msg string, msgType int) error {
+func (e shoutActionEnv) SendLocalShout(_ string, uid int, msg string, _ int) error {
 	command := shared.RuntimeShoutCommand{
 		UID:     uid,
 		Message: msg,
-		Type:    msgType,
 	}
 	return e.manager.actions.ShoutLocal(context.Background(), command)
 }

@@ -44,7 +44,6 @@ func (s *actionTestSession) MoveTown(_ context.Context, intent shared.TownMoveIn
 	s.town = intent
 	return nil
 }
-func (s *actionTestSession) MoveDungeon(context.Context, shared.DungeonMoveIntent) error { return nil }
 func (s *actionTestSession) Shout(_ context.Context, intent shared.ShoutIntent) error {
 	s.shout = intent
 	return nil

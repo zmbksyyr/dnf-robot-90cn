@@ -459,7 +459,7 @@ func TestRobotManagerShutdownFlushesPendingPositions(t *testing.T) {
 func BenchmarkPositionBatcherTakePending600(b *testing.B) {
 	updates := make([]robotcap.PositionUpdate, 600)
 	for index := range updates {
-		updates[index] = robotcap.PositionUpdate{UID: 17000000 + index, CID: index + 1}
+		updates[index] = robotcap.PositionUpdate{UID: 17000000 + index}
 	}
 	batcher := &positionBatcher{pending: make(map[int]robotcap.PositionUpdate, len(updates))}
 

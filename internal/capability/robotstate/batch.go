@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"robot/internal/shared"
 )
@@ -24,8 +23,6 @@ type CreateBatch struct {
 	Backend    shared.BackendID
 	Status     BatchStatus
 	Identities []Identity
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
 }
 
 // BatchDirectory tracks robot-owned provisioning progress only. Rollback is
@@ -44,8 +41,7 @@ func (s *MemoryStore) BeginCreateBatch(ctx context.Context, batch CreateBatch) e
 	if strings.TrimSpace(batch.ID) == "" || batch.Backend == "" {
 		return errors.New("batch id and backend are required")
 	}
-	now := time.Now().UTC()
-	batch.Status, batch.CreatedAt, batch.UpdatedAt = BatchRunning, now, now
+	batch.Status = BatchRunning
 	batch.Identities = append([]Identity(nil), batch.Identities...)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -70,13 +66,12 @@ func (s *MemoryStore) RecoverIncompleteCreateBatches(ctx context.Context) ([]Cre
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := time.Now().UTC()
 	result := make([]CreateBatch, 0)
 	for id, batch := range s.batches {
 		if batch.Status != BatchRunning {
 			continue
 		}
-		batch.Status, batch.UpdatedAt = BatchRolledBack, now
+		batch.Status = BatchRolledBack
 		s.batches[id] = batch
 		result = append(result, cloneBatch(batch))
 	}
@@ -96,7 +91,7 @@ func (s *MemoryStore) updateBatchStatus(ctx context.Context, id string, status B
 	if batch.Status != BatchRunning {
 		return errors.New("robot creation batch is not running")
 	}
-	batch.Status, batch.UpdatedAt = status, time.Now().UTC()
+	batch.Status = status
 	s.batches[id] = batch
 	return nil
 }

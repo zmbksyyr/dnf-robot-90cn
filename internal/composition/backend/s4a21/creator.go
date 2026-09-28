@@ -72,7 +72,7 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 	}
 	buildPlan := func(uid int) (robotlifecycle.ProtocolRobotPlan, error) {
 		plans, err := robotlifecycle.BuildProtocolRobotPlans(robotlifecycle.ProtocolPlanOptions{
-			Backend: BackendID, Count: 1, IDStart: uid, AccountPrefix: c.AccountPrefix,
+			Count: 1, IDStart: uid, AccountPrefix: c.AccountPrefix,
 			PasswordHash: c.PasswordHash, Config: c.Config, Names: c.Names, Maps: c.Maps, JobGrows: c.JobGrows, RandIntn: c.RandIntn, RandBetween: c.RandBetween,
 			NameExists: nameTaken,
 		})

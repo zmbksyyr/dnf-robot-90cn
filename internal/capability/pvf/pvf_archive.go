@@ -14,7 +14,6 @@ import (
 )
 
 type pvfFile struct {
-	Name string
 	Data []byte
 }
 
@@ -79,7 +78,7 @@ func openPVF(path string) (*pvfArchive, error) {
 			return nil, fmt.Errorf("pvf file tree entry %d duplicates %q", parsed-1, name)
 		}
 		if fileSize == 0 {
-			archive.files[name] = &pvfFile{Name: name, Data: nil}
+			archive.files[name] = &pvfFile{Data: nil}
 			continue
 		}
 		aligned := (fileSize + 3) &^ uint64(3)
@@ -97,7 +96,7 @@ func openPVF(path string) (*pvfArchive, error) {
 		data := raw[start:end]
 		decryptPVFBlock(data, int(aligned), fileCRC)
 		data = data[:int(fileSize):int(fileSize)]
-		archive.files[name] = &pvfFile{Name: name, Data: data}
+		archive.files[name] = &pvfFile{Data: data}
 	}
 	if parsed != fileCount {
 		return nil, fmt.Errorf("pvf file tree entry count %d does not match header %d", parsed, fileCount)

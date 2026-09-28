@@ -11,7 +11,6 @@ import (
 )
 
 type ProtocolPlanOptions struct {
-	Backend       shared.BackendID
 	Count         int
 	IDStart       int
 	AccountPrefix string

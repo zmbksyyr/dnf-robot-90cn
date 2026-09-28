@@ -207,15 +207,6 @@ func (m *RobotManager) populateBackendSessionIdentities(users []shared.RuntimeOn
 	return nil
 }
 
-func gateAreaForVillage(maps []shared.MapCatalogItem, village int) (int, bool) {
-	for _, mp := range maps {
-		if mp.Use && mp.Gate && mp.Village == village {
-			return mp.Area, true
-		}
-	}
-	return 0, false
-}
-
 func (m *RobotManager) markSessionLogout(uid int, at time.Time) {
 	if m == nil || uid <= 0 {
 		return

@@ -203,20 +203,6 @@ func TestSessionReloginDoesNotDelayOtherUID(t *testing.T) {
 	}
 }
 
-func TestGateAreaForVillageUsesCurrentPVFCatalog(t *testing.T) {
-	maps := []shared.MapCatalogItem{
-		{Village: 2, Area: 9, Use: true},
-		{Village: 2, Area: 7, Use: true, Gate: true},
-		{Village: 3, Area: 4, Use: false, Gate: true},
-	}
-	if area, ok := gateAreaForVillage(maps, 2); !ok || area != 7 {
-		t.Fatalf("gate area=%d ok=%t, want current PVF area 7", area, ok)
-	}
-	if _, ok := gateAreaForVillage(maps, 3); ok {
-		t.Fatal("unusable gate area was accepted")
-	}
-}
-
 func TestSessionReleaseRemainingUsesLogoutSafetyWindow(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	m.sessionReloginDelay = 40 * time.Millisecond

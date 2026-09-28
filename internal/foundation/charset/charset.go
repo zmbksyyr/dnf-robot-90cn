@@ -21,14 +21,12 @@ func EncodeGBKString(s string) ([]byte, error) {
 }
 
 type textCodec struct {
-	name   string
-	encode *encoding.Encoder
 	decode *encoding.Decoder
 }
 
 var pvfCodecs = []textCodec{
-	{name: "big5", encode: traditionalchinese.Big5.NewEncoder(), decode: traditionalchinese.Big5.NewDecoder()},
-	{name: "gbk", encode: simplifiedchinese.GBK.NewEncoder(), decode: simplifiedchinese.GBK.NewDecoder()},
+	{decode: traditionalchinese.Big5.NewDecoder()},
+	{decode: simplifiedchinese.GBK.NewDecoder()},
 }
 
 func DecodePVFBytes(raw []byte) string {

@@ -52,9 +52,7 @@ type RobotManager struct {
 	autoStoreDisjointPending        int
 	cleanupPendingUIDs              map[int]time.Time
 	autoStoreActive                 int
-	autoStoreCap                    int
 	autoItemStoreActive             int
-	autoItemStoreCap                int
 	autoEnabled                     bool
 	autoPortSince                   time.Time
 	autoPortReady                   bool

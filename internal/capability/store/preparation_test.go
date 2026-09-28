@@ -261,7 +261,7 @@ func (e testPreparationEnv) ReplaceStoreStall(uid int, title string, items []Sta
 	if e.stalls != nil {
 		*e.stalls = append([]StallItem(nil), items...)
 	}
-	return StallResult{StallRows: len(items), ConfigRows: 1}, nil
+	return StallResult{StallRows: len(items)}, nil
 }
 
 func (e testPreparationEnv) SaveInventory(cid int, capacity int, raw []byte) error {

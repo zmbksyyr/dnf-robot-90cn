@@ -80,7 +80,7 @@ func (s SessionService) online(req robotcap.CommandRequest, confirm bool, rc rob
 				result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: false, State: robotcap.ActionStateFailed, Message: err.Error()})
 				continue
 			}
-			userinfos = append(userinfos, s.onlinePayload(robot, rc))
+			userinfos = append(userinfos, s.onlinePayload(robot))
 			result.Accepted++
 			result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: false, State: robotcap.ActionStateAccepted})
 		}
@@ -110,7 +110,7 @@ func (s SessionService) online(req robotcap.CommandRequest, confirm bool, rc rob
 				result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: false, State: robotcap.ActionStateFailed, Message: err.Error()})
 				continue
 			}
-			if err := env.SendOnline([]shared.RuntimeOnlineUser{s.onlinePayload(robot, rc)}); err == nil {
+			if err := env.SendOnline([]shared.RuntimeOnlineUser{s.onlinePayload(robot)}); err == nil {
 				result.Accepted++
 				result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: false, State: robotcap.ActionStateAccepted})
 			} else {
@@ -194,25 +194,23 @@ func (s SessionService) ConfirmAccepted(result *robotcap.CommandResult, timeout 
 	s.confirmOnline(result, timeout)
 }
 
-func (s SessionService) onlinePayload(robot robotcap.Info, rc robotconfig.RuntimeConfig) shared.RuntimeOnlineUser {
+func (s SessionService) onlinePayload(robot robotcap.Info) shared.RuntimeOnlineUser {
 	loginIP := s.Env.RobotConnectIP()
 	if env, ok := s.Env.(sessionLoginIPEnv); ok && env.RobotInnerIP() != "" {
 		loginIP = env.RobotInnerIP()
 	}
 	return shared.RuntimeOnlineUser{
-		BirthArea:      robot.Area,
-		BirthVillage:   robot.Village,
-		BirthX:         robot.X,
-		BirthY:         robot.Y,
-		CID:            robot.CID,
-		GuildID:        robot.GuildID,
-		CharacterSlot:  0,
-		IP:             s.Env.RobotConnectIP(),
-		LoginIP:        loginIP,
-		MaxReconnect:   rc.MaxReconnect,
-		Port:           s.Env.RobotGamePort(),
-		ReconnectDelay: rc.ReconnectDelayMS,
-		UID:            robot.UID,
+		BirthArea:     robot.Area,
+		BirthVillage:  robot.Village,
+		BirthX:        robot.X,
+		BirthY:        robot.Y,
+		CID:           robot.CID,
+		GuildID:       robot.GuildID,
+		CharacterSlot: 0,
+		IP:            s.Env.RobotConnectIP(),
+		LoginIP:       loginIP,
+		Port:          s.Env.RobotGamePort(),
+		UID:           robot.UID,
 	}
 }
 

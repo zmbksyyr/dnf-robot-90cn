@@ -52,13 +52,9 @@ const (
 )
 
 type Packet struct {
-	Command  byte
-	Type     uint16
-	Length   uint32
-	Checksum uint32
-	Sequence uint16
-	Extra    byte
-	Body     []byte
+	Command byte
+	Type    uint16
+	Body    []byte
 }
 
 // AcceptableQuestList is the verified A21 selection projection: character
@@ -192,8 +188,7 @@ func DecodeFrame(frame []byte) (Packet, error) {
 	body := append([]byte(nil), frame[ResponseHeaderSize:]...)
 	return Packet{
 		Command: frame[0], Type: binary.LittleEndian.Uint16(frame[1:3]),
-		Length: uint32(length), Checksum: binary.LittleEndian.Uint32(frame[7:11]),
-		Sequence: binary.LittleEndian.Uint16(frame[11:13]), Extra: frame[14], Body: body,
+		Body: body,
 	}, nil
 }
 
@@ -228,8 +223,7 @@ func readFrame(reader io.Reader, headerSize, maxLength int) (Packet, error) {
 	body := append([]byte(nil), frame[RequestHeaderSize:]...)
 	return Packet{
 		Command: frame[0], Type: binary.LittleEndian.Uint16(frame[1:3]),
-		Length: uint32(length), Checksum: binary.LittleEndian.Uint32(frame[7:11]),
-		Sequence: binary.LittleEndian.Uint16(frame[11:13]), Extra: frame[13], Body: body,
+		Body: body,
 	}, nil
 }
 

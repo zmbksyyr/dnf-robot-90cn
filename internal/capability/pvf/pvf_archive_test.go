@@ -33,11 +33,9 @@ func TestExtractItemListMarksPreTypeAddPropertiesIncompatible(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			archive := &pvfArchive{files: map[string]*pvfFile{
 				"equipment/equipment.lst": {
-					Name: "equipment/equipment.lst",
 					Data: []byte("101030240 `character/swordman/weapon/hsword/101030240.equ`"),
 				},
 				"equipment/character/swordman/weapon/hsword/101030240.equ": {
-					Name: "equipment/character/swordman/weapon/hsword/101030240.equ",
 					Data: []byte("[name]\r\n`weapon`\r\n" + tc.body),
 				},
 			}}

@@ -24,7 +24,6 @@ type partyUDPCodec struct {
 }
 
 type partyUDPPeer struct {
-	remote           *net.UDPAddr
 	codecRoute       [2]partyUDPCodec
 	codecKnown       [2]bool
 	nextSeqRoute     [2]uint32
@@ -53,7 +52,7 @@ func (c *Client) partyUDPPeerLocked(remote *net.UDPAddr) *partyUDPPeer {
 	if len(c.udpPeers) >= partyUDPMaxPeers {
 		return nil
 	}
-	peer := &partyUDPPeer{remote: remote}
+	peer := &partyUDPPeer{}
 	c.udpPeers[key] = peer
 	return peer
 }

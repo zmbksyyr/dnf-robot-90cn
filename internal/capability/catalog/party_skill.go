@@ -63,15 +63,14 @@ type PartySkillCatalogIssue struct {
 }
 
 type PartySkillCatalogReport struct {
-	Enabled                 bool
-	Entries                 []shared.PartySkillState
-	Issues                  []PartySkillCatalogIssue
-	SourceCount             int
-	DisabledCount           int
-	SwitchOffCount          int
-	OverLevelCount          int
-	ConfiguredMaxSkillLevel int
-	EffectiveMaxSkillLevel  int
+	Enabled                bool
+	Entries                []shared.PartySkillState
+	Issues                 []PartySkillCatalogIssue
+	SourceCount            int
+	DisabledCount          int
+	SwitchOffCount         int
+	OverLevelCount         int
+	EffectiveMaxSkillLevel int
 }
 
 type PartySkillCatalogValidationError struct {
@@ -132,11 +131,10 @@ func parsePartySkillCatalog(data []byte) (PartySkillCatalogReport, error) {
 	}
 
 	report := PartySkillCatalogReport{
-		Enabled:                 *raw.Enabled,
-		SourceCount:             len(*raw.Skills),
-		ConfiguredMaxSkillLevel: *raw.MaxSkillLevel,
-		EffectiveMaxSkillLevel:  *raw.MaxSkillLevel,
-		Entries:                 make([]shared.PartySkillState, 0, len(*raw.Skills)),
+		Enabled:                *raw.Enabled,
+		SourceCount:            len(*raw.Skills),
+		EffectiveMaxSkillLevel: *raw.MaxSkillLevel,
+		Entries:                make([]shared.PartySkillState, 0, len(*raw.Skills)),
 	}
 	for index, rawEntry := range *raw.Skills {
 		entry, err := decodePartySkillCatalogEntry(index, rawEntry)

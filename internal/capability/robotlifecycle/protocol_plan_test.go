@@ -10,7 +10,7 @@ import (
 
 func TestBuildProtocolRobotPlansReusesCommonNameAndSpawnPolicies(t *testing.T) {
 	plans, err := BuildProtocolRobotPlans(ProtocolPlanOptions{
-		Backend: shared.BackendID("test"), Count: 2, IDStart: 17000000, AccountPrefix: "acct", PasswordHash: "hash",
+		Count: 2, IDStart: 17000000, AccountPrefix: "acct", PasswordHash: "hash",
 		Config:   robotconfig.RuntimeConfig{LevelMin: 50, LevelMax: 50, Jobs: []int{1}, GrowTypes: []int{2}, SpawnFallbackVillage: 1, SpawnArea: 3, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200},
 		Names:    robottemplate.NameTemplates{Common: []string{"Alpha", "Beta"}},
 		Maps:     []shared.MapCatalogItem{{Village: 1, Area: 3, Level: 1, Use: true, XMin: 90, XMax: 110, YMin: 190, YMax: 210}},
@@ -33,7 +33,7 @@ func TestBuildProtocolRobotPlansReusesCommonNameAndSpawnPolicies(t *testing.T) {
 
 func TestBuildProtocolRobotPlansKeepsUntransferableJobsAtZero(t *testing.T) {
 	plans, err := BuildProtocolRobotPlans(ProtocolPlanOptions{
-		Backend: shared.BackendID("test"), Count: 1, IDStart: 17000000, AccountPrefix: "acct",
+		Count: 1, IDStart: 17000000, AccountPrefix: "acct",
 		Config:   robotconfig.RuntimeConfig{LevelMin: 50, LevelMax: 50, Jobs: []int{9}, GrowTypes: []int{1, 2}, SpawnFallbackVillage: 1, SpawnArea: 3, SpawnXMin: 100, SpawnXMax: 100, SpawnYMin: 200, SpawnYMax: 200},
 		Names:    robottemplate.NameTemplates{Common: []string{"Alpha"}},
 		JobGrows: map[int][]int{0: {1, 2}},

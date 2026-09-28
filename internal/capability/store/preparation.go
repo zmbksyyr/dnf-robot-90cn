@@ -62,7 +62,7 @@ func (p Preparer) preparePoolInventoryAndStall(info robotcap.Info, rc robotconfi
 		}
 		count := storeMaterialCount(entry.Item)
 		WriteInventoryStack(invRaw[rawIndex*61:(rawIndex+1)*61], entry.Item, count, 3)
-		stallItems = append(stallItems, StallItem{ItemID: entry.Item.ID, Count: count})
+		stallItems = append(stallItems, StallItem{Count: count})
 	}
 	materialRows := len(stallItems)
 	for index, entry := range equipment {
@@ -71,7 +71,7 @@ func (p Preparer) preparePoolInventoryAndStall(info robotcap.Info, rc robotconfi
 			continue
 		}
 		copy(invRaw[rawIndex*61:(rawIndex+1)*61], entry.SlotBytes[:])
-		stallItems = append(stallItems, StallItem{ItemID: entry.Item.ID, Count: 1})
+		stallItems = append(stallItems, StallItem{Count: 1})
 		pricedEquipment = append(pricedEquipment, entry)
 	}
 	if len(stallItems) == 0 {

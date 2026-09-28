@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	robotcap "robot/internal/capability/robot"
-	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/shared"
 )
 
@@ -30,7 +29,7 @@ func (*directLogoutEnv) SendOnline([]shared.RuntimeOnlineUser) error { return ni
 
 func TestOnlinePayloadSeparatesGameAndLoginIPs(t *testing.T) {
 	service := SessionService{Env: &directLogoutEnv{}}
-	payload := service.onlinePayload(robotcap.Info{UID: 17000001, CID: 900001}, robotconfig.RuntimeConfig{})
+	payload := service.onlinePayload(robotcap.Info{UID: 17000001, CID: 900001})
 	if payload.IP != "127.0.0.1" || payload.LoginIP != "10.0.0.1" {
 		t.Fatalf("game IP=%q login IP=%q", payload.IP, payload.LoginIP)
 	}

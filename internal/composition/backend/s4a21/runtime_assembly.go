@@ -15,7 +15,6 @@ import (
 	capabilitypvf "robot/internal/capability/pvf"
 	robotconfig "robot/internal/capability/robotconfig"
 	robotstate "robot/internal/capability/robotstate"
-	robottemplate "robot/internal/capability/robottemplate"
 	"robot/internal/foundation/layout"
 	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
@@ -34,7 +33,6 @@ type RuntimeBundle struct {
 	Inspector      SQLitePopulationInspector
 	DatabasePath   string
 	TownMaps       []shared.MapCatalogItem
-	NameTemplates  robottemplate.NameTemplates
 	FollowAccounts FollowAccountLocator
 }
 
@@ -193,7 +191,6 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config,
 		Equipment: catalogs.Equipment, Maps: catalogs.TownMaps,
 	}
-	bundle.NameTemplates = names
 	return bundle, nil
 }
 

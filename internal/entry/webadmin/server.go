@@ -28,7 +28,6 @@ type Server struct {
 	loginGlobalBlockedUntil time.Time
 	backendSelectionMu      lockhub.Locker
 	backend                 shared.BackendID
-	backendInfo             shared.BackendInfo
 	backendCatalog          []shared.BackendInfo
 	recoveryMode            bool
 	recoveryReason          string
@@ -96,13 +95,6 @@ func newServer(cfg *config.SysConfig, robotAddr, webAddr string, backend shared.
 	} else {
 		catalog = append([]shared.BackendInfo(nil), catalog...)
 	}
-	selectedInfo := shared.BackendInfo{ID: selectedBackend, Capabilities: shared.CapabilityMatrix(shared.CapabilityStatus{})}
-	for _, info := range catalog {
-		if info.ID == selectedBackend {
-			selectedInfo = info
-			break
-		}
-	}
 	return &Server{
 		cfg:            cfg,
 		robotAddr:      robotAddr,
@@ -110,7 +102,6 @@ func newServer(cfg *config.SysConfig, robotAddr, webAddr string, backend shared.
 		tokens:         make(map[string]time.Time),
 		loginFailures:  make(map[string]loginFailure),
 		backend:        selectedBackend,
-		backendInfo:    selectedInfo,
 		backendCatalog: catalog,
 	}
 }

@@ -32,11 +32,6 @@ func TestSessionTranslatesSharedIntents(t *testing.T) {
 	if err := session.Shout(context.Background(), shared.ShoutIntent{Channel: shared.ShoutChannelArea, Message: "测试"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := session.MoveDungeon(context.Background(), shared.DungeonMoveIntent{NextX: 1, NextY: 2}); err == nil {
-		t.Fatal("dungeon movement unexpectedly succeeded")
-	} else if _, ok := err.(shared.UnsupportedCapabilityError); !ok {
-		t.Fatalf("dungeon movement error = %T %v", err, err)
-	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}

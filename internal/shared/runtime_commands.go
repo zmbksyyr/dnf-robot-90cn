@@ -22,13 +22,10 @@ type RuntimeOnlineUser struct {
 	// CharacterSlot is the one-byte character-list index used by CMD 4/12.
 	CharacterSlot int
 
-	MaxReconnect   int
-	ReconnectDelay int
-	BirthVillage   int
-	BirthArea      int
-	BirthGateArea  int
-	BirthX         int
-	BirthY         int
+	BirthVillage int
+	BirthArea    int
+	BirthX       int
+	BirthY       int
 }
 
 type RuntimeMoveCommand struct {
@@ -44,5 +41,4 @@ type RuntimeMoveCommand struct {
 type RuntimeShoutCommand struct {
 	UID     int
 	Message string
-	Type    int
 }

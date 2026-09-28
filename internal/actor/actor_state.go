@@ -191,7 +191,6 @@ func (a *Actor) snapshot() Snapshot {
 	return Snapshot{
 		SlotID:         a.slotID,
 		UID:            a.uid,
-		Generation:     a.generation,
 		Mode:           a.mode,
 		State:          a.state,
 		Busy:           a.busy,

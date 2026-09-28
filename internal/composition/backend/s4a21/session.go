@@ -212,14 +212,6 @@ func (s *Session) MoveTownArea(ctx context.Context, intent shared.TownAreaMoveIn
 	}
 }
 
-func (s *Session) MoveDungeon(ctx context.Context, intent shared.DungeonMoveIntent) error {
-	return shared.UnsupportedCapabilityError{
-		Backend:   BackendID,
-		Operation: shared.CapabilityDungeonMove,
-		Reason:    "only server-directed party following is available; active dungeon movement is unsupported",
-	}
-}
-
 func (s *Session) Shout(ctx context.Context, intent shared.ShoutIntent) error {
 	mode := byte(0)
 	switch intent.Channel {

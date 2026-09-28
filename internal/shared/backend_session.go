@@ -33,10 +33,6 @@ type TownAreaMoveIntent struct {
 	Y       int16
 }
 
-type DungeonMoveIntent struct {
-	NextX, NextY byte
-}
-
 type ShoutChannel string
 
 const (
@@ -52,7 +48,6 @@ type ShoutIntent struct {
 
 type RobotSession interface {
 	MoveTown(context.Context, TownMoveIntent) error
-	MoveDungeon(context.Context, DungeonMoveIntent) error
 	Shout(context.Context, ShoutIntent) error
 	Close() error
 }
