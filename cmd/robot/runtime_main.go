@@ -78,7 +78,7 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	manager.ConfigureBackendRuntime(info, s4a21backend.NewPersistenceInspector(bundle.DatabasePath), nil)
 	manager.SetBackendStorePolicy(s4a21backend.StorePolicy{})
 	manager.SetBackendStoreRuntime(bundle.Transport)
-	manager.SetBackendDisjointProfessionWriter(s4a21backend.DisjointProfessionWriter{DatabasePath: bundle.DatabasePath})
+	manager.SetBackendExpertJobProfessionWriter(s4a21backend.ExpertJobProfessionWriter{DatabasePath: bundle.DatabasePath})
 	manager.SetBackendAccountOnlineChecker(bundle.Transport)
 	manager.SetBackendFollowAccountLocator(bundle.FollowAccounts)
 	manager.SetBackendRobotCreator(info, bundle.Creator)

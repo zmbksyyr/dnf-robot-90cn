@@ -10,6 +10,7 @@ import (
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/foundation/layout"
+	"robot/internal/shared"
 )
 
 func TestSchedulerPolicyReasonConstants(t *testing.T) {
@@ -48,28 +49,69 @@ func TestRetryDisjointInCurrentSessionOnlyForTransientPositionState(t *testing.T
 	m := testRobotManagerWithConfig(t, "")
 	m.SetBackendStorePolicy(s4a21TestStorePolicy{})
 	for _, reason := range []string{"set_area_failed", "ack_timeout", "disjoint_err_0x52", "disjoint_err_0xbe"} {
-		if !m.disjointReasonRetryable(reason) {
+		if !m.expertJobStoreReasonRetryable(shared.ExpertJobStoreDisjoint, reason) {
 			t.Fatalf("reason %q should retry in current session", reason)
 		}
 	}
+	for _, reason := range []string{"set_area_failed", "ack_timeout", "enchant_err_0x52", "enchant_err_0xbe"} {
+		if !m.expertJobStoreReasonRetryable(shared.ExpertJobStoreEnchant, reason) {
+			t.Fatalf("enchant reason %q should retry in current session", reason)
+		}
+	}
 	for _, reason := range []string{"disjoint_err_0x0a", "disjoint_err_0x13", "disjoint_err_0x15", "disjoint_err_0x16", "runtime_stopped", "online_failed", "profession_failed"} {
-		if m.disjointReasonRetryable(reason) {
+		if m.expertJobStoreReasonRetryable(shared.ExpertJobStoreDisjoint, reason) {
 			t.Fatalf("reason %q should stop current uid", reason)
+		}
+	}
+	for _, reason := range []string{"enchant_err_0x0a", "enchant_err_0x13", "enchant_failed", "runtime_stopped"} {
+		if m.expertJobStoreReasonRetryable(shared.ExpertJobStoreEnchant, reason) {
+			t.Fatalf("enchant reason %q should stop current uid", reason)
 		}
 	}
 }
 
 func TestDisjointFailureClassificationFollowsAdapterPolicy(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
-	if reason, retry := m.disjointFailure(0x52); reason != "disjoint_err_0x52" || retry {
+	if reason, retry := m.expertJobStoreFailure(shared.ExpertJobStoreDisjoint, 0x52); reason != "disjoint_err_0x52" || retry {
 		t.Fatalf("default classification = %q retry=%t, want neutral", reason, retry)
 	}
 	m.SetBackendStorePolicy(s4a21TestStorePolicy{})
-	if reason, retry := m.disjointFailure(0x52); reason != "disjoint_err_0x52" || !retry {
+	if reason, retry := m.expertJobStoreFailure(shared.ExpertJobStoreDisjoint, 0x52); reason != "disjoint_err_0x52" || !retry {
 		t.Fatalf("adapter classification = %q retry=%t, want retryable", reason, retry)
 	}
-	if m.disjointStoreCost() != 500 {
-		t.Fatalf("disjoint store cost = %d, want 500", m.disjointStoreCost())
+	if reason, retry := m.expertJobStoreFailure(shared.ExpertJobStoreEnchant, 0xbe); reason != "enchant_err_0xbe" || !retry {
+		t.Fatalf("enchant classification = %q retry=%t, want retryable", reason, retry)
+	}
+	if cost := m.expertJobStoreCost(shared.ExpertJobStoreDisjoint); cost != 500 {
+		t.Fatalf("disjoint store cost = %d, want 500", cost)
+	}
+	if cost := m.expertJobStoreCost(shared.ExpertJobStoreEnchant); cost != 500 {
+		t.Fatalf("enchant store cost = %d, want 500", cost)
+	}
+}
+
+func TestExpertJobStoreKindForUID(t *testing.T) {
+	m := testRobotManagerWithConfig(t, "")
+	rc := robotconfig.RuntimeConfig{StoreEnchantRatioPercent: 0}
+	if kind := m.expertJobStoreKindForUID(17000042, rc); kind != shared.ExpertJobStoreDisjoint {
+		t.Fatalf("ratio=0 kind = %s, want disjoint", kind.Name())
+	}
+	rc = robotconfig.RuntimeConfig{StoreEnchantRatioPercent: 100}
+	if kind := m.expertJobStoreKindForUID(17000042, rc); kind != shared.ExpertJobStoreEnchant {
+		t.Fatalf("ratio=100 kind = %s, want enchant", kind.Name())
+	}
+	rc = robotconfig.RuntimeConfig{StoreEnchantRatioPercent: 30}
+	enchant, disjoint := 0, 0
+	for uid := 17000000; uid < 17000100; uid++ {
+		switch m.expertJobStoreKindForUID(uid, rc) {
+		case shared.ExpertJobStoreEnchant:
+			enchant++
+		default:
+			disjoint++
+		}
+	}
+	if enchant != 30 || disjoint != 70 {
+		t.Fatalf("ratio=30 split enchant=%d disjoint=%d, want 30/70", enchant, disjoint)
 	}
 }
 
@@ -122,6 +164,30 @@ func (s4a21TestStorePolicy) DisjointReasonRetryable(reason string) (bool, bool) 
 	case "disjoint_err_0x52", "disjoint_err_0xbe":
 		return true, true
 	case "disjoint_failed":
+		return false, true
+	}
+	return false, false
+}
+
+func (s4a21TestStorePolicy) EnchantStoreCost() uint32 { return 500 }
+
+func (s4a21TestStorePolicy) EnchantFailure(errCode byte) (string, bool) {
+	reason := "enchant_failed"
+	if errCode != 0 {
+		reason = fmt.Sprintf("enchant_err_0x%02x", errCode)
+	}
+	switch errCode {
+	case 0x52, 0xbe:
+		return reason, true
+	}
+	return reason, false
+}
+
+func (s4a21TestStorePolicy) EnchantReasonRetryable(reason string) (bool, bool) {
+	switch reason {
+	case "enchant_err_0x52", "enchant_err_0xbe":
+		return true, true
+	case "enchant_failed":
 		return false, true
 	}
 	return false, false

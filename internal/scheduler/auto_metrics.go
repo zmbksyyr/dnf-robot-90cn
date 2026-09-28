@@ -82,6 +82,7 @@ func (m *RobotManager) updateAutoSnapshot(rc robotconfig.RuntimeConfig, summary 
 	m.autoStats.StoreRunning = summary.Stores
 	m.autoStats.StoreItemRunning = summary.ItemStores
 	m.autoStats.StoreDisjointRunning = summary.DisjointStores
+	m.autoStats.StoreEnchantRunning = summary.EnchantStores
 	m.autoStats.UpdatedAt = time.Now()
 	m.autoMu.Unlock()
 }

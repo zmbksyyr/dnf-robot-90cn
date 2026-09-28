@@ -106,6 +106,7 @@ func decodeConfig(ini *config.INIConfig) (RuntimeConfig, error) {
 	rc.StoreEquipmentIntensifyMin = dec.Int("store", "store_equipment_intensify_min", rc.StoreEquipmentIntensifyMin)
 	rc.StoreEquipmentIntensifyMax = dec.Int("store", "store_equipment_intensify_max", rc.StoreEquipmentIntensifyMax)
 	rc.StoreConfirmTimeoutSec = dec.Int("store", "store_confirm_timeout_sec", rc.StoreConfirmTimeoutSec)
+	rc.StoreEnchantRatioPercent = dec.Int("store", "store_enchant_ratio_percent", rc.StoreEnchantRatioPercent)
 
 	rc.FollowAccount = dec.String("follow", "follow_account", rc.FollowAccount)
 	rc.FollowRadiusX = dec.Int("follow", "follow_radius_x", rc.FollowRadiusX)

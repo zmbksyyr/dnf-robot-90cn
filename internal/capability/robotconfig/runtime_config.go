@@ -63,6 +63,7 @@ type RuntimeConfig struct {
 	StoreEquipmentIntensifyMin    int    `json:"store_equipment_intensify_min"`
 	StoreEquipmentIntensifyMax    int    `json:"store_equipment_intensify_max"`
 	StoreConfirmTimeoutSec        int    `json:"store_confirm_timeout_sec"`
+	StoreEnchantRatioPercent      int    `json:"store_enchant_ratio_percent"`
 	FollowAccount                 string `json:"follow_account"`
 	FollowRadiusX                 int    `json:"follow_radius_x"`
 	FollowRadiusY                 int    `json:"follow_radius_y"`
@@ -108,9 +109,9 @@ type RuntimeConfig struct {
 	SchedulerOnlineBreakerPauseSec int `json:"scheduler_online_breaker_pause_sec"`
 	SchedulerCreateBatchSize       int `json:"scheduler_create_batch_size"`
 	SchedulerScaleDownBatch        int `json:"scheduler_scale_down_batch"`
-	SystemActorPollMS             int    `json:"system_actor_poll_ms"`
-	SystemManualActionTimeoutSec  int    `json:"system_manual_action_timeout_sec"`
-	SystemPacketRatePerSec        int    `json:"system_packet_rate_per_sec"`
+	SystemActorPollMS              int `json:"system_actor_poll_ms"`
+	SystemManualActionTimeoutSec   int `json:"system_manual_action_timeout_sec"`
+	SystemPacketRatePerSec         int `json:"system_packet_rate_per_sec"`
 }
 
 func Clone(rc RuntimeConfig) RuntimeConfig {

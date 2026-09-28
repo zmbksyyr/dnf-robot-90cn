@@ -132,7 +132,7 @@ func (m *RobotManager) autoStoreTypeCounts() (item, disjoint int) {
 		switch {
 		case st.RobotType == 2 && st.StoreDisplayAck:
 			item++
-		case st.RobotType == 3 && st.DisjointActive:
+		case st.RobotType == 3 && (st.DisjointActive || st.EnchantActive):
 			disjoint++
 		}
 	}

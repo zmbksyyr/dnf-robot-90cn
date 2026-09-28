@@ -108,6 +108,7 @@ func validateRuntimeConfig(dec *foundationconfig.Decoder, rc RuntimeConfig) erro
 	checkRange("store", "store_equipment_intensify_max", rc.StoreEquipmentIntensifyMax, 0, 31)
 	checkOrder("store", "store_equipment_intensify_min", rc.StoreEquipmentIntensifyMin, "store_equipment_intensify_max", rc.StoreEquipmentIntensifyMax)
 	checkRange("store", "store_confirm_timeout_sec", rc.StoreConfirmTimeoutSec, 1, 35)
+	checkRange("store", "store_enchant_ratio_percent", rc.StoreEnchantRatioPercent, 0, 100)
 
 	checkRange("follow", "follow_radius_x", rc.FollowRadiusX, 1, 65535)
 	checkRange("follow", "follow_radius_y", rc.FollowRadiusY, 1, 65535)

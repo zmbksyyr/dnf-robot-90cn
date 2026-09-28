@@ -11,6 +11,7 @@ import (
 	"time"
 
 	robotcap "robot/internal/capability/robot"
+	robotconfig "robot/internal/capability/robotconfig"
 	robotstate "robot/internal/capability/robotstate"
 	robottemplate "robot/internal/capability/robottemplate"
 	storecap "robot/internal/capability/store"
@@ -115,7 +116,7 @@ type RobotManager struct {
 	supervisor                      *RobotSupervisor
 	storePolicy                     shared.BackendStorePolicy
 	storeRuntime                    BackendStoreRuntime
-	disjointProfessionWriter        BackendDisjointProfessionWriter
+	expertJobProfessionWriter       BackendExpertJobProfessionWriter
 	followAccountLocator            shared.FollowAccountLocator
 	accountOnlineChecker            shared.AccountOnlineChecker
 	storePointsCoord                *storecap.PointCoordinator
@@ -280,18 +281,20 @@ func (m *RobotManager) SetBackendStorePolicy(policy shared.BackendStorePolicy) {
 // back to the doll runtime through storeSessionRuntime.
 type BackendStoreRuntime interface {
 	SetAreaFrom(uid int, village, area int, x, y int, fromVillage, fromArea int) bool
-	StartDisjointStore(uid int, cost uint32) bool
-	CloseDisjointStore(uid int) bool
+	StartExpertJobStore(uid int, kind shared.ExpertJobStoreKind, cost uint32) bool
+	CloseExpertJobStore(uid int) bool
 }
 
-// BackendDisjointProfessionWriter prepares the disassembler profession in the
+// BackendExpertJobProfessionWriter prepares an expert-job profession in the
 // adapter's persistence boundary. It runs while the account is offline and
 // before the next login; backends without a writer keep the capability
-// disabled instead of faking the protocol state. The read-only probe lets the
-// scheduler skip the offline cycle while the machine still has durability.
-type BackendDisjointProfessionWriter interface {
+// disabled instead of faking the protocol state. The read-only probes let the
+// scheduler skip the offline cycle while the stall still has durability.
+type BackendExpertJobProfessionWriter interface {
 	EnsureDisjointProfession(cid int) error
 	DisjointProfessionReady(cid int) (bool, error)
+	EnsureEnchantProfession(cid int) error
+	EnchantProfessionReady(cid int) (bool, error)
 }
 
 // SetBackendStoreRuntime installs the selected adapter's store session
@@ -302,11 +305,11 @@ func (m *RobotManager) SetBackendStoreRuntime(runtime BackendStoreRuntime) {
 	}
 }
 
-// SetBackendDisjointProfessionWriter installs the selected adapter's offline
-// profession preparation.
-func (m *RobotManager) SetBackendDisjointProfessionWriter(writer BackendDisjointProfessionWriter) {
+// SetBackendExpertJobProfessionWriter installs the selected adapter's offline
+// expert-job preparation.
+func (m *RobotManager) SetBackendExpertJobProfessionWriter(writer BackendExpertJobProfessionWriter) {
 	if m != nil && writer != nil {
-		m.disjointProfessionWriter = writer
+		m.expertJobProfessionWriter = writer
 	}
 }
 
@@ -325,11 +328,11 @@ func (m *RobotManager) storeSessionRuntime() BackendStoreRuntime {
 	return dollStoreRuntime{runtime: m.doll}
 }
 
-func (m *RobotManager) disjointWriter() BackendDisjointProfessionWriter {
+func (m *RobotManager) expertJobWriter() BackendExpertJobProfessionWriter {
 	if m == nil {
 		return nil
 	}
-	return m.disjointProfessionWriter
+	return m.expertJobProfessionWriter
 }
 
 type dollStoreRuntime struct {
@@ -340,11 +343,16 @@ func (d dollStoreRuntime) SetAreaFrom(uid int, village, area int, x, y int, from
 	return d.runtime.SetAreaFrom(uid, village, area, x, y, fromVillage, fromArea)
 }
 
-func (d dollStoreRuntime) StartDisjointStore(uid int, cost uint32) bool {
+// StartExpertJobStore maps the legacy doll runtime's disjoint-only entrypoint.
+// Native test doubles never implemented an enchanter stall.
+func (d dollStoreRuntime) StartExpertJobStore(uid int, kind shared.ExpertJobStoreKind, cost uint32) bool {
+	if kind != shared.ExpertJobStoreDisjoint {
+		return false
+	}
 	return d.runtime.StartDisjointStore(uid, cost)
 }
 
-func (dollStoreRuntime) CloseDisjointStore(int) bool { return false }
+func (dollStoreRuntime) CloseExpertJobStore(int) bool { return false }
 
 // SetBackendFollowAccountLocator installs the adapter's follow-account lookup.
 func (m *RobotManager) SetBackendFollowAccountLocator(locator shared.FollowAccountLocator) {
@@ -380,40 +388,87 @@ func (m *RobotManager) accountOnline(uid int) (bool, error) {
 	return m.accountOnlineChecker.AccountOnline(uid)
 }
 
-// disjointStoreCost returns the adapter-declared disjoint-store gold cost.
-func (m *RobotManager) disjointStoreCost() uint32 {
+// expertJobStoreCost returns the adapter-declared gold cost for one stall
+// kind. Adapters without enchant-specific pricing reuse the disjoint cost.
+func (m *RobotManager) expertJobStoreCost(kind shared.ExpertJobStoreKind) uint32 {
 	if m == nil || m.storePolicy == nil {
 		return 0
+	}
+	if kind == shared.ExpertJobStoreEnchant {
+		if policy, ok := m.storePolicy.(interface{ EnchantStoreCost() uint32 }); ok {
+			return policy.EnchantStoreCost()
+		}
 	}
 	return m.storePolicy.DisjointStoreCost()
 }
 
-// disjointFailure maps an adapter failure code to a stable reason string and
-// whether the same session may retry at another coordinate.
-func (m *RobotManager) disjointFailure(errCode byte) (string, bool) {
+// expertJobStoreFailure maps an adapter failure code to a stable reason string
+// and whether the same session may retry at another coordinate.
+func (m *RobotManager) expertJobStoreFailure(kind shared.ExpertJobStoreKind, errCode byte) (string, bool) {
 	if m != nil && m.storePolicy != nil {
+		if kind == shared.ExpertJobStoreEnchant {
+			if policy, ok := m.storePolicy.(interface {
+				EnchantFailure(byte) (string, bool)
+			}); ok {
+				return policy.EnchantFailure(errCode)
+			}
+		}
 		return m.storePolicy.DisjointFailure(errCode)
 	}
-	if errCode == 0 {
-		return "disjoint_failed", false
+	prefix := "disjoint"
+	if kind == shared.ExpertJobStoreEnchant {
+		prefix = "enchant"
 	}
-	return fmt.Sprintf("disjoint_err_0x%02x", errCode), false
+	if errCode == 0 {
+		return prefix + "_failed", false
+	}
+	return fmt.Sprintf("%s_err_0x%02x", prefix, errCode), false
 }
 
-// disjointReasonRetryable decides whether a failure reason allows an in-session
-// coordinate retry. Scheduler-owned reasons keep their meaning; adapter-owned
-// reasons are classified by the adapter.
-func (m *RobotManager) disjointReasonRetryable(reason string) bool {
+// expertJobStoreReasonRetryable decides whether a failure reason allows an
+// in-session coordinate retry. Scheduler-owned reasons keep their meaning;
+// adapter-owned reasons are classified by the adapter.
+func (m *RobotManager) expertJobStoreReasonRetryable(kind shared.ExpertJobStoreKind, reason string) bool {
 	switch reason {
 	case "set_area_failed", "ack_timeout":
 		return true
 	}
 	if m != nil && m.storePolicy != nil {
+		if kind == shared.ExpertJobStoreEnchant {
+			if policy, ok := m.storePolicy.(interface {
+				EnchantReasonRetryable(string) (bool, bool)
+			}); ok {
+				if retry, known := policy.EnchantReasonRetryable(reason); known {
+					return retry
+				}
+			} else if retry, known := m.storePolicy.DisjointReasonRetryable(reason); known {
+				// Adapters without enchant-specific reasons share the
+				// expert-store error space.
+				return retry
+			}
+		}
 		if retry, known := m.storePolicy.DisjointReasonRetryable(reason); known {
 			return retry
 		}
 	}
 	return false
+}
+
+// expertJobStoreKindForUID picks the stall kind for one robot. The choice is
+// deterministic per UID so a character keeps one profession instead of
+// swapping jobs on every store cycle.
+func (m *RobotManager) expertJobStoreKindForUID(uid int, rc robotconfig.RuntimeConfig) shared.ExpertJobStoreKind {
+	ratio := rc.StoreEnchantRatioPercent
+	if ratio <= 0 {
+		return shared.ExpertJobStoreDisjoint
+	}
+	if ratio >= 100 {
+		return shared.ExpertJobStoreEnchant
+	}
+	if uid > 0 && uid%100 < ratio {
+		return shared.ExpertJobStoreEnchant
+	}
+	return shared.ExpertJobStoreDisjoint
 }
 
 var errSchedulerStorageUnavailable = errors.New("scheduler robot state directory is not configured")
