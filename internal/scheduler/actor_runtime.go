@@ -420,7 +420,7 @@ func (r *RobotRuntime) runServerNotice(uid int, shouldStop func() bool, paced bo
 			}
 		}
 		result, err := runtime.TriggerServerNotice(shared.ServerNoticeTriggerRequest{UID: uid, CID: cid, Kind: kind})
-		if err == nil && !result.Sent && strings.HasPrefix(result.Reason, "rejected") {
+		if err == nil && !result.Accepted && strings.HasPrefix(result.Reason, "rejected") {
 			// The server rolled the action back (its SQLite commit competed
 			// with the login storm). The consumed stock is unchanged, so one
 			// short retry is safe and recovers most transient rejections.
