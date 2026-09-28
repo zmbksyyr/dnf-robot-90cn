@@ -148,8 +148,11 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 	}
 
 	if m.autoBreakerLastCheck.IsZero() || now.Sub(m.autoBreakerLastCheck) >= time.Minute {
-		failDelta := (stats.OnlineFailed - m.autoBreakerLastOnlineFailed) +
-			(stats.MoveFailed - m.autoBreakerLastMoveFailed) +
+		// Online failures are handled by the attempt window below; session
+		// churn and confirm timeouts must not drive this coarse per-minute
+		// pause, otherwise a server that drops live sessions locks out
+		// refills for minutes at a time.
+		failDelta := (stats.MoveFailed - m.autoBreakerLastMoveFailed) +
 			(stats.ShoutLocalFailed - m.autoBreakerLastShoutLocalFailed) +
 			(stats.ShoutWorldFailed - m.autoBreakerLastShoutWorldFailed) +
 			(stats.StoreFailed - m.autoBreakerLastStoreFailed)
@@ -159,7 +162,7 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 		m.autoBreakerLastShoutLocalFailed = stats.ShoutLocalFailed
 		m.autoBreakerLastShoutWorldFailed = stats.ShoutWorldFailed
 		m.autoBreakerLastStoreFailed = stats.StoreFailed
-		if readyForBreaker && failDelta >= threshold {
+		if !now.Before(m.autoBreakerUntil) && readyForBreaker && failDelta >= threshold {
 			reason = fmt.Sprintf("failures_over_%dpct_per_min target=%d failed_delta=%d", abnormalPct, target, failDelta)
 		}
 	}
