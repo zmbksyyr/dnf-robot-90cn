@@ -28,14 +28,17 @@ import (
 const s4a21PersistenceTimeout = 15 * time.Second
 
 const (
-	a21ItemCoreSize      = 99
-	a21ListTypeEquipment = 3
-	a21ItemKindEquipment = 1
-	a21ItemKindCreature  = 5
-	a21ItemKindArtifact  = 6
-	a21ItemKindAvatar    = 8
-	a21CreatureSlot      = 25
-	a21ArtifactSlotBase  = 26
+	a21ItemCoreSize            = 99
+	a21ListTypeEquipment       = 3
+	a21ItemKindEquipment       = 1
+	a21ItemKindConsumable      = 2
+	a21ItemKindMaterial        = 3
+	a21ItemKindCreature        = 5
+	a21ItemKindArtifact        = 6
+	a21ItemKindAvatar          = 8
+	a21ItemKindSpecialMaterial = 11
+	a21CreatureSlot            = 25
+	a21ArtifactSlotBase        = 26
 )
 
 type CharacterLoadoutApplier interface {

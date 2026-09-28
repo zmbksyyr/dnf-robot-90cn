@@ -24,6 +24,7 @@ type RobotRuntime interface {
 	AutoMove(uid int) robotcap.ActionResult
 	AutoShout(uid int, world bool, msg string) robotcap.ActionResult
 	AutoStore(uid int, shouldStop func() bool) robotcap.ActionResult
+	AutoServerNotice(uid int, shouldStop func() bool) robotcap.ActionResult
 	ExpireStore(uid int) robotcap.ActionResult
 }
 

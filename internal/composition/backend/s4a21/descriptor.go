@@ -21,6 +21,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "S4A21 diagnostics are not implemented"}
 	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "S4A21 system announcement transport is not implemented"}
+	capabilities[shared.CapabilityServerNotice] = shared.CapabilityStatus{Enabled: true, Mode: "lottery_upgrade", Reason: "robot-side lottery box opens and +12 reinforcements drive the server's 0x0056 item notices; stock is written offline per robot"}
 	capabilities[shared.CapabilityServiceControl] = shared.CapabilityStatus{Reason: "S4A21 service control is not implemented"}
 	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "dungeon room movement and the in-dungeon position plane are not implemented"}
 	capabilities[shared.CapabilityMarket] = shared.CapabilityStatus{Reason: "S4A21 exposes auction opcode enums only; no verified auction or gold-consignment handler/service is present"}

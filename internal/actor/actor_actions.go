@@ -189,6 +189,20 @@ func (a *Actor) tick(now time.Time) {
 			a.runtime.AutoShout(uid, true, a.randomShoutMessage())
 		})
 	}
+	if !isStore && a.nextServerNoticeDue(now, rc) {
+		var res robotcap.ActionResult
+		a.runBusy("server_notice", func() {
+			defer a.clearOnlineAttempt()
+			res = a.runtime.AutoServerNotice(uid, a.shouldStopAutoStore)
+		})
+		switch res.State {
+		case robotcap.ActionStateNoticed, robotcap.ActionStateCancelled, robotcap.ActionStateOffline:
+			a.markOnlineHealthy()
+		default:
+			foundationlog.Robotf("[Actor] server_notice_failed slot=%d uid=%d state=%s message=%s\n", a.slotIDValue(), uid, res.State, res.Message)
+			a.markOnlineHealthy()
+		}
+	}
 	if !isStore && a.nextStoreDue(now, rc) {
 		if rc.AutoStoreProbabilityPercent > 0 && a.randIntn(100) < rc.AutoStoreProbabilityPercent {
 			var res robotcap.ActionResult
@@ -229,12 +243,14 @@ func (a *Actor) clearAutoActionSchedule() {
 	a.nextMove = time.Time{}
 	a.nextShout = time.Time{}
 	a.nextStore = time.Time{}
+	a.nextServerNotice = time.Time{}
 }
 
 func (a *Actor) clearAutoScheduleLocked() {
 	a.nextMove = time.Time{}
 	a.nextShout = time.Time{}
 	a.nextStore = time.Time{}
+	a.nextServerNotice = time.Time{}
 	a.storeUntil = time.Time{}
 }
 
@@ -290,6 +306,17 @@ func (a *Actor) nextStoreDue(now time.Time, rc robotconfig.RuntimeConfig) bool {
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
 	return a.randomizedDue(&a.nextStore, now, rc.AutoStoreIntervalMinSec, rc.AutoStoreIntervalMaxSec)
+}
+
+// nextServerNoticeDue is the per-robot timer. The fleet-wide gap and hourly
+// cap are claimed inside the action, so many robots may be due at once.
+func (a *Actor) nextServerNoticeDue(now time.Time, rc robotconfig.RuntimeConfig) bool {
+	if !rc.AutoServerNotice {
+		return false
+	}
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	return a.randomizedDue(&a.nextServerNotice, now, rc.ServerNoticeRobotIntervalMinSec, rc.ServerNoticeRobotIntervalMaxSec)
 }
 
 func (a *Actor) nextMoveDue(now time.Time, rc robotconfig.RuntimeConfig) bool {

@@ -34,6 +34,7 @@ type RuntimeBundle struct {
 	DatabasePath   string
 	TownMaps       []shared.MapCatalogItem
 	FollowAccounts FollowAccountLocator
+	NoticeStock    ServerNoticeStock
 }
 
 // Close releases the adapter-owned resources in shutdown order.
@@ -164,6 +165,8 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		_ = loadouts.Close()
 		return bundle, fmt.Errorf("transport: %w", err)
 	}
+	noticeStock := NewServerNoticeStock(databasePath, catalogs.Equipment)
+	transport.SetServerNoticeStock(noticeStock)
 	logStartupStage("transport")
 	address := net.JoinHostPort(opts.ConnectIP, fmt.Sprint(opts.GamePort))
 	names := catalog.NameTemplates(opts.Paths.Templates)
@@ -175,6 +178,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	bundle.DatabasePath = databasePath
 	bundle.TownMaps = catalogs.TownMaps
 	bundle.FollowAccounts = FollowAccountLocator{DatabasePath: databasePath}
+	bundle.NoticeStock = noticeStock
 	bundle.Creator = RobotCreator{
 		Provisioner: Provisioner{Address: address},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state,

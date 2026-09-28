@@ -23,7 +23,14 @@ func Default() RuntimeConfig {
 		StoreEnchantRatioPercent: 30,
 		FollowRadiusX:            120, FollowRadiusY: 30, ShoutDelayMS: 1000, ShoutSendEnabled: true,
 		AutoActions: true, AutoMailNotify: true, AutoSystemAnnouncement: true, AutoTargetOnlineCount: 20,
-		AutoMoveIntervalMinSec: 6, AutoMoveIntervalMaxSec: 18, AutoShoutIntervalMinSec: 45, AutoShoutIntervalMaxSec: 120,
+		AutoServerNotice:                false,
+		ServerNoticeRobotIntervalMinSec: 900,
+		ServerNoticeRobotIntervalMaxSec: 3600,
+		ServerNoticeMinGapSec:           600,
+		ServerNoticeMaxGapSec:           1200,
+		ServerNoticeMaxPerHour:          10,
+		ServerNoticeLotteryPercent:      60,
+		AutoMoveIntervalMinSec:          6, AutoMoveIntervalMaxSec: 18, AutoShoutIntervalMinSec: 45, AutoShoutIntervalMaxSec: 120,
 		AutoStoreProbabilityPercent: 5, AutoStoreIntervalMinSec: 120, AutoStoreIntervalMaxSec: 180, AutoStoreDurationSec: 120, AutoStoreTickSec: 10, AutoStoreMaxPositionTries: 10, AutoStoreFailCooldownSec: 60,
 		AutoGamePortStableSec: 15, AutoGamePortCheckTimeoutMS: 800,
 		SchedulerBadRecoverSec: 60, SchedulerBadFailures: 3, SchedulerMetricsIntervalSec: 10, SchedulerStoreConcurrent: 30, SchedulerOnlineBatchSize: 120, SchedulerOnlineStartRate: 20, SchedulerOnlineFillTimeout: 120,
@@ -49,6 +56,7 @@ func Normalize(rc *RuntimeConfig) {
 	normalizeAvatarDefaults(rc)
 	normalizePetDefaults(rc)
 	normalizeAutoSchedule(rc)
+	normalizeServerNotice(rc)
 	normalizeGamePortProbe(rc)
 	normalizeStoreSchedule(rc)
 	normalizeSchedulerDefaults(rc)
@@ -195,6 +203,42 @@ func normalizeAutoSchedule(rc *RuntimeConfig) {
 	}
 	if rc.AutoTargetOnlineCount > rc.MaxOnlineRobots {
 		rc.AutoTargetOnlineCount = rc.MaxOnlineRobots
+	}
+}
+
+// normalizeServerNotice clamps the robot-side server-notice schedule. The
+// global gap and hourly cap pace the fleet even while many robots are due at
+// the same time.
+func normalizeServerNotice(rc *RuntimeConfig) {
+	if rc.ServerNoticeLotteryPercent < 0 {
+		rc.ServerNoticeLotteryPercent = 0
+	}
+	if rc.ServerNoticeLotteryPercent > 100 {
+		rc.ServerNoticeLotteryPercent = 100
+	}
+	if rc.ServerNoticeRobotIntervalMinSec < 60 {
+		rc.ServerNoticeRobotIntervalMinSec = 60
+	}
+	if rc.ServerNoticeRobotIntervalMaxSec < rc.ServerNoticeRobotIntervalMinSec {
+		rc.ServerNoticeRobotIntervalMaxSec = rc.ServerNoticeRobotIntervalMinSec + 60
+	}
+	if rc.ServerNoticeRobotIntervalMaxSec > 86400 {
+		rc.ServerNoticeRobotIntervalMaxSec = 86400
+	}
+	if rc.ServerNoticeMinGapSec < 30 {
+		rc.ServerNoticeMinGapSec = 30
+	}
+	if rc.ServerNoticeMaxGapSec < rc.ServerNoticeMinGapSec {
+		rc.ServerNoticeMaxGapSec = rc.ServerNoticeMinGapSec + 60
+	}
+	if rc.ServerNoticeMaxGapSec > 86400 {
+		rc.ServerNoticeMaxGapSec = 86400
+	}
+	if rc.ServerNoticeMaxPerHour < 0 {
+		rc.ServerNoticeMaxPerHour = 0
+	}
+	if rc.ServerNoticeMaxPerHour > 3600 {
+		rc.ServerNoticeMaxPerHour = 3600
 	}
 }
 

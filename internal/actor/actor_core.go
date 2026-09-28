@@ -23,21 +23,22 @@ type Actor struct {
 	done       chan struct{}
 	once       sync.Once
 
-	nextMove         time.Time
-	nextShout        time.Time
-	nextStore        time.Time
-	storeUntil       time.Time
-	lastOnlineTry    time.Time
-	nextRetryAt      time.Time
-	firstFailureAt   time.Time
-	failures         int
-	failureClass     string
+	nextMove          time.Time
+	nextShout         time.Time
+	nextStore         time.Time
+	nextServerNotice  time.Time
+	storeUntil        time.Time
+	lastOnlineTry     time.Time
+	nextRetryAt       time.Time
+	firstFailureAt    time.Time
+	failures          int
+	failureClass      string
 	onlineEstablished bool
-	busy             bool
-	busyKind         string
-	releaseRequested bool
-	onlineDesired    bool
-	quarantined      bool
+	busy              bool
+	busyKind          string
+	releaseRequested  bool
+	onlineDesired     bool
+	quarantined       bool
 }
 
 func NewActor(slotID int, mode Mode, runtime RobotRuntime) *Actor {

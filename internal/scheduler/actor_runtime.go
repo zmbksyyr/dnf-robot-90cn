@@ -353,6 +353,139 @@ func (r *RobotRuntime) autoExpertJobStore(uid int, st robotcap.RuntimeStatus, sh
 	return robotcap.ActionResult{UID: uid, CID: info.CID, OK: false, State: robotcap.ActionStateStoreFailed}
 }
 
+// AutoServerNotice runs one fleet-paced server-notice action: it prepares the
+// trigger stock in an offline window when the live probe fails, re-logs the
+// robot through the adaptive online gate, then sends the trigger packet and
+// records the observed broadcast.
+func (r *RobotRuntime) AutoServerNotice(uid int, shouldStop func() bool) robotcap.ActionResult {
+	return r.run(uid, func() robotcap.ActionResult {
+		if err := r.manager.requireBackendCapability(shared.CapabilityServerNotice); err != nil {
+			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
+		}
+		st, ok := r.Status(uid)
+		if !ok || st.StateName != robotcap.RuntimeStateRunning || st.DisconnectReason != 0 || st.PartyActive || r.PartyActive(uid) {
+			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateOffline}
+		}
+		if st.RobotType == 2 || st.RobotType == 3 || st.StoreDisplayAck {
+			// Never disturb an active stall; the action timer retries later.
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "store_active"}
+		}
+		if shouldStop != nil && shouldStop() {
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled}
+		}
+		rc := r.Config()
+		if !rc.AutoServerNotice {
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "disabled"}
+		}
+		runtime := r.manager.serverNoticeRuntime()
+		writer := r.manager.serverNoticeStockWriter()
+		if runtime == nil || writer == nil {
+			r.manager.addServerNotice(0, 1, 0)
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateFailed, Message: "port_unavailable"}
+		}
+		if !r.manager.claimServerNoticeSlot(rc) {
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled, Message: "not_due"}
+		}
+		kind := r.manager.serverNoticeKind(rc)
+		ready, err := writer.ServerNoticeStockReady(st.CID, kind)
+		if err != nil || !ready {
+			if ok, reason := r.prepareServerNoticeStock(st, rc, kind, shouldStop); !ok {
+				r.manager.addServerNotice(0, 1, 0)
+				if reason == "cancelled" {
+					return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateCancelled}
+				}
+				robotLogf("[SERVER_NOTICE_PREPARE_FAILED] uid=%d cid=%d kind=%s reason=%s err=%v\n", uid, st.CID, kind.Name(), reason, err)
+				return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateStorePrepareFailed, Message: reason}
+			}
+		}
+		result, err := runtime.TriggerServerNotice(shared.ServerNoticeTriggerRequest{UID: uid, CID: st.CID, Kind: kind})
+		if err != nil {
+			r.manager.addServerNotice(0, 1, 0)
+			robotLogf("[SERVER_NOTICE_FAILED] uid=%d cid=%d kind=%s reason=%s err=%v\n", uid, st.CID, kind.Name(), result.Reason, err)
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateFailed, Message: firstNonEmpty(result.Reason, err.Error())}
+		}
+		if result.Broadcast {
+			r.manager.addServerNotice(1, 0, 1)
+		} else if result.Accepted {
+			r.manager.addServerNotice(1, 0, 0)
+		} else {
+			r.manager.addServerNotice(0, 1, 0)
+		}
+		robotLogf("[SERVER_NOTICE] kind=%s uid=%d cid=%d sent=%t accepted=%t broadcast=%t item=0x%X level=%d reason=%s\n",
+			result.Kind.Name(), result.UID, result.CID, result.Sent, result.Accepted, result.Broadcast, result.ItemID, result.Level, result.Reason)
+		if !result.Sent || !result.Accepted {
+			return robotcap.ActionResult{UID: uid, CID: st.CID, OK: false, State: robotcap.ActionStateFailed, Message: firstNonEmpty(result.Reason, "rejected")}
+		}
+		r.manager.invalidateRuntimeStatusCache()
+		return robotcap.ActionResult{UID: uid, CID: st.CID, OK: true, State: robotcap.ActionStateNoticed}
+	})
+}
+
+// prepareServerNoticeStock runs the offline stock write and re-login cycle.
+// The stock only loads at character select, so it must run between logout and
+// the next login; the adaptive online gate keeps the reconnect inside the same
+// budget as every other login.
+func (r *RobotRuntime) prepareServerNoticeStock(st robotcap.RuntimeStatus, rc robotconfig.RuntimeConfig, kind shared.ServerNoticeKind, shouldStop func() bool) (bool, string) {
+	writer := r.manager.serverNoticeStockWriter()
+	if writer == nil {
+		return false, "port_unavailable"
+	}
+	closed := false
+	closeDeadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(closeDeadline) {
+		if r.ForceClose(st.UID) {
+			closed = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !closed {
+		return false, "logout_failed"
+	}
+	r.manager.markSessionLogout(st.UID, time.Now())
+	if err := r.manager.invalidateClosedCharacterCache(st.UID); err != nil {
+		return false, "cache_invalidation_failed"
+	}
+	cancelled, err := r.manager.waitAccountOffline(st.UID, shouldStop)
+	if err != nil {
+		return false, "offline_failed"
+	}
+	if cancelled {
+		return false, "cancelled"
+	}
+	if err := writer.EnsureServerNoticeStock(st.CID, kind); err != nil {
+		robotLogf("[SERVER_NOTICE_STOCK_ERROR] uid=%d cid=%d kind=%s err=%v\n", st.UID, st.CID, kind.Name(), err)
+		return false, "stock_write_failed"
+	}
+	if !r.manager.acquireOnlineAttemptWait(storeOnlineGateTimeout, shouldStop) {
+		return false, "online_gate_busy"
+	}
+	online, err := r.manager.sessionService().Online(robotcap.CommandRequest{UIDs: []int{st.UID}}, true, rc)
+	r.manager.ReleaseOnlineAttempt()
+	if err != nil || online.Confirmed != 1 {
+		robotLogf("[SERVER_NOTICE_ONLINE_ERROR] uid=%d cid=%d kind=%s confirmed=%d failed=%d err=%v\n",
+			st.UID, st.CID, kind.Name(), online.Confirmed, online.Failed, err)
+		return false, "online_failed"
+	}
+	r.manager.invalidateRuntimeStatusCache()
+	// The inventory projection lands with the select-character ack; a short
+	// settle window keeps the trigger behind that load, mirroring the stall
+	// workflow.
+	if storecap.SleepWithStop(time.Second, shouldStop) {
+		return false, "cancelled"
+	}
+	return true, ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // expertJobFailedReason is the generic stop reason for one stall kind.
 func expertJobFailedReason(kind shared.ExpertJobStoreKind) string {
 	if kind == shared.ExpertJobStoreEnchant {

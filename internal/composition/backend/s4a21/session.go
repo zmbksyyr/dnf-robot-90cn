@@ -61,6 +61,9 @@ type Session struct {
 	checkAckSeen       bool
 	storeGuard         lockhub.Locker
 	store              expertJobStoreState
+	noticeGuard        lockhub.Locker
+	notice             serverNoticeState
+	noticeObserver     func(shared.ServerNoticeEvent)
 }
 
 type packetObserverRegistration struct {
@@ -340,6 +343,7 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 		s.recordCheckAck(time.Now())
 	}
 	s.handleExpertJobStorePacket(packet)
+	s.handleServerNoticePacket(packet)
 	s.followerGuard.Lock()
 	followerEvents := s.followerEvents
 	s.followerGuard.Unlock()

@@ -282,6 +282,16 @@ func (c *Client) CloseExpertJobStore(ctx context.Context) error {
 	return c.send(ctx, Encode(1, CmdCloseExpertJobStore, nil))
 }
 
+// UseLotteryItem opens one lottery box. Phase 0 opens the box directly.
+func (c *Client) UseLotteryItem(ctx context.Context, phase uint16, slot int16) error {
+	return c.send(ctx, Encode(1, CmdUseLotteryItem, UseLotteryItemBody(phase, slot)))
+}
+
+// UpgradeItem sends one reinforcement request built with UpgradeItemBody.
+func (c *Client) UpgradeItem(ctx context.Context, body []byte) error {
+	return c.send(ctx, Encode(1, CmdUpgradeItem, body))
+}
+
 func (c *Client) Read(ctx context.Context) (Packet, error) {
 	if c == nil || c.conn == nil {
 		return Packet{}, fmt.Errorf("s4a21 client is closed")

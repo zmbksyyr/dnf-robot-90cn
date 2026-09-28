@@ -20,6 +20,8 @@ type ActionTransport struct {
 	sessions      map[int]shared.RobotSession
 	status        map[int]shared.RuntimeStatus
 	locationKnown map[int]bool
+	noticeStock   ServerNoticeStock
+	notices       noticeHistory
 }
 
 func NewActionTransport(factory ...shared.SessionFactory) *ActionTransport {
@@ -69,6 +71,7 @@ func (t *ActionTransport) Attach(uid int, session shared.RobotSession) error {
 	t.status[uid] = shared.RuntimeStatus{UID: uid, StateName: shared.RuntimeStateRunning, State: 3, RunStartTime: time.Now().Unix()}
 	delete(t.locationKnown, uid)
 	t.mu.Unlock()
+	t.attachServerNoticeObserver(session)
 	if lifecycle, ok := session.(interface{ setTerminationCallback(func()) }); ok {
 		lifecycle.setTerminationCallback(func() { t.reapSession(uid, session) })
 		return nil

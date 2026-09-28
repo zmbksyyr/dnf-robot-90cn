@@ -117,6 +117,12 @@ type RobotManager struct {
 	storePolicy                     shared.BackendStorePolicy
 	storeRuntime                    BackendStoreRuntime
 	expertJobProfessionWriter       BackendExpertJobProfessionWriter
+	serverNoticeTrigger             shared.ServerNoticer
+	serverNoticeStock               shared.ServerNoticeStockWriter
+	serverNoticeMu                  lockhub.Locker
+	serverNoticeNextAt              time.Time
+	serverNoticeWindowAt            time.Time
+	serverNoticeWindowCount         int
 	followAccountLocator            shared.FollowAccountLocator
 	accountOnlineChecker            shared.AccountOnlineChecker
 	storePointsCoord                *storecap.PointCoordinator
@@ -310,6 +316,22 @@ func (m *RobotManager) SetBackendStoreRuntime(runtime BackendStoreRuntime) {
 func (m *RobotManager) SetBackendExpertJobProfessionWriter(writer BackendExpertJobProfessionWriter) {
 	if m != nil && writer != nil {
 		m.expertJobProfessionWriter = writer
+	}
+}
+
+// SetBackendServerNoticeRuntime installs the selected adapter's live-session
+// notice trigger.
+func (m *RobotManager) SetBackendServerNoticeRuntime(runtime shared.ServerNoticer) {
+	if m != nil && runtime != nil {
+		m.serverNoticeTrigger = runtime
+	}
+}
+
+// SetBackendServerNoticeStockWriter installs the selected adapter's offline
+// notice stock preparation.
+func (m *RobotManager) SetBackendServerNoticeStockWriter(writer shared.ServerNoticeStockWriter) {
+	if m != nil && writer != nil {
+		m.serverNoticeStock = writer
 	}
 }
 

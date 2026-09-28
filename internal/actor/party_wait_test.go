@@ -64,6 +64,9 @@ func (r *partyWaitRuntime) AutoStore(uid int, _ func() bool) robotcap.ActionResu
 	r.stores++
 	return robotcap.ActionResult{UID: uid, OK: true}
 }
+func (r *partyWaitRuntime) AutoServerNotice(uid int, _ func() bool) robotcap.ActionResult {
+	return robotcap.ActionResult{UID: uid, OK: true, State: robotcap.ActionStateNoticed}
+}
 func (r *partyWaitRuntime) ExpireStore(uid int) robotcap.ActionResult {
 	r.expires++
 	return robotcap.ActionResult{UID: uid, OK: true}

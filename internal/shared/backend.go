@@ -30,6 +30,7 @@ const (
 	CapabilityDatabase           BackendCapability = "database"
 	CapabilityDiagnostics        BackendCapability = "diagnostics"
 	CapabilitySystemAnnouncement BackendCapability = "system_announcement"
+	CapabilityServerNotice       BackendCapability = "server_notice"
 	CapabilityServiceControl     BackendCapability = "service_control"
 )
 
@@ -134,7 +135,7 @@ func CapabilityMatrix(status CapabilityStatus) map[BackendCapability]CapabilityS
 		CapabilityMarket, CapabilityCleanup, CapabilityDangerousDelete,
 		CapabilityMailNotification,
 		CapabilityDatabase, CapabilityDiagnostics,
-		CapabilitySystemAnnouncement, CapabilityServiceControl,
+		CapabilitySystemAnnouncement, CapabilityServerNotice, CapabilityServiceControl,
 	} {
 		capabilities[capability] = status
 	}

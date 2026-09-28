@@ -132,6 +132,13 @@ func decodeConfig(ini *config.INIConfig) (RuntimeConfig, error) {
 	rc.AutoStoreFailCooldownSec = dec.Int("auto", "auto_store_fail_cooldown_sec", rc.AutoStoreFailCooldownSec)
 	rc.AutoGamePortStableSec = dec.Int("auto", "auto_game_port_stable_sec", rc.AutoGamePortStableSec)
 	rc.AutoGamePortCheckTimeoutMS = dec.Int("auto", "auto_game_port_check_timeout_ms", rc.AutoGamePortCheckTimeoutMS)
+	rc.AutoServerNotice = dec.Bool("auto", "auto_server_notice", rc.AutoServerNotice)
+	rc.ServerNoticeRobotIntervalMinSec = dec.Int("auto", "server_notice_robot_interval_min_sec", rc.ServerNoticeRobotIntervalMinSec)
+	rc.ServerNoticeRobotIntervalMaxSec = dec.Int("auto", "server_notice_robot_interval_max_sec", rc.ServerNoticeRobotIntervalMaxSec)
+	rc.ServerNoticeMinGapSec = dec.Int("auto", "server_notice_min_gap_sec", rc.ServerNoticeMinGapSec)
+	rc.ServerNoticeMaxGapSec = dec.Int("auto", "server_notice_max_gap_sec", rc.ServerNoticeMaxGapSec)
+	rc.ServerNoticeMaxPerHour = dec.Int("auto", "server_notice_max_per_hour", rc.ServerNoticeMaxPerHour)
+	rc.ServerNoticeLotteryPercent = dec.Int("auto", "server_notice_lottery_percent", rc.ServerNoticeLotteryPercent)
 
 	rc.SchedulerBadRecoverSec = dec.Int("scheduler", "bad_recover_sec", rc.SchedulerBadRecoverSec)
 	rc.SchedulerBadFailures = dec.Int("scheduler", "bad_failures", rc.SchedulerBadFailures)
