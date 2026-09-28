@@ -84,6 +84,19 @@ func RandomMap(env Env, maps []shared.MapCatalogItem, level int) (shared.MapCata
 	return candidates[safeRandIntn(env, len(candidates))], true
 }
 
+// HasUsableMap reports whether the catalog contains a usable map for the
+// village/area with at least one movement rectangle. Adopted characters can
+// carry the server's default town (1/0), which is not a real map; callers use
+// this to detect and repair such positions before logging in.
+func HasUsableMap(maps []shared.MapCatalogItem, village, area int) bool {
+	for _, mp := range maps {
+		if mp.Use && mp.Village == village && mp.Area == area && len(MapRectangles(mp)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func safeRandIntn(env Env, n int) int {
 	if env == nil || n <= 0 {
 		return 0

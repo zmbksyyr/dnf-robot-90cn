@@ -18,10 +18,14 @@ type ProtocolPlanOptions struct {
 	Config        robotconfig.RuntimeConfig
 	Names         robottemplate.NameTemplates
 	Maps          []shared.MapCatalogItem
-	JobGrows      map[int][]int
-	NameExists    func(string) bool
-	RandIntn      func(int) int
-	RandBetween   func(int, int) int
+	// Locations is the current robot directory occupancy. Non-fixed spawns
+	// use it to pick the least crowded usable area instead of sampling raw
+	// map-catalog entries.
+	Locations   []shared.MapLocation
+	JobGrows    map[int][]int
+	NameExists  func(string) bool
+	RandIntn    func(int) int
+	RandBetween func(int, int) int
 }
 
 type ProtocolRobotPlan struct {
@@ -63,7 +67,20 @@ func BuildProtocolRobotPlans(options ProtocolPlanOptions) ([]ProtocolRobotPlan, 
 		level := env.RandBetween(levels, levelMax)
 		name := robottemplate.AllocateName(uid, job, firstGrow, used, options.Config, options.Names, options.NameExists, options.RandBetween)
 		info := robotcap.Info{UID: uid, Name: name, Level: level, Job: job, Grow: grow, Port: 0, Village: options.Config.SpawnFallbackVillage, Area: options.Config.SpawnArea, X: options.Config.SpawnXMin, Y: options.Config.SpawnYMin}
-		if mp, ok := robotspawn.RandomMap(env, options.Maps, level); ok {
+		if options.Config.SpawnFixed {
+			// Fixed spawns are applied again at online time; keep the legacy
+			// catalog sample so the plan still carries a plausible position.
+			if mp, ok := robotspawn.RandomMap(env, options.Maps, level); ok {
+				info.Village, info.Area = mp.Village, mp.Area
+				if x, y, pointOK := robotspawn.RandomPointInMap(env, mp); pointOK {
+					info.X, info.Y = x, y
+				}
+			}
+		} else if target, ok := robotspawn.BalancedLocation(env, options.Maps, level, options.Locations); ok {
+			info.Village, info.Area = target.Map.Village, target.Map.Area
+			info.X, info.Y = target.X, target.Y
+			options.Locations = append(options.Locations, shared.MapLocation{Village: info.Village, Area: info.Area, X: info.X, Y: info.Y})
+		} else if mp, ok := robotspawn.RandomMap(env, options.Maps, level); ok {
 			info.Village, info.Area = mp.Village, mp.Area
 			if x, y, pointOK := robotspawn.RandomPointInMap(env, mp); pointOK {
 				info.X, info.Y = x, y

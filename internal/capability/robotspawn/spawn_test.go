@@ -36,3 +36,23 @@ func TestMissingConfiguredVillageKeepsExistingValidPosition(t *testing.T) {
 		t.Fatalf("missing configured village changed position: %+v", info)
 	}
 }
+
+func TestHasUsableMap(t *testing.T) {
+	maps := []shared.MapCatalogItem{
+		{Village: 1, Area: 0, Use: false, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 10, YMin: 0, YMax: 10}}},
+		{Village: 2, Area: 5, Use: true, Rectangles: []shared.MapRectangle{{XMin: 0, XMax: 10, YMin: 0, YMax: 10}}},
+		{Village: 3, Area: 1, Use: true, XMin: 100, XMax: 200, YMin: 100, YMax: 200},
+	}
+	if HasUsableMap(maps, 1, 0) {
+		t.Fatal("disabled map must not count as usable")
+	}
+	if !HasUsableMap(maps, 2, 5) {
+		t.Fatal("map with rectangles must count as usable")
+	}
+	if !HasUsableMap(maps, 3, 1) {
+		t.Fatal("map with bounding box must count as usable")
+	}
+	if HasUsableMap(maps, 9, 9) {
+		t.Fatal("missing village/area must not count as usable")
+	}
+}

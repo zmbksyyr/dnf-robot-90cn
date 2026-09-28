@@ -70,16 +70,26 @@ func (c RobotCreator) CreateRobots(ctx context.Context, request robotcap.CreateR
 		_, exists := reservedNames[robottemplate.DBName(name)]
 		return exists
 	}
+	var planLocations []shared.MapLocation
+	if directory, ok := c.RobotCatalog.(robotstate.Directory); ok {
+		if existing, err := directory.RobotLocations(ctx); err == nil {
+			planLocations = existing
+		}
+	}
 	buildPlan := func(uid int) (robotlifecycle.ProtocolRobotPlan, error) {
 		plans, err := robotlifecycle.BuildProtocolRobotPlans(robotlifecycle.ProtocolPlanOptions{
 			Count: 1, IDStart: uid, AccountPrefix: c.AccountPrefix,
-			PasswordHash: c.PasswordHash, Config: c.Config, Names: c.Names, Maps: c.Maps, JobGrows: c.JobGrows, RandIntn: c.RandIntn, RandBetween: c.RandBetween,
+			PasswordHash: c.PasswordHash, Config: c.Config, Names: c.Names, Maps: c.Maps, JobGrows: c.JobGrows, Locations: planLocations,
+			RandIntn: c.RandIntn, RandBetween: c.RandBetween,
 			NameExists: nameTaken,
 		})
 		if err != nil {
 			return robotlifecycle.ProtocolRobotPlan{}, err
 		}
 		reservedNames[robottemplate.DBName(plans[0].Info.Name)] = struct{}{}
+		planLocations = append(planLocations, shared.MapLocation{
+			Village: plans[0].Info.Village, Area: plans[0].Info.Area, X: plans[0].Info.X, Y: plans[0].Info.Y,
+		})
 		return plans[0], nil
 	}
 	plans := make([]robotlifecycle.ProtocolRobotPlan, 0, request.Count+maxConflictSkips)

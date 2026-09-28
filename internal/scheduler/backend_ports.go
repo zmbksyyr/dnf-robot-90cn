@@ -8,6 +8,7 @@ import (
 
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
+	"robot/internal/capability/robotspawn"
 	"robot/internal/shared"
 )
 
@@ -87,8 +88,27 @@ type protocolSessionDriver struct {
 func (protocolSessionDriver) EnsureWorldHorn(int) error { return nil }
 
 func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.RuntimeConfig) robotcap.Info {
-	if rc.SpawnFixed {
-		d.manager.applyConfiguredLocation(&info, rc, d.manager.loadMapCatalog())
+	maps := d.manager.loadMapCatalog()
+	if rc.SpawnFixed || strings.TrimSpace(rc.FollowAccount) != "" {
+		d.manager.applyConfiguredLocation(&info, rc, maps)
+		return info
+	}
+	if robotspawn.HasUsableMap(maps, info.Village, info.Area) {
+		return info
+	}
+	// Adopted or freshly created characters can carry the server's default
+	// town (1/0), which is not a usable map area. Repair it with a balanced
+	// location so the login payload carries a real spawn and the character is
+	// not stuck moving inside an invalid area forever.
+	locations, err := d.manager.robotLocations()
+	if err != nil {
+		locations = nil
+	}
+	if target, ok := robotspawn.BalancedLocation(spawnEnv{manager: d.manager}, maps, info.Level, locations); ok {
+		robotLogf("[SpawnRepair] uid=%d cid=%d level=%d invalid=%d/%d -> %d/%d/%d/%d\n",
+			info.UID, info.CID, info.Level, info.Village, info.Area, target.Map.Village, target.Map.Area, target.X, target.Y)
+		info.Village, info.Area = target.Map.Village, target.Map.Area
+		info.X, info.Y = target.X, target.Y
 	}
 	return info
 }

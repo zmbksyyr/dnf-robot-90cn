@@ -123,7 +123,7 @@ func (s MoveService) AutoMove(info robotcap.Info, rc robotconfig.RuntimeConfig, 
 	if follow != nil {
 		targetVillage, targetArea = follow.Village, follow.Area
 		if targetVillage != info.Village || targetArea != info.Area {
-			if !hasUsableMap(maps, targetVillage, targetArea) {
+			if !robotspawn.HasUsableMap(maps, targetVillage, targetArea) {
 				return fmt.Errorf("follow target town area %d/%d has no usable movement geometry", targetVillage, targetArea)
 			}
 		}
@@ -131,7 +131,7 @@ func (s MoveService) AutoMove(info robotcap.Info, rc robotconfig.RuntimeConfig, 
 		targetInfo.Village = targetVillage
 		targetInfo.Area = targetArea
 		targetX, targetY = s.followTarget(targetInfo, *follow, rc, maps)
-	} else if rc.SpawnFixed && hasUsableMap(maps, rc.SpawnVillage, rc.SpawnArea) {
+	} else if rc.SpawnFixed && robotspawn.HasUsableMap(maps, rc.SpawnVillage, rc.SpawnArea) {
 		targetVillage, targetArea = rc.SpawnVillage, rc.SpawnArea
 		targetInfo := info
 		targetInfo.Village, targetInfo.Area = targetVillage, targetArea
@@ -157,15 +157,6 @@ func (s MoveService) AutoMove(info robotcap.Info, rc robotconfig.RuntimeConfig, 
 		}
 	}
 	return nil
-}
-
-func hasUsableMap(maps []shared.MapCatalogItem, village, area int) bool {
-	for _, mp := range maps {
-		if mp.Use && mp.Village == village && mp.Area == area && len(robotspawn.MapRectangles(mp)) > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 func (s MoveService) followTarget(info robotcap.Info, target FollowTarget, rc robotconfig.RuntimeConfig, maps []shared.MapCatalogItem) (int, int) {
