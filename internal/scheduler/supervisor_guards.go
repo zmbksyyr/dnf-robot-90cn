@@ -12,14 +12,14 @@ func (s *RobotSupervisor) handleAutoGuards(now time.Time, rc robotconfig.Runtime
 	s.manager.autoMu.Unlock()
 	if !enabled || !rc.AutoActions {
 		end := s.manager.beginActorContainerOp("auto_disabled_converge")
-		s.stopAutoActors()
+		s.stopAutoActors(rc)
 		end()
 		s.updateGuardStatus(rc, signals, schedulerPolicyManual, schedulerReasonAutoDisabled)
 		s.updateMetrics(rc, signals)
 		return true
 	}
 	if err := s.manager.CheckGameCommand(); err != nil {
-		s.stopAutoActors()
+		s.stopAutoActors(rc)
 		s.logGameGateBlocked(now, rc, err)
 		s.updateGuardStatus(rc, signals, schedulerPolicyMaintenance, schedulerReasonKeyInvalidPrefix+err.Error())
 		s.updateMetrics(rc, signals)

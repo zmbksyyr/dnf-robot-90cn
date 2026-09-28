@@ -89,7 +89,7 @@ func (m *RobotManager) stopAutoActorsForDisabledConfig(supervisor *RobotSupervis
 	}
 	end := m.beginActorContainerOp("auto_stop")
 	defer end()
-	supervisor.stopAutoActors()
+	supervisor.stopAutoActors(rc)
 	summary := robotcap.SummarizeRuntimeStatusMap(m.runtimeStatusMap())
 	m.updateAutoSnapshot(rc, summary)
 	m.updateAutoActorSnapshot(supervisor.actorCounts(time.Now(), rc))

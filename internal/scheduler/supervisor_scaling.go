@@ -11,8 +11,15 @@ import (
 
 const actorStopWait = 5 * time.Second
 
-func (s *RobotSupervisor) stopAutoActors() {
-	actors := s.ledger.BeginDrainAutoActors()
+func (s *RobotSupervisor) stopAutoActors(rc robotconfig.RuntimeConfig) {
+	limit := rc.SchedulerScaleDownBatch
+	if limit <= 0 {
+		limit = 15
+	}
+	// Drain in bounded batches. The guard runs every tick while auto stays
+	// disabled, so a stop still converges; closing every session at once would
+	// flood the server teardown path and starve its login path.
+	actors := s.ledger.BeginDrainSomeAutoActors(s.manager.runtimeStatusMap(), limit, 0)
 	s.stopDrainingActors(actors, actorStopWait)
 }
 
