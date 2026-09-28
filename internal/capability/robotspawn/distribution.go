@@ -267,12 +267,11 @@ func MapFamilyKey(mp shared.MapCatalogItem) string {
 	return builder.String()
 }
 
-// BalancedFamilyLocation chooses a logical map family (unique geometry) by
-// least density, then the least crowded mirror instance inside it. Families
-// with no robots are taken first so coverage grows before load balancing.
-// excludeFamily (a MapFamilyKey) is skipped when other families are available,
-// so a relocation always changes the logical map.
-func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level int, locations []shared.MapLocation, excludeFamily string) (BalancedTarget, bool) {
+// BalancedFamilyLocation fills empty areas first, then balances across logical
+// map families (unique geometry) by density and picks the least crowded mirror
+// instance inside the chosen family. currentArea (when set) is avoided for the
+// instance pick so a relocation actually changes map.
+func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level int, locations []shared.MapLocation, currentArea shared.MapAreaKey) (BalancedTarget, bool) {
 	type family struct {
 		key        string
 		weight     int
@@ -305,54 +304,70 @@ func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level
 	if len(order) == 0 {
 		return BalancedTarget{}, false
 	}
-	eligible := order
-	if excludeFamily != "" && len(order) > 1 {
-		filtered := make([]*family, 0, len(order))
-		for _, group := range order {
-			if group.key == excludeFamily {
-				continue
+	targetFrom := func(candidate mapCandidate) (BalancedTarget, bool) {
+		occupied := make([]shared.MapLocation, 0, areaCounts[mapAreaKey(candidate.mp)])
+		for _, location := range locations {
+			if location.Village == candidate.mp.Village && location.Area == candidate.mp.Area {
+				occupied = append(occupied, location)
 			}
-			filtered = append(filtered, group)
 		}
-		if len(filtered) > 0 {
-			eligible = filtered
+		x, y, pointOK := bestRandomPoint(env, candidate.rectangles, occupied)
+		if !pointOK {
+			return BalancedTarget{}, false
+		}
+		return BalancedTarget{Map: candidate.mp, X: x, Y: y}, true
+	}
+
+	// Coverage first: every enterable map should hold robots before any map
+	// takes a second one, otherwise mirror-heavy villages leave large town
+	// areas empty.
+	emptyAreas := make([]mapCandidate, 0, len(maps))
+	for _, group := range order {
+		for _, candidate := range group.candidates {
+			if areaCounts[mapAreaKey(candidate.mp)] == 0 {
+				emptyAreas = append(emptyAreas, candidate)
+			}
 		}
 	}
+	if len(emptyAreas) > 0 {
+		indexes := make([]int, len(emptyAreas))
+		for index := range indexes {
+			indexes[index] = index
+		}
+		return targetFrom(emptyAreas[randomIndex(env, indexes)])
+	}
+
 	for _, group := range order {
 		for _, candidate := range group.candidates {
 			group.count += areaCounts[mapAreaKey(candidate.mp)]
 		}
 	}
-
-	emptyFamilies := make([]int, 0, len(eligible))
-	for index, group := range eligible {
-		if group.count == 0 {
-			emptyFamilies = append(emptyFamilies, index)
+	best := []int{0}
+	for index := 1; index < len(order); index++ {
+		left := order[index].count * order[best[0]].weight
+		right := order[best[0]].count * order[index].weight
+		switch {
+		case left < right:
+			best = []int{index}
+		case left == right:
+			best = append(best, index)
 		}
 	}
-	var chosen *family
-	if len(emptyFamilies) > 0 {
-		chosen = eligible[randomIndex(env, emptyFamilies)]
-	} else {
-		best := []int{0}
-		for index := 1; index < len(eligible); index++ {
-			left := eligible[index].count * eligible[best[0]].weight
-			right := eligible[best[0]].count * eligible[index].weight
-			switch {
-			case left < right:
-				best = []int{index}
-			case left == right:
-				best = append(best, index)
-			}
-		}
-		chosen = eligible[randomIndex(env, best)]
-	}
+	chosen := order[randomIndex(env, best)]
 
-	instanceIndexes := make([]int, len(chosen.candidates))
-	for index := range instanceIndexes {
-		instanceIndexes[index] = index
+	instanceIndexes := make([]int, 0, len(chosen.candidates))
+	for index := range chosen.candidates {
+		if currentArea.Village > 0 && len(chosen.candidates) > 1 && mapAreaKey(chosen.candidates[index].mp) == currentArea {
+			continue
+		}
+		instanceIndexes = append(instanceIndexes, index)
 	}
-	instanceBest := []int{0}
+	if len(instanceIndexes) == 0 {
+		for index := range chosen.candidates {
+			instanceIndexes = append(instanceIndexes, index)
+		}
+	}
+	instanceBest := []int{instanceIndexes[0]}
 	for _, index := range instanceIndexes[1:] {
 		left := areaCounts[mapAreaKey(chosen.candidates[index].mp)]
 		right := areaCounts[mapAreaKey(chosen.candidates[instanceBest[0]].mp)]
@@ -363,17 +378,5 @@ func BalancedFamilyLocation(env RangeRandom, maps []shared.MapCatalogItem, level
 			instanceBest = append(instanceBest, index)
 		}
 	}
-	candidate := chosen.candidates[randomIndex(env, instanceBest)]
-
-	occupied := make([]shared.MapLocation, 0, areaCounts[mapAreaKey(candidate.mp)])
-	for _, location := range locations {
-		if location.Village == candidate.mp.Village && location.Area == candidate.mp.Area {
-			occupied = append(occupied, location)
-		}
-	}
-	x, y, pointOK := bestRandomPoint(env, candidate.rectangles, occupied)
-	if !pointOK {
-		return BalancedTarget{}, false
-	}
-	return BalancedTarget{Map: candidate.mp, X: x, Y: y}, true
+	return targetFrom(chosen.candidates[randomIndex(env, instanceBest)])
 }
