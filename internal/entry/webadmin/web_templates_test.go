@@ -149,6 +149,17 @@ func TestDashboardRenderingOnlyReferencesPresentElements(t *testing.T) {
 	}
 }
 
+func TestRobotListLoadsTheWholeFleet(t *testing.T) {
+	for _, want := range []string{
+		"Math.max(1000,Math.min(Number(backendMaxOnline||0)||10000,20000))",
+		"api('robotsStatus',{count:limit})",
+	} {
+		if !strings.Contains(appJS, want) {
+			t.Errorf("robot list does not load the whole fleet: missing %q", want)
+		}
+	}
+}
+
 func TestBackendRecoveryAndExplicitApplyFlowRemainAvailable(t *testing.T) {
 	for _, want := range []string{"recovery_mode", "submitBackendSettings", "backendSettings", "backendCapabilities"} {
 		if !strings.Contains(appJS, want) {
