@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	foundationlog "robot/internal/foundation/log"
 )
@@ -24,8 +25,8 @@ import (
 const partyUDPTraceEnv = "S4A21_PARTY_UDP_TRACE"
 
 const (
-	partyUDPTraceSessionLimit = 4096
-	partyUDPTracePeerLimit    = 256
+	partyUDPTraceSessionLimit = 65536
+	partyUDPTracePeerLimit    = 8192
 	partyUDPTraceBytes        = 512
 )
 
@@ -200,24 +201,33 @@ func (c *Client) servePartyUDP(conn *net.UDPConn) {
 		sampleApp := peer.appRXSamples < partyUDPAppSampleLimit
 		handler := c.partyAppHandler
 		var applications []partyUDPApplicationFrame
-		if traceRX || sampleApp || handler != nil {
+		if traceRX || sampleApp || handler != nil || peer.codecKnown[0] || peer.codecKnown[1] {
 			applications = partyUDPApplicationFrames(buffer[:n])
 		}
 		var positions []PartyAppPosition
-		if handler != nil {
-			for _, application := range applications {
-				for route := 0; route < 2; route++ {
-					if !peer.codecKnown[route] {
-						continue
-					}
-					position, ok := parsePartyAppPosition(application.Body, peer.codecRoute[route])
-					if !ok {
-						continue
-					}
-					position.Slot = application.Sender
-					positions = append(positions, position)
-					break
+		for _, application := range applications {
+			for route := 0; route < 2; route++ {
+				if !peer.codecKnown[route] {
+					continue
 				}
+				position, ok := parsePartyAppPosition(application.Body, peer.codecRoute[route])
+				if !ok {
+					continue
+				}
+				position.Slot = application.Sender
+				// The 0x38 shape carries the sender's return anchor, which the
+				// robot needs to address its own position broadcasts the same
+				// way the retail client does.
+				if position.Sub == partyAppSubTownPosition {
+					c.partyTownKnown = true
+					c.partyTownFlag = position.Flag
+					c.partyTown = position.Town
+					c.partyTownArea = position.Area
+				}
+				if handler != nil {
+					positions = append(positions, position)
+				}
+				break
 			}
 		}
 		selfUID := c.selfUID
@@ -390,9 +400,14 @@ func (c *Client) PartyUDPReady() bool {
 }
 
 // SendPartyPosition broadcasts the session's own in-dungeon position to every
-// party peer whose codec is known. The frame mirrors the verified retail
-// client shape so the real client renders the robot's movement.
-func (c *Client) SendPartyPosition(x, y int16) error {
+// party peer whose codec is known. It emits both verified position shapes: the
+// 0x07 dungeon frame and, once the peer broadcast a return anchor, the 0x38
+// frame the retail client sends for its own movement.
+//
+// baseX/baseY is the room anchor the retail member keeps constant for the whole
+// room and tickMS is a room-relative millisecond clock; both feed the client's
+// interpolation, so callers pass stable per-room values.
+func (c *Client) SendPartyPosition(x, y int16, baseX, baseY int32, tickMS uint32) error {
 	if c == nil {
 		return fmt.Errorf("S4A21 party UDP endpoint is not registered")
 	}
@@ -409,6 +424,8 @@ func (c *Client) SendPartyPosition(x, y int16) error {
 	selfSlot := c.selfSlot
 	c.udpSendCounter++
 	counter := c.udpSendCounter
+	townKnown := c.partyTownKnown
+	townFlag, town, area := c.partyTownFlag, c.partyTown, c.partyTownArea
 	type peerTarget struct {
 		remote *net.UDPAddr
 		codec  partyUDPCodec
@@ -429,15 +446,50 @@ func (c *Client) SendPartyPosition(x, y int16) error {
 	if len(targets) == 0 {
 		return nil
 	}
+	tick := tickMS
+	if tick == 0 {
+		tick = uint32(time.Since(c.startedAt).Milliseconds())
+	}
+	traceTX := partyUDPTraceEnabled()
 	for _, target := range targets {
 		x32, y32 := int32(x), int32(y)
-		body := buildPartyAppPositionBody(counter, counter, x32, y32, x32, y32, target.codec)
+		body := buildPartyAppPositionBody(counter, tick, baseX, baseY, x32, y32, target.codec)
 		frame := wrapPartyUDPApp(selfSlot, counter, body)
 		if _, err := conn.WriteToUDP(frame, target.remote); err != nil {
 			return err
 		}
+		if traceTX {
+			c.traceAppTX(selfSlot, target.remote, frame)
+		}
+		if !townKnown {
+			continue
+		}
+		townCounter := counter + uint32(len(targets))
+		townBody := buildPartyAppTownPositionBody(townFlag, town, area, x32, y32, target.codec)
+		townFrame := wrapPartyUDPApp(selfSlot, townCounter, townBody)
+		if _, err := conn.WriteToUDP(townFrame, target.remote); err != nil {
+			return err
+		}
+		if traceTX {
+			c.traceAppTX(selfSlot, target.remote, townFrame)
+		}
 	}
 	return nil
+}
+
+// traceAppTX records application frames the robot broadcasts itself. The reply
+// loop traces its own sends; position broadcasts need the same visibility.
+func (c *Client) traceAppTX(selfSlot byte, remote *net.UDPAddr, frame []byte) {
+	c.udpMu.Lock()
+	allowed := c.udpTraceEvents < partyUDPTraceSessionLimit
+	if allowed {
+		c.udpTraceEvents++
+	}
+	selfUID := c.selfUID
+	c.udpMu.Unlock()
+	if allowed {
+		logPartyUDPTraceValue("TX", selfUID, remote, frame)
+	}
 }
 
 // wrapPartyUDPApp frames an application body as an unreliable TQOS type-2
@@ -451,6 +503,8 @@ func wrapPartyUDPApp(sender byte, sequence uint32, body []byte) []byte {
 	copy(out[9:], body)
 	return out
 }
+
+
 
 func (c *Client) applyPartyRealtimeInfo(body []byte) {
 	if len(body) < 1 || len(body) != 1+int(body[0])*5 {

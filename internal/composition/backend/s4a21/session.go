@@ -52,6 +52,10 @@ type Session struct {
 	followerUDPKnown   bool
 	followerUDPX       int32
 	followerUDPY       int32
+	followerBaseKnown  bool
+	followerBaseX      int32
+	followerBaseY      int32
+	followerRoomStart  time.Time
 	selfUID            uint16
 	partyID            uint16
 	partyLeaderUID     uint16

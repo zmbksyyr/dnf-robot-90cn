@@ -28,7 +28,12 @@ type Client struct {
 	udpTraceEvents  int
 	udpSendCounter  uint32
 	partySlots      map[uint16]byte
+	partyTownKnown  bool
+	partyTownFlag   uint32
+	partyTown       uint32
+	partyTownArea   uint32
 	partyAppHandler func(PartyAppPosition)
+	startedAt       time.Time
 	selfUID         uint16
 	selfSlot        byte
 	slotKnown       bool
@@ -56,6 +61,7 @@ func NewClient(conn net.Conn) *Client {
 		writeTimeout: defaultWriteTimeout,
 		udpPeers:     make(map[string]*partyUDPPeer),
 		partySlots:   make(map[uint16]byte),
+		startedAt:    time.Now(),
 	}
 }
 

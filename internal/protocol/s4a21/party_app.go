@@ -41,10 +41,15 @@ type PartyAppPosition struct {
 	Slot    byte
 	Counter uint32
 	State   uint32
-	BaseX   int32
-	BaseY   int32
-	X       int32
-	Y       int32
+	// Flag/Town/Area belong to the 0x38 position shape: the retail client
+	// broadcasts its return-anchor town and area next to the coordinates.
+	Flag  uint32
+	Town  uint32
+	Area  uint32
+	BaseX int32
+	BaseY int32
+	X     int32
+	Y     int32
 }
 
 // Valid reports whether the frame carries an actionable position.
@@ -118,6 +123,9 @@ func parsePartyAppPosition(body []byte, codec partyUDPCodec) (PartyAppPosition, 
 		if len(plain) < 5*4 {
 			return PartyAppPosition{}, false
 		}
+		position.Flag = binary.LittleEndian.Uint32(plain[0:4])
+		position.Town = binary.LittleEndian.Uint32(plain[4:8])
+		position.Area = binary.LittleEndian.Uint32(plain[8:12])
 		position.X = int32(binary.LittleEndian.Uint32(plain[12:16]))
 		position.Y = int32(binary.LittleEndian.Uint32(plain[16:20]))
 		return position, true
@@ -128,8 +136,8 @@ func parsePartyAppPosition(body []byte, codec partyUDPCodec) (PartyAppPosition, 
 
 // buildPartyAppPositionBody builds a dungeon position application body with the
 // verified shape so the retail client renders the robot's in-dungeon movement.
-// tick is the client's state clock; callers keep one monotonically increasing
-// value per session.
+// The retail member keeps base at the room anchor and tick as a room-relative
+// millisecond clock; both fields are what the client interpolates on.
 func buildPartyAppPositionBody(counter, tick uint32, baseX, baseY, x, y int32, codec partyUDPCodec) []byte {
 	plain := make([]byte, 6+partyAppPositionFields*4)
 	binary.LittleEndian.PutUint16(plain[0:2], partyAppPositionPrefix)
@@ -145,6 +153,26 @@ func buildPartyAppPositionBody(counter, tick uint32, baseX, baseY, x, y int32, c
 	body := make([]byte, 7+len(plain))
 	body[0] = partyAppTag
 	body[1] = partyAppSubDungeonPosition
+	body[2] = 0
+	binary.LittleEndian.PutUint32(body[3:7], crc32.Checksum(plain, partyUDPCRCTable))
+	copy(body[7:], partyUDPObfuscate(plain, codec))
+	return body
+}
+
+// buildPartyAppTownPositionBody builds the 0x38 position body the retail client
+// broadcasts in town and inside dungeons: [flag, town, area, x, y]. Dungeon
+// entries keep the pre-dungeon town/area as the return anchor.
+func buildPartyAppTownPositionBody(flag, town, area uint32, x, y int32, codec partyUDPCodec) []byte {
+	plain := make([]byte, 5*4)
+	binary.LittleEndian.PutUint32(plain[0:4], flag)
+	binary.LittleEndian.PutUint32(plain[4:8], town)
+	binary.LittleEndian.PutUint32(plain[8:12], area)
+	binary.LittleEndian.PutUint32(plain[12:16], uint32(x))
+	binary.LittleEndian.PutUint32(plain[16:20], uint32(y))
+
+	body := make([]byte, 7+len(plain))
+	body[0] = partyAppTag
+	body[1] = partyAppSubTownPosition
 	body[2] = 0
 	binary.LittleEndian.PutUint32(body[3:7], crc32.Checksum(plain, partyUDPCRCTable))
 	copy(body[7:], partyUDPObfuscate(plain, codec))

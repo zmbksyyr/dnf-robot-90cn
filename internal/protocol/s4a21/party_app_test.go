@@ -13,6 +13,10 @@ const (
 	capturedDungeonPosition = "010700785D4CCD485B2C105859DF58595943595959545859596B5859591C5B595945585959"
 	capturedDungeonReset    = "010700518E07EE485B2E105859DA5D595959595959A6A6A6A6A6A6A6A65959595959595959"
 	capturedTownPosition    = "013800C1B1A8F7585959595B5959591C595959C6585959F9595959"
+	// 0x38 frames broadcast inside dungeons: the return-anchor town/area plus
+	// the character coordinates.
+	capturedAnchorPosition = "0138000353DD92585959595B5959595959595983585959B3595959"
+	capturedMovePosition   = "013800328C6BCE5B595959585959595B5959592C5B595929585959"
 )
 
 var capturedCodec = partyUDPCodec{key: 0x59, rotate: 0}
@@ -72,8 +76,57 @@ func TestParsePartyAppPositionCapturedTownFrame(t *testing.T) {
 	if position.Sub != partyAppSubTownPosition {
 		t.Fatalf("subtype = %#x", position.Sub)
 	}
+	if position.Flag != 1 || position.Town != 2 || position.Area != 69 {
+		t.Fatalf("anchor = flag=%d town=%d area=%d", position.Flag, position.Town, position.Area)
+	}
 	if position.X != 415 || position.Y != 160 {
 		t.Fatalf("position = %d,%d", position.X, position.Y)
+	}
+}
+
+func TestParsePartyAppPositionCapturedAnchorFrames(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		payload string
+		flag    uint32
+		town    uint32
+		area    uint32
+		x, y    int32
+	}{
+		{name: "dungeon-anchor", payload: capturedAnchorPosition, flag: 1, town: 2, area: 0, x: 474, y: 234},
+		{name: "dungeon-move", payload: capturedMovePosition, flag: 2, town: 1, area: 2, x: 629, y: 368},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			body, err := hex.DecodeString(testCase.payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			position, ok := parsePartyAppPosition(body, capturedCodec)
+			if !ok {
+				t.Fatal("captured anchor frame did not decode")
+			}
+			if position.Flag != testCase.flag || position.Town != testCase.town || position.Area != testCase.area {
+				t.Fatalf("anchor = flag=%d town=%d area=%d", position.Flag, position.Town, position.Area)
+			}
+			if position.X != testCase.x || position.Y != testCase.y {
+				t.Fatalf("position = %d,%d", position.X, position.Y)
+			}
+		})
+	}
+}
+
+func TestBuildPartyAppTownPositionBodyRoundTrip(t *testing.T) {
+	body := buildPartyAppTownPositionBody(1, 2, 0, 474, 234, capturedCodec)
+	want, err := hex.DecodeString(capturedAnchorPosition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hex.EncodeToString(body); got != hex.EncodeToString(want) {
+		t.Fatalf("built town frame = %s\nwant %s", got, hex.EncodeToString(want))
+	}
+	position, ok := parsePartyAppPosition(body, capturedCodec)
+	if !ok || position.X != 474 || position.Y != 234 {
+		t.Fatalf("round trip = %+v ok=%t", position, ok)
 	}
 }
 

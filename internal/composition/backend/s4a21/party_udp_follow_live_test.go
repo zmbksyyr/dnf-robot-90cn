@@ -66,11 +66,14 @@ func TestLiveS4A21PartyUDPPositionFollow(t *testing.T) {
 		{368, 262},
 		{416, 284},
 	}
+	baseX, baseY := int32(path[0].x), int32(path[0].y)
+	roomStart := time.Now()
 	for _, step := range path {
 		if err := leader.client.SetUserPosition(ctx, step.x, step.y, 5, 0); err != nil {
 			t.Fatal(err)
 		}
-		if err := leader.client.SendPartyPosition(step.x, step.y); err != nil {
+		tickMS := uint32(time.Since(roomStart).Milliseconds())
+		if err := leader.client.SendPartyPosition(step.x, step.y, baseX, baseY, tickMS); err != nil {
 			t.Fatalf("leader UDP position broadcast: %v", err)
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -84,7 +87,7 @@ func TestLiveS4A21PartyUDPPositionFollow(t *testing.T) {
 		case trace := <-traces:
 			seen = append(seen, trace)
 			if strings.Contains(trace, "S4A21_FOLLOW_TRACE_UDP_POS") &&
-				strings.Contains(trace, fmt.Sprintf("x=%d y=%d", last.x, last.y)) {
+				strings.Contains(trace, fmt.Sprintf("leader_x=%d leader_y=%d", last.x, last.y)) {
 				return
 			}
 		case <-time.After(100 * time.Millisecond):

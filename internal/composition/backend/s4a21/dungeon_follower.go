@@ -20,7 +20,7 @@ const dungeonFollowerPrepareTimeout = 5 * time.Second
 // followers or whether only the client UDP data plane carries them.
 const followerTraceEnv = "S4A21_PARTY_FOLLOW_TRACE"
 
-const followerTraceLimit = 512
+const followerTraceLimit = 8192
 
 func followerTraceEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(followerTraceEnv))) {
@@ -80,6 +80,7 @@ func (s *Session) EnableDungeonFollower(_ context.Context) error {
 	s.followerEvents = events
 	s.followerDone = done
 	s.followerUDPKnown = false
+	s.followerBaseKnown = false
 	s.followerGuard.Unlock()
 	// In-dungeon positions travel on the party UDP data plane, so the follower
 	// consumes the decoded application frames in addition to the TCP
@@ -123,6 +124,7 @@ func (s *Session) DisableDungeonFollower() {
 	s.partyID = 0
 	s.partyLeaderUID = 0
 	s.followerUDPKnown = false
+	s.followerBaseKnown = false
 	s.followerGuard.Unlock()
 	s.dungeonStateGuard.Lock()
 	s.dungeonState = nil
@@ -291,6 +293,11 @@ const partyLeaderDefaultSlot = 0
 // partyFollowerDirection matches the server default facing for mirrored moves.
 const partyFollowerDirection = 0x05
 
+// partyFollowerOffsetX keeps the follower beside the leader instead of on top
+// of them: mirroring the exact coordinates hides the companion inside the
+// leader's own sprite and reads as "the robot never moves" on the client.
+const partyFollowerOffsetX = 50
+
 // followerUDPWriteTimeout bounds one mirror write issued from the UDP read
 // loop so a stalled server cannot block party packet processing forever.
 const followerUDPWriteTimeout = 3 * time.Second
@@ -304,13 +311,18 @@ func (s *Session) handlePartyAppPosition(position protocol.PartyAppPosition) {
 	if s == nil || s.client == nil {
 		return
 	}
-	if !position.Valid() || !s.PartyActive() {
+	if !position.Valid() {
+		return
+	}
+	if !s.PartyActive() {
+		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_SKIP uid=%d reason=party_inactive sub=%02X\n", s.selfUID, position.Sub)
 		return
 	}
 	s.followerGuard.Lock()
 	leaderUID := s.partyLeaderUID
 	s.followerGuard.Unlock()
 	if leaderUID == 0 || leaderUID == s.selfUID {
+		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_SKIP uid=%d reason=leader_unknown leader=%d\n", s.selfUID, leaderUID)
 		return
 	}
 	leaderSlot, ok := s.client.PartySlotOf(leaderUID)
@@ -318,10 +330,14 @@ func (s *Session) handlePartyAppPosition(position protocol.PartyAppPosition) {
 		leaderSlot = partyLeaderDefaultSlot
 	}
 	if position.Slot != leaderSlot {
+		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_SKIP uid=%d reason=slot_mismatch sender=%d leader_slot=%d sub=%02X\n",
+			s.selfUID, position.Slot, leaderSlot, position.Sub)
 		return
 	}
 	selfSlot, slotKnown := s.client.PartySelfSlot()
 	if !slotKnown || selfSlot == leaderSlot {
+		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_SKIP uid=%d reason=self_slot known=%t slot=%d leader_slot=%d\n",
+			s.selfUID, slotKnown, selfSlot, leaderSlot)
 		return
 	}
 	s.followerGuard.Lock()
@@ -332,20 +348,33 @@ func (s *Session) handlePartyAppPosition(position protocol.PartyAppPosition) {
 	s.followerUDPKnown = true
 	s.followerUDPX = position.X
 	s.followerUDPY = position.Y
+	if !s.followerBaseKnown {
+		// The retail member keeps the first position of each room as the
+		// interpolation anchor for every frame in that room.
+		s.followerBaseKnown = true
+		s.followerBaseX = position.X
+		s.followerBaseY = position.Y
+		s.followerRoomStart = time.Now()
+	}
+	baseX, baseY := s.followerBaseX, s.followerBaseY
+	roomStart := s.followerRoomStart
 	selfUID := s.selfUID
 	s.followerGuard.Unlock()
 
+	x, y := int16(position.X)-partyFollowerOffsetX, int16(position.Y)
+	tickMS := uint32(time.Since(roomStart).Milliseconds())
 	ctx, cancel := context.WithTimeout(context.Background(), followerUDPWriteTimeout)
 	defer cancel()
-	if err := s.client.SetUserPosition(ctx, int16(position.X), int16(position.Y), partyFollowerDirection, 0); err != nil {
+	if err := s.client.SetUserPosition(ctx, x, y, partyFollowerDirection, 0); err != nil {
 		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_POS_FAILED uid=%d x=%d y=%d err=%v\n",
-			selfUID, position.X, position.Y, err)
+			selfUID, x, y, err)
 		return
 	}
-	s.traceFollower("S4A21_FOLLOW_TRACE_UDP_POS uid=%d x=%d y=%d\n", selfUID, position.X, position.Y)
-	if err := s.client.SendPartyPosition(int16(position.X), int16(position.Y)); err != nil {
+	s.traceFollower("S4A21_FOLLOW_TRACE_UDP_POS uid=%d leader_x=%d leader_y=%d x=%d y=%d\n",
+		selfUID, position.X, position.Y, x, y)
+	if err := s.client.SendPartyPosition(x, y, baseX, baseY, tickMS); err != nil {
 		s.traceFollower("S4A21_FOLLOW_TRACE_UDP_BROADCAST_FAILED uid=%d x=%d y=%d err=%v\n",
-			selfUID, position.X, position.Y, err)
+			selfUID, x, y, err)
 	}
 }
 
@@ -388,6 +417,10 @@ func (s *Session) acceptFollowerStartMap(ctx context.Context, packet protocol.Pa
 	err := state.AcceptStartMap(packet.Body)
 	s.dungeonStateGuard.Unlock()
 	if err == nil {
+		// A new room restarts the retail member's interpolation anchor.
+		s.followerGuard.Lock()
+		s.followerBaseKnown = false
+		s.followerGuard.Unlock()
 		s.traceFollower("S4A21_FOLLOW_TRACE_START_MAP uid=%d room=%d,%d party=%d body=%X\n",
 			s.selfUID, packet.Body[0], packet.Body[1], len(packet.Body), packet.Body)
 		// This is deliberately outside the drain callback and outside the
