@@ -245,6 +245,20 @@ func (r *RobotRuntime) autoItemStore(st robotcap.RuntimeStatus, shouldStop func(
 	return robotcap.ActionResult{UID: st.UID, CID: st.CID, OK: false, State: robotcap.ActionStateStoreFailed}
 }
 
+// claimStorePoint prefers a point in the robot's current area so store
+// attempts avoid a server-side area transition under load, then falls back to
+// the globally balanced pool.
+func (r *RobotRuntime) claimStorePoint(points *storecap.PointCoordinator, uid int, rc robotconfig.RuntimeConfig, info robotcap.Info, allowed func(storecap.Position) bool) (storecap.Position, bool) {
+	preferVillage, preferArea := info.Village, info.Area
+	if status, ok := r.manager.runtimeStatus(uid); ok {
+		preferVillage, preferArea = status.Village, status.Area
+	}
+	if pos, ok := points.ClaimForStoreInAreaWhere(uid, rc.AutoStoreDurationSec, preferVillage, preferArea, allowed); ok {
+		return pos, true
+	}
+	return points.ClaimForStoreWhere(uid, rc.AutoStoreDurationSec, allowed)
+}
+
 func (r *RobotRuntime) autoDisjointStore(uid int, st robotcap.RuntimeStatus, shouldStop func() bool) robotcap.ActionResult {
 	rc := r.Config()
 	info := robotcap.Info{UID: uid, CID: st.CID, Village: st.Village, Area: st.Area, X: st.X, Y: st.Y, Port: r.manager.cfg.RobotGamePort}
@@ -282,7 +296,7 @@ func (r *RobotRuntime) autoDisjointStore(uid int, st robotcap.RuntimeStatus, sho
 			r.cleanupStoreSession(info, rc, "cancelled")
 			return robotcap.ActionResult{UID: uid, CID: info.CID, OK: false, State: robotcap.ActionStateCancelled}
 		}
-		pos, ok := points.ClaimForStoreWhere(uid, rc.AutoStoreDurationSec, allowedPosition)
+		pos, ok := r.claimStorePoint(points, uid, rc, info, allowedPosition)
 		if !ok {
 			break
 		}

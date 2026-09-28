@@ -169,6 +169,55 @@ func (c *PointCoordinator) ClaimForStoreWhere(uid, storeDurationSec int, allowed
 	return c.claimForStoreWhere(uid, storeDurationSec, allowed, false)
 }
 
+// ClaimForStoreInAreaWhere claims a point inside one preferred area before the
+// caller falls back to the global pool. Robots whose current area still has
+// free points avoid a server-side area transition, which is the most
+// load-sensitive step of a disjoint-store attempt.
+func (c *PointCoordinator) ClaimForStoreInAreaWhere(uid, storeDurationSec int, village, area int, allowed func(Position) bool) (Position, bool) {
+	if c == nil {
+		return Position{}, false
+	}
+	lease := normalizePointLease(StorePointLeaseDuration(storeDurationSec))
+	reuseAfter := robotconfig.StoreDurationForUID(storeDurationSec, uid)
+	if reuseAfter < 0 {
+		reuseAfter = 0
+	}
+	c.pointMu.Lock()
+	defer c.pointMu.Unlock()
+	now := time.Now()
+	c.clearExpiredClaims(now)
+	key := areaKey{village, area}
+	if len(c.byArea[key]) == 0 {
+		return Position{}, false
+	}
+	stages := []func() (Position, bool){
+		func() (Position, bool) {
+			return c.claimFromArea(uid, key, PointStatusSuccess, true, now, lease, reuseAfter, allowed)
+		},
+		func() (Position, bool) {
+			return c.claimFromArea(uid, key, PointStatusSuccess, false, now, lease, reuseAfter, allowed)
+		},
+		func() (Position, bool) {
+			return c.claimFromArea(uid, key, PointStatusUnknown, true, now, lease, reuseAfter, allowed)
+		},
+		func() (Position, bool) {
+			return c.claimFailedFromArea(uid, key, true, true, now, lease, reuseAfter, allowed)
+		},
+		func() (Position, bool) {
+			return c.claimFromArea(uid, key, PointStatusUnknown, false, now, lease, reuseAfter, allowed)
+		},
+		func() (Position, bool) {
+			return c.claimFailedFromArea(uid, key, false, false, now, lease, reuseAfter, allowed)
+		},
+	}
+	for _, stage := range stages {
+		if pos, ok := stage(); ok {
+			return pos, true
+		}
+	}
+	return Position{}, false
+}
+
 // ClaimForItemStoreWhere permits one globally rate-limited probe of an
 // unmarked PVF town area. Disjoint stores never call this path because a
 // successful special store is not evidence that an area is publicly usable.
