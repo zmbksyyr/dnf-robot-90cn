@@ -107,8 +107,8 @@ func (m *RobotManager) adaptiveSchedulerSignals() adaptiveSchedulerSignals {
 		CPUPercent:       cpu,
 		MemoryMB:         mem,
 		Goroutines:       goroutines,
-		OnlineSuccess:    m.schedulerRecentOnlineSuccess,
-		OnlineFailed:     m.schedulerRecentOnlineFailed,
+		OnlineSuccess:    m.schedulerRecentAttemptSuccess,
+		OnlineFailed:     m.schedulerRecentAttemptFailed,
 	}
 }
 

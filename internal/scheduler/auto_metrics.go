@@ -28,6 +28,20 @@ func (m *RobotManager) addAutoOnline(success, failed int) {
 	m.autoMu.Unlock()
 }
 
+// addAutoOnlineAttempt records one real login attempt outcome. Session losses
+// and confirm timeouts stay out of this counter so the online breaker reacts to
+// the login path only, not to churn caused by the server dropping live
+// sessions.
+func (m *RobotManager) addAutoOnlineAttempt(success bool) {
+	m.autoMu.Lock()
+	if success {
+		m.onlineAttemptSuccess++
+	} else {
+		m.onlineAttemptFailed++
+	}
+	m.autoMu.Unlock()
+}
+
 func (m *RobotManager) addAutoMove(success, failed int) {
 	m.autoMu.Lock()
 	m.autoStats.MoveSuccess += success
@@ -89,7 +103,7 @@ func (m *RobotManager) updateAutoActorSnapshot(counts actormodel.LedgerCounts) {
 	m.autoMu.Unlock()
 }
 
-func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeConfig, counts actormodel.LedgerCounts, running, connecting, windowOnlineSuccess, windowOnlineFailed int) {
+func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeConfig, counts actormodel.LedgerCounts, running, connecting, windowAttemptSuccess, windowAttemptFailed int) {
 	target := rc.AutoTargetOnlineCount
 	if target <= 0 {
 		return
@@ -120,10 +134,12 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 	// Online-failure storm protection. This branch must not wait for the actor
 	// capacity to reach the target: a cold start that cannot login at all is
 	// exactly the case the breaker has to catch. The adaptive attempt gate
-	// honors the breaker, so this pause covers every retry as well.
-	windowAttempts := windowOnlineSuccess + windowOnlineFailed
-	if windowAttempts >= 20 && windowOnlineFailed*100 >= windowAttempts*50 {
-		reason = fmt.Sprintf("online_failures_window success=%d failed=%d in_flight=%d", windowOnlineSuccess, windowOnlineFailed, m.OnlineAttemptInFlight())
+	// honors the breaker, so this pause covers every retry as well. Only real
+	// login attempts count here; session losses and confirm timeouts would
+	// otherwise keep extending the pause while live sessions drain.
+	windowAttempts := windowAttemptSuccess + windowAttemptFailed
+	if windowAttempts >= 20 && windowAttemptFailed*100 >= windowAttempts*50 {
+		reason = fmt.Sprintf("online_attempts_window success=%d failed=%d in_flight=%d", windowAttemptSuccess, windowAttemptFailed, m.OnlineAttemptInFlight())
 		onlinePause = true
 	}
 
@@ -215,18 +231,24 @@ func (s *RobotSupervisor) updateMetrics(rc robotconfig.RuntimeConfig, signals ad
 	s.manager.schedulerLastOnlineFailed = stats.OnlineFailed
 	s.manager.schedulerRecentOnlineSuccess = windowOnlineSuccess
 	s.manager.schedulerRecentOnlineFailed = windowOnlineFailed
+	windowAttemptSuccess := s.manager.onlineAttemptSuccess - s.manager.schedulerLastAttemptSuccess
+	windowAttemptFailed := s.manager.onlineAttemptFailed - s.manager.schedulerLastAttemptFailed
+	s.manager.schedulerLastAttemptSuccess = s.manager.onlineAttemptSuccess
+	s.manager.schedulerLastAttemptFailed = s.manager.onlineAttemptFailed
+	s.manager.schedulerRecentAttemptSuccess = windowAttemptSuccess
+	s.manager.schedulerRecentAttemptFailed = windowAttemptFailed
 	s.manager.autoMu.Unlock()
-	s.manager.updateAutoBreaker(now, rc, counts, running, connecting, windowOnlineSuccess, windowOnlineFailed)
+	s.manager.updateAutoBreaker(now, rc, counts, running, connecting, windowAttemptSuccess, windowAttemptFailed)
 	policy := s.manager.schedulerStatus
 	dbStatus := s.manager.DatabaseStatus()
-	line := fmt.Sprintf("[RobotMetrics] policy=%s target=%d actors=%d leased=%d idle=%d state idle=%d assigned=%d online=%d running=%d busy=%d releasing=%d runtime running=%d store=%d connecting=%d recycling=%d blocked=%d cpu=%.1f mem_mb=%d goroutines=%d online=%d/%d online_window=%d/%d online_inflight=%d online_retry_base_ms=%d move=%d/%d shout_local=%d/%d shout_world=%d/%d store=%d/%d expired=%d db_ms=%d db_ok=%t log_mb=%.1f\n",
+	line := fmt.Sprintf("[RobotMetrics] policy=%s target=%d actors=%d leased=%d idle=%d state idle=%d assigned=%d online=%d running=%d busy=%d releasing=%d runtime running=%d store=%d connecting=%d recycling=%d blocked=%d cpu=%.1f mem_mb=%d goroutines=%d online=%d/%d online_window=%d/%d online_attempt_window=%d/%d online_inflight=%d online_retry_base_ms=%d move=%d/%d shout_local=%d/%d shout_world=%d/%d store=%d/%d expired=%d db_ms=%d db_ok=%t log_mb=%.1f\n",
 		policy.Mode,
 		rc.AutoTargetOnlineCount, counts.Auto, counts.Leased, counts.Idle,
 		counts.StateIdle, counts.StateAssigned, counts.StateOnline, counts.StateRunning, counts.StateBusy, counts.StateReleasing,
 		running, stores, connecting, counts.Releasing, counts.Blocked,
 		signals.CPUPercent, signals.MemoryMB, signals.Goroutines,
 		stats.OnlineSuccess, stats.OnlineFailed,
-		windowOnlineSuccess, windowOnlineFailed, s.manager.OnlineAttemptInFlight(), rc.SchedulerOnlineRetryBaseMS,
+		windowOnlineSuccess, windowOnlineFailed, windowAttemptSuccess, windowAttemptFailed, s.manager.OnlineAttemptInFlight(), rc.SchedulerOnlineRetryBaseMS,
 		stats.MoveSuccess, stats.MoveFailed,
 		stats.ShoutLocalSuccess, stats.ShoutLocalFailed,
 		stats.ShoutWorldSuccess, stats.ShoutWorldFailed,

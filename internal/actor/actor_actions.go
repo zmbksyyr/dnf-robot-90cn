@@ -381,6 +381,7 @@ func (a *Actor) ensureOnline(now time.Time) {
 	if res.OK || res.State == robotcap.ActionStateRunning {
 		a.markOnlineHealthy()
 		a.runtime.AddAutoOnline(1, 0)
+		a.recordOnlineAttempt(true)
 		return
 	}
 	if res.State == robotcap.ActionStateAccepted || res.State == robotcap.RuntimeStateInit || res.State == robotcap.RuntimeStateLogin {
@@ -389,6 +390,11 @@ func (a *Actor) ensureOnline(now time.Time) {
 	}
 	failures := a.recordFailure(now, classifyOnlineFailure(res))
 	a.runtime.AddAutoOnline(0, 1)
+	a.recordOnlineAttempt(false)
+	// A definitive failure ends the attempt: without clearing lastOnlineTry the
+	// actor would sit in the confirm-pending window for the full
+	// online_confirm_timeout before the scheduler backoff even applies.
+	a.clearOnlineAttempt()
 	delay := robotconfig.OnlineRetryBackoff(rc, failures, a.randIntn)
 	a.setNextRetryAt(now.Add(delay))
 	foundationlog.Robotf("[Actor] online_failed slot=%d uid=%d failures=%d class=%s retry_in=%s state=%s msg=%s\n",
@@ -417,4 +423,12 @@ func classifyOnlineFailure(res robotcap.ActionResult) string {
 		}
 	}
 	return FailureClassTransport
+}
+
+// recordOnlineAttempt reports a real login attempt outcome to the scheduler
+// runtime when it supports attempt accounting.
+func (a *Actor) recordOnlineAttempt(success bool) {
+	if recorder, ok := a.runtime.(onlineAttemptRecorder); ok {
+		recorder.AddOnlineAttempt(success)
+	}
 }

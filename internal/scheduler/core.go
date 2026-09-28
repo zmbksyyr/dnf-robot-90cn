@@ -80,6 +80,12 @@ type RobotManager struct {
 	schedulerLastOnlineFailed       int
 	schedulerRecentOnlineSuccess    int
 	schedulerRecentOnlineFailed     int
+	onlineAttemptSuccess            int
+	onlineAttemptFailed             int
+	schedulerLastAttemptSuccess     int
+	schedulerLastAttemptFailed      int
+	schedulerRecentAttemptSuccess   int
+	schedulerRecentAttemptFailed    int
 	runtimeState                    runtimeStateTable
 	followLookupMu                  lockhub.Locker
 	followLookup                    followAccountLookup

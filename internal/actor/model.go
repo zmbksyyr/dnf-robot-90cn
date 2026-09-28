@@ -96,6 +96,13 @@ type onlineAttemptGate interface {
 	ReleaseOnlineAttempt()
 }
 
+// onlineAttemptRecorder is implemented by the scheduler runtime so the online
+// breaker can measure real login attempt outcomes separately from session
+// churn (keepalive stalls and confirm timeouts).
+type onlineAttemptRecorder interface {
+	AddOnlineAttempt(success bool)
+}
+
 type Health string
 
 const (

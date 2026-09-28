@@ -57,6 +57,10 @@ func (r *RobotRuntime) AddAutoOnline(success, failed int) {
 	r.manager.addAutoOnline(success, failed)
 }
 
+func (r *RobotRuntime) AddOnlineAttempt(success bool) {
+	r.manager.addAutoOnlineAttempt(success)
+}
+
 func (r *RobotRuntime) AutoActionsEnabled(rc robotconfig.RuntimeConfig) bool {
 	return r.manager.autoActionsEnabled(rc)
 }
