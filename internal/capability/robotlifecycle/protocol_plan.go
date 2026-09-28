@@ -80,7 +80,7 @@ func BuildProtocolRobotPlans(options ProtocolPlanOptions) ([]ProtocolRobotPlan, 
 					info.X, info.Y = x, y
 				}
 			}
-		} else if target, ok := robotspawn.BalancedLocation(env, spawnMaps, level, options.Locations); ok {
+		} else if target, ok := robotspawn.BalancedFamilyLocation(env, spawnMaps, level, options.Locations); ok {
 			info.Village, info.Area = target.Map.Village, target.Map.Area
 			info.X, info.Y = target.X, target.Y
 			options.Locations = append(options.Locations, shared.MapLocation{Village: info.Village, Area: info.Area, X: info.X, Y: info.Y})

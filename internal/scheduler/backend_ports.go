@@ -91,8 +91,8 @@ const (
 	// spawnCrowdFloor/Bias bound when an online character is relocated out of
 	// an over-crowded map: it must hold more than spawnCrowdFloor robots and
 	// more than spawnCrowdBias times the least crowded spawn area.
-	spawnCrowdFloor = 20
-	spawnCrowdBias  = 4
+	spawnCrowdFloor = 14
+	spawnCrowdBias  = 3
 )
 
 func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.RuntimeConfig) robotcap.Info {
@@ -135,7 +135,7 @@ func (d protocolSessionDriver) PrepareOnline(info robotcap.Info, rc robotconfig.
 	// town (1/0), an event/housing area, or pile up in a single map. None of
 	// those are stable homes, so pick a capacity-balanced regular town and
 	// record it immediately so concurrent decisions see the same occupancy.
-	if target, ok := robotspawn.BalancedLocation(spawnEnv{manager: d.manager}, spawnMaps, info.Level, locations); ok {
+	if target, ok := robotspawn.BalancedFamilyLocation(spawnEnv{manager: d.manager}, spawnMaps, info.Level, locations); ok {
 		robotLogf("[SpawnRepair] uid=%d cid=%d level=%d from=%d/%d -> %d/%d/%d/%d crowded=%t\n",
 			info.UID, info.CID, info.Level, info.Village, info.Area, target.Map.Village, target.Map.Area, target.X, target.Y, crowded)
 		info.Village, info.Area = target.Map.Village, target.Map.Area
