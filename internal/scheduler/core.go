@@ -545,13 +545,6 @@ func (noopWorldShout) SendMonitorAnnouncement(kind, msg, name string, senderID u
 	return nil
 }
 
-func (m *RobotManager) SetWorldShout(worldShout WorldShout) {
-	if worldShout == nil {
-		worldShout = noopWorldShout{}
-	}
-	m.worldShout = worldShout
-}
-
 func robotLogf(format string, args ...interface{}) {
 	foundationlog.Robotf(format, args...)
 }

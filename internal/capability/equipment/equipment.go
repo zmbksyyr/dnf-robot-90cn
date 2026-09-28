@@ -21,13 +21,6 @@ type SlotOptions struct {
 	SmithingMax  int
 }
 
-func CompressedZeros(length int) []byte {
-	if length < 0 {
-		length = 0
-	}
-	return CompressRaw(make([]byte, length))
-}
-
 const (
 	creatureSlotSize          = 61
 	creatureSlotCount         = 102

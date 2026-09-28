@@ -9,10 +9,9 @@ type RuntimeOnlineUser struct {
 	// Empty keeps compatibility with older callers by falling back to IP.
 	LoginIP string
 	Port    int
-	Token   string
 	UID     int
 	// Backend credentials are optional and only consumed by a selected
-	// backend session adapter. Callers that do not need it continue using Token.
+	// backend session adapter.
 	AccountName  string
 	PasswordHash string
 
@@ -30,9 +29,6 @@ type RuntimeOnlineUser struct {
 	BirthGateArea  int
 	BirthX         int
 	BirthY         int
-	// DisjointCost queues CMD 238 on the login session itself. Zero keeps the
-	// normal login path unchanged.
-	DisjointCost uint32
 }
 
 type RuntimeMoveCommand struct {

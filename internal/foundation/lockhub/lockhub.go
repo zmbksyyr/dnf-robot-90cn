@@ -21,10 +21,6 @@ func (l *Locker) Lock() {
 	l.mu.Lock()
 }
 
-func (l *Locker) TryLock() bool {
-	return l.mu.TryLock()
-}
-
 func (l *Locker) Unlock() {
 	l.mu.Unlock()
 }

@@ -43,14 +43,10 @@ const (
 	NotiAcceptableQuestList uint16 = 0x0015
 	NotiUserPosition        uint16 = 0x0016
 	NotiUserArea            uint16 = 0x0017
-	NotiAreaUsers           uint16 = 0x0018
 	NotiPartyInfo           uint16 = 0x0009
 	NotiRequestPeer         uint16 = 0x0007
-	NotiUserUDPIPPort       uint16 = 0x000B
 	NotiPartyRealtimeInfo   uint16 = 0x0099
 	NotiGuildInvite         uint16 = 0x0093
-	NotiEnterSelectDungeon  uint16 = 0x001B
-	NotiDungeonInfo         uint16 = 0x001C
 	NotiStartMap            uint16 = 0x001D
 	NotiFinishLoading       uint16 = 0x001E
 )

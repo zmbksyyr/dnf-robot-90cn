@@ -361,15 +361,6 @@ func (m *RobotManager) publishRobotConfigLocked(path string, base robotconfig.Ru
 	robotLogf("[RuntimeFile] applied robot_config path=%s\n", path)
 }
 
-func (m *RobotManager) SetPartyAccountRangeSink(sink func(start, end int)) {
-	if m == nil {
-		return
-	}
-	m.configApplyMu.Lock()
-	defer m.configApplyMu.Unlock()
-	m.partyAccountRangeSink = sink
-}
-
 func storePoolConfigChanged(old, current robotconfig.RuntimeConfig) bool {
 	return old.StoreEquipmentIntensifyMin != current.StoreEquipmentIntensifyMin ||
 		old.StoreEquipmentIntensifyMax != current.StoreEquipmentIntensifyMax

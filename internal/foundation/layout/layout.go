@@ -83,19 +83,13 @@ func (p Paths) ShoutTemplates() string {
 func (p Paths) StoreTitles() string { return categorizedPath(p.Templates, "robot_store_titles.json") }
 func (p Paths) PartySkills() string { return categorizedPath(p.Templates, "party_skill_catalog.json") }
 
-func (p Paths) PVFManifest() string    { return categorizedPath(p.PVF, "pvf_manifest.json") }
-func (p Paths) PVFEquipment() string   { return categorizedPath(p.PVF, "equipment_catalog.json") }
-func (p Paths) PVFStackable() string   { return categorizedPath(p.PVF, "stackable_catalog.json") }
-func (p Paths) PVFMaps() string        { return categorizedPath(p.PVF, "map_catalog.json") }
-func (p Paths) PVFSkillStates() string { return categorizedPath(p.PVF, "skill_state_catalog.json") }
-func (p Paths) PVFLevelExp() string    { return categorizedPath(p.PVF, "level_exp_catalog.json") }
-
-func (p Paths) RobotLog() string      { return categorizedPath(p.Logs, "robot.log") }
-func (p Paths) StdoutLog() string     { return categorizedPath(p.Logs, "stdout.log") }
-func (p Paths) StartErrorLog() string { return categorizedPath(p.Logs, "start_error.log") }
+func (p Paths) PVFManifest() string  { return categorizedPath(p.PVF, "pvf_manifest.json") }
+func (p Paths) PVFEquipment() string { return categorizedPath(p.PVF, "equipment_catalog.json") }
+func (p Paths) PVFStackable() string { return categorizedPath(p.PVF, "stackable_catalog.json") }
+func (p Paths) PVFMaps() string      { return categorizedPath(p.PVF, "map_catalog.json") }
+func (p Paths) RobotLog() string     { return categorizedPath(p.Logs, "robot.log") }
 
 func (p Paths) StorePointCache() string  { return categorizedPath(p.State, "store_points_cache.json") }
-func (p Paths) StorePointActive() string { return categorizedPath(p.State, "store_points_active.json") }
 func (p Paths) BackendSelection() string { return categorizedPath(p.State, "backend_selection.json") }
 func (p Paths) BackendRuntime() string   { return categorizedPath(p.State, "backend_runtime.json") }
 

@@ -53,10 +53,6 @@ func SetPartySkillStates(entries []PartySkillState) {
 	partySkillStateGeneration.Add(1)
 }
 
-func PartySkillStateGeneration() uint64 {
-	return partySkillStateGeneration.Load()
-}
-
 func PartySkillStatesForJob(job int) []PartySkillState {
 	entries := partySkillStateSnapshot.Load().([]PartySkillState)
 	out := make([]PartySkillState, 0)

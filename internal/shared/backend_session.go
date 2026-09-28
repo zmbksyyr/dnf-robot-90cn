@@ -35,7 +35,6 @@ type TownAreaMoveIntent struct {
 
 type DungeonMoveIntent struct {
 	NextX, NextY byte
-	PathX, PathY uint32
 }
 
 type ShoutChannel string

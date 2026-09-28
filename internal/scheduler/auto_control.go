@@ -32,12 +32,6 @@ func (m *RobotManager) StartAutoActions() {
 	supervisor.Start()
 }
 
-func (m *RobotManager) StopAutoActions() {
-	if err := m.stopAutoActions(); err != nil {
-		robotLogf("[RobotManager] stop_auto_incomplete err=%v\n", err)
-	}
-}
-
 func (m *RobotManager) stopAutoActions() error {
 	m.autoMu.Lock()
 	supervisor := m.supervisor

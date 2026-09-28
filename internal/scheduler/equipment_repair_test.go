@@ -1,8 +1,6 @@
 package scheduler
 
 import (
-	"context"
-	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"os"
@@ -21,13 +19,6 @@ type equipmentRepairTestDatabase struct {
 	saved   map[int][]byte
 }
 
-func (*equipmentRepairTestDatabase) Stats() sql.DBStats { return sql.DBStats{} }
-func (*equipmentRepairTestDatabase) PingContext(context.Context) error {
-	return nil
-}
-func (*equipmentRepairTestDatabase) QueryRowContext(context.Context, string, ...interface{}) *sql.Row {
-	return nil
-}
 func (d *equipmentRepairTestDatabase) RobotEquipmentRecords() ([]robotcap.EquipmentRecord, error) {
 	return d.records, nil
 }

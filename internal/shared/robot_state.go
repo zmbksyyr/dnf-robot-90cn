@@ -29,7 +29,6 @@ const (
 type Phase string
 
 const (
-	PhaseUnknown   Phase = ""
 	PhaseAssigned  Phase = "assigned"
 	PhaseExecuting Phase = "executing"
 	PhaseConfirmed Phase = "confirmed"

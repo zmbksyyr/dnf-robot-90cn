@@ -22,7 +22,6 @@ type Identity struct {
 	Account            string
 	CharacterName      string
 	Slot               *uint16
-	BackendUserID      string
 	BackendCharacterID string
 }
 

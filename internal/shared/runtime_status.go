@@ -6,7 +6,6 @@ type RuntimeStatus struct {
 	GuildID              int
 	State                int
 	StateName            string
-	LastError            int
 	DisconnectReason     int
 	Reconnects           int
 	RunStartTime         int64

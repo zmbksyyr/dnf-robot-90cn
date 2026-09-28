@@ -47,10 +47,6 @@ func RectangleArea(rectangle shared.MapRectangle) int {
 	return width * height
 }
 
-func SmoothedRectangleWeight(rectangle shared.MapRectangle) int {
-	return smoothedAreaWeight(RectangleArea(rectangle))
-}
-
 func SmoothedRectanglesWeight(rectangles []shared.MapRectangle) int {
 	area := 0
 	for _, rectangle := range NormalizeRectangles(rectangles) {
@@ -175,15 +171,6 @@ func randomPointFromNormalized(env RangeRandom, rectangles []shared.MapRectangle
 
 func RandomPointInMap(env RangeRandom, mp shared.MapCatalogItem) (x, y int, ok bool) {
 	return RandomPoint(env, MapRectangles(mp))
-}
-
-func PointInMap(mp shared.MapCatalogItem, x, y int) bool {
-	for _, rectangle := range MapRectangles(mp) {
-		if RectangleContains(rectangle, x, y) {
-			return true
-		}
-	}
-	return false
 }
 
 func minInt(a, b int) int {

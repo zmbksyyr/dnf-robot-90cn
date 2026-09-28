@@ -5,19 +5,6 @@ import (
 	"time"
 )
 
-type CharacterCacheInvalidator interface {
-	Invalidate(uid uint32) error
-}
-
-func (m *RobotManager) SetCharacterCacheInvalidator(invalidator CharacterCacheInvalidator) {
-	if m == nil || invalidator == nil {
-		return
-	}
-	m.characterCacheInvalidate = func(uid int) error {
-		return invalidator.Invalidate(uint32(uid))
-	}
-}
-
 func (m *RobotManager) invalidateCharacterCache(uid int) error {
 	if m == nil || uid <= 0 {
 		return fmt.Errorf("invalid cache uid %d", uid)

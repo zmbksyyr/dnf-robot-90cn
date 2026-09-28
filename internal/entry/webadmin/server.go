@@ -54,19 +54,10 @@ func (s *Server) requestLifecycle(action LifecycleAction) {
 	}
 }
 
-// NewRecovery creates the backend-neutral Web surface used when the persisted
-// backend cannot run on the current platform. It must not start any
+// NewRecoveryWithCatalog creates the backend-neutral Web surface used when the
+// persisted backend cannot run on the current platform. It must not start any
 // backend-specific watcher or supervisor before the operator selects a valid
 // backend and starts a new runtime cycle.
-func NewRecovery(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID, reason ...string) *Server {
-	server := New(cfg, robotAddr, webAddr, selected)
-	server.recoveryMode = true
-	if len(reason) > 0 {
-		server.recoveryReason = strings.TrimSpace(reason[0])
-	}
-	return server
-}
-
 func NewRecoveryWithCatalog(cfg *config.SysConfig, robotAddr, webAddr string, selected shared.BackendID, catalog []shared.BackendInfo, reason ...string) *Server {
 	server := newServer(cfg, robotAddr, webAddr, selected, catalog)
 	server.recoveryMode = true

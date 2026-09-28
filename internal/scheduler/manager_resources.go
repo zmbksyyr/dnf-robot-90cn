@@ -38,13 +38,6 @@ func (m *RobotManager) RandBetween(min, max int) int {
 	return m.randBetween(min, max)
 }
 
-func (m *RobotManager) randomFrom(vals []int) int {
-	if len(vals) == 0 {
-		return 0
-	}
-	return vals[m.randIntn(len(vals))]
-}
-
 func (m *RobotManager) withRand(fn func(*rand.Rand)) error {
 	return m.lockHub().WithResource(lockScopeScheduler, lockResourceSchedulerRandom, "random_source", func() error {
 		fn(m.rand)

@@ -13,7 +13,6 @@ const (
 	systemAnnouncementSenderID = uint16(1)
 	systemAnnouncementInterval = time.Minute
 
-	SystemAnnouncementMegaphone       = "megaphone"
 	SystemAnnouncementWebNoticeSingle = "web_notice_single"
 )
 

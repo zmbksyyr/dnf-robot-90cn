@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -151,21 +150,6 @@ func (c *INIConfig) GetString(section, key, defaultVal string) string {
 	if m, ok := c.data[section]; ok {
 		if v, ok := m[key]; ok {
 			return v
-		}
-	}
-	return defaultVal
-}
-
-// GetInt returns the integer value for the given section and key, or defaultVal if not found.
-func (c *INIConfig) GetInt(section, key string, defaultVal int) int {
-	if c == nil || c.data == nil {
-		return defaultVal
-	}
-	if m, ok := c.data[section]; ok {
-		if v, ok := m[key]; ok {
-			if n, err := strconv.Atoi(v); err == nil {
-				return n
-			}
 		}
 	}
 	return defaultVal

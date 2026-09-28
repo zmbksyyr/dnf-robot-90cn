@@ -35,16 +35,10 @@ type sessionOnlinePrepareEnv interface {
 }
 
 func (s SessionService) Online(req robotcap.CommandRequest, confirm bool, rc robotconfig.RuntimeConfig) (robotcap.CommandResult, error) {
-	return s.online(req, confirm, 0, rc)
+	return s.online(req, confirm, rc)
 }
 
-// OnlineDisjoint restores the proven initial workflow: CMD 238 is attached to
-// the login session and sent as soon as that session reaches StateRun.
-func (s SessionService) OnlineDisjoint(req robotcap.CommandRequest, cost uint32, rc robotconfig.RuntimeConfig) (robotcap.CommandResult, error) {
-	return s.online(req, false, cost, rc)
-}
-
-func (s SessionService) online(req robotcap.CommandRequest, confirm bool, disjointCost uint32, rc robotconfig.RuntimeConfig) (robotcap.CommandResult, error) {
+func (s SessionService) online(req robotcap.CommandRequest, confirm bool, rc robotconfig.RuntimeConfig) (robotcap.CommandResult, error) {
 	env := s.Env
 	robots, err := env.SelectRobots(req)
 	if err != nil {
@@ -86,7 +80,7 @@ func (s SessionService) online(req robotcap.CommandRequest, confirm bool, disjoi
 				result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: false, State: robotcap.ActionStateFailed, Message: err.Error()})
 				continue
 			}
-			userinfos = append(userinfos, s.onlinePayload(robot, disjointCost, rc))
+			userinfos = append(userinfos, s.onlinePayload(robot, rc))
 			result.Accepted++
 			result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: false, State: robotcap.ActionStateAccepted})
 		}
@@ -116,7 +110,7 @@ func (s SessionService) online(req robotcap.CommandRequest, confirm bool, disjoi
 				result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: false, State: robotcap.ActionStateFailed, Message: err.Error()})
 				continue
 			}
-			if err := env.SendOnline([]shared.RuntimeOnlineUser{s.onlinePayload(robot, disjointCost, rc)}); err == nil {
+			if err := env.SendOnline([]shared.RuntimeOnlineUser{s.onlinePayload(robot, rc)}); err == nil {
 				result.Accepted++
 				result.Robots = append(result.Robots, robotcap.ActionResult{UID: robot.UID, CID: robot.CID, OK: false, State: robotcap.ActionStateAccepted})
 			} else {
@@ -200,7 +194,7 @@ func (s SessionService) ConfirmAccepted(result *robotcap.CommandResult, timeout 
 	s.confirmOnline(result, timeout)
 }
 
-func (s SessionService) onlinePayload(robot robotcap.Info, disjointCost uint32, rc robotconfig.RuntimeConfig) shared.RuntimeOnlineUser {
+func (s SessionService) onlinePayload(robot robotcap.Info, rc robotconfig.RuntimeConfig) shared.RuntimeOnlineUser {
 	loginIP := s.Env.RobotConnectIP()
 	if env, ok := s.Env.(sessionLoginIPEnv); ok && env.RobotInnerIP() != "" {
 		loginIP = env.RobotInnerIP()
@@ -219,7 +213,6 @@ func (s SessionService) onlinePayload(robot robotcap.Info, disjointCost uint32, 
 		Port:           s.Env.RobotGamePort(),
 		ReconnectDelay: rc.ReconnectDelayMS,
 		UID:            robot.UID,
-		DisjointCost:   disjointCost,
 	}
 }
 

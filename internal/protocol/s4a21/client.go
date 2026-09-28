@@ -19,18 +19,17 @@ const DefaultMaxPacketLength = 1024 * 1024
 const defaultWriteTimeout = 15 * time.Second
 
 type Client struct {
-	conn           net.Conn
-	udpConn        *net.UDPConn
-	sendMu         lockhub.Locker
-	udpMu          lockhub.Locker
-	udpPeers       map[string]*partyUDPPeer
-	udpPeerDrops   int
-	udpTraceEvents int
-	selfUID        uint16
-	selfSlot       byte
-	slotKnown      bool
-	maxSize        int
-	writeTimeout   time.Duration
+	conn         net.Conn
+	udpConn      *net.UDPConn
+	sendMu       lockhub.Locker
+	udpMu        lockhub.Locker
+	udpPeers     map[string]*partyUDPPeer
+	udpPeerDrops int
+	selfUID      uint16
+	selfSlot     byte
+	slotKnown    bool
+	maxSize      int
+	writeTimeout time.Duration
 }
 
 func Dial(ctx context.Context, address string) (*Client, error) {
