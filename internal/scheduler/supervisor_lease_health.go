@@ -189,7 +189,38 @@ func (s *RobotSupervisor) recycleUnhealthyActors(now time.Time, rc robotconfig.R
 			unhealthy = append(unhealthy, recycleCandidate{actor: actor, status: status})
 		}
 	}
+	if len(s.recycleCooldown) > 0 {
+		for uid, until := range s.recycleCooldown {
+			if !now.Before(until) {
+				delete(s.recycleCooldown, uid)
+			}
+		}
+	}
 	for _, item := range unhealthy {
+		uid := item.status.UID
+		if until, cooling := s.recycleCooldown[uid]; cooling && now.Before(until) {
+			s.skipRecycleInCooldown(item.actor, item.status, until)
+			continue
+		}
+		if s.recycleCooldown == nil {
+			s.recycleCooldown = make(map[int]time.Time)
+		}
+		s.recycleCooldown[uid] = now.Add(time.Duration(rc.SchedulerRecycleCooldownSec) * time.Second)
 		s.recycleActorUID(item.actor, item.status)
 	}
+}
+
+// skipRecycleInCooldown releases a repeatedly failing UID without deleting and
+// recreating its character again. The UID stays blocked until manual cleanup,
+// so a data failure cannot turn into a delete/recreate loop.
+func (s *RobotSupervisor) skipRecycleInCooldown(actor *actormodel.Actor, status actormodel.Status, until time.Time) {
+	released := actor.ReleaseAndWait(15 * time.Second)
+	if released != status.UID {
+		robotLogf("[RobotSupervisor] recycle_cooldown_deferred slot=%d uid=%d released=%d until=%s\n",
+			status.SlotID, status.UID, released, until.Format(time.RFC3339))
+		return
+	}
+	s.ledger.RemoveLeaseIfActor(released, actor)
+	s.ledger.BlockUID(released)
+	robotLogf("[RobotSupervisor] recycle_cooldown_skip slot=%d uid=%d until=%s\n", status.SlotID, status.UID, until.Format(time.RFC3339))
 }

@@ -37,6 +37,7 @@ type RobotSupervisor struct {
 	createFailures   int
 	createNext       time.Time
 	quarantineLogAt  map[int]time.Time
+	recycleCooldown  map[int]time.Time
 }
 
 func NewRobotSupervisor(manager *RobotManager, runtime actormodel.RobotRuntime) *RobotSupervisor {
