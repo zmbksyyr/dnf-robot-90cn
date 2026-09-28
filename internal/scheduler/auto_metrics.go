@@ -136,11 +136,15 @@ func (m *RobotManager) updateAutoBreaker(now time.Time, rc robotconfig.RuntimeCo
 	// exactly the case the breaker has to catch. The adaptive attempt gate
 	// honors the breaker, so this pause covers every retry as well. Only real
 	// login attempts count here; session losses and confirm timeouts would
-	// otherwise keep extending the pause while live sessions drain.
-	windowAttempts := windowAttemptSuccess + windowAttemptFailed
-	if windowAttempts >= 20 && windowAttemptFailed*100 >= windowAttempts*50 {
-		reason = fmt.Sprintf("online_attempts_window success=%d failed=%d in_flight=%d", windowAttemptSuccess, windowAttemptFailed, m.OnlineAttemptInFlight())
-		onlinePause = true
+	// otherwise keep extending the pause while live sessions drain. An active
+	// pause is never extended by this branch: it expires, probes the server
+	// again, and only re-triggers if the fresh attempts fail.
+	if !now.Before(m.autoBreakerUntil) {
+		windowAttempts := windowAttemptSuccess + windowAttemptFailed
+		if windowAttempts >= 20 && windowAttemptFailed*100 >= windowAttempts*50 {
+			reason = fmt.Sprintf("online_attempts_window success=%d failed=%d in_flight=%d", windowAttemptSuccess, windowAttemptFailed, m.OnlineAttemptInFlight())
+			onlinePause = true
+		}
 	}
 
 	if m.autoBreakerLastCheck.IsZero() || now.Sub(m.autoBreakerLastCheck) >= time.Minute {
