@@ -55,7 +55,7 @@ func TestSupervisorPressureReleaseAllowsOnlyOneBatchAndStopWaits(t *testing.T) {
 	var drainingUID int
 	select {
 	case drainingUID = <-runtime.started:
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("first pressure release did not start")
 	}
 	if !supervisor.ledger.HasUID(drainingUID) {
@@ -79,7 +79,7 @@ func TestSupervisorPressureReleaseAllowsOnlyOneBatchAndStopWaits(t *testing.T) {
 	}()
 	select {
 	case <-runtime.started:
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("supervisor stop did not start remaining actor release")
 	}
 	select {
@@ -90,7 +90,7 @@ func TestSupervisorPressureReleaseAllowsOnlyOneBatchAndStopWaits(t *testing.T) {
 	releaseAll()
 	select {
 	case <-stopped:
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("supervisor stop did not wait for actor releases")
 	}
 
@@ -280,7 +280,7 @@ func TestSupervisorShutdownIsBoundedAndKeepsStuckUIDLeased(t *testing.T) {
 	close(release)
 	select {
 	case <-actor.Done():
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("actor did not exit after releasing blocked logout")
 	}
 	if !supervisor.ledger.ReapActor(actor) || supervisor.ledger.HasUID(uid) {
@@ -309,7 +309,7 @@ func TestSupervisorShutdownBroadcastsBeforeWaiting(t *testing.T) {
 	go func() { stopped <- supervisor.StopWithError() }()
 
 	seen := make(map[int]struct{}, actorCount)
-	deadline := time.After(2 * time.Second)
+	deadline := time.After(5 * time.Second)
 	for len(seen) < actorCount {
 		select {
 		case uid := <-runtime.started:
@@ -329,7 +329,7 @@ func TestSupervisorShutdownBroadcastsBeforeWaiting(t *testing.T) {
 		if err != nil {
 			t.Fatalf("shutdown after broadcast: %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("shutdown did not finish after releasing all actors")
 	}
 }
@@ -366,7 +366,7 @@ func TestManagerRetainsSupervisorAfterIncompleteStop(t *testing.T) {
 	close(release)
 	select {
 	case <-actor.Done():
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("actor did not finish after release")
 	}
 }

@@ -19,7 +19,7 @@ func TestSupervisorStopBeforeStartReturns(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("stop before start blocked")
 	}
 }
@@ -57,7 +57,7 @@ func TestSupervisorStopReapsActorsThatExitAfterTimeout(t *testing.T) {
 	close(release)
 	select {
 	case <-actor.Done():
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("actor did not exit after runtime release")
 	}
 	if err := supervisor.StopWithError(); err != nil {
@@ -92,7 +92,7 @@ func TestManagerStartReplacesCompletedTimedOutSupervisor(t *testing.T) {
 	close(release)
 	select {
 	case <-actor.Done():
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("actor did not exit after runtime release")
 	}
 

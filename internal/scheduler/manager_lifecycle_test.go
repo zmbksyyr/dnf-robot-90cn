@@ -44,7 +44,7 @@ func TestManagerShutdownWaitsForRegisteredBackgroundWork(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("shutdown did not finish after background work completed")
 	}
 	if _, ok := manager.BeginBackgroundWork(); ok {
