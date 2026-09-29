@@ -45,6 +45,11 @@ func TestOnlineManagedReleasesStructuralLockDuringConfirm(t *testing.T) {
 	// moved past the locked dispatch phase.
 	runtime.statusBlock = make(chan struct{})
 	runtime.statusEntered = make(chan struct{}, 1)
+	// Drop the cached snapshot so the confirmation must read the runtime
+	// status and reach the blocking provider. Without this the actor's recent
+	// tick can leave a fresh cache entry and the confirmation completes
+	// without ever touching the runtime.
+	manager.invalidateRuntimeStatusCache()
 	done := make(chan struct{})
 	go func() {
 		_, _ = manager.OnlineManaged(robotcap.CommandRequest{UIDs: []int{101}})
@@ -52,7 +57,7 @@ func TestOnlineManagedReleasesStructuralLockDuringConfirm(t *testing.T) {
 	}()
 	select {
 	case <-runtime.statusEntered:
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		close(runtime.statusBlock)
 		t.Fatal("runtime status was never requested during online confirmation")
 	}

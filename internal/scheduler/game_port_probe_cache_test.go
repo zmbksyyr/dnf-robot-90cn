@@ -11,12 +11,33 @@ import (
 	"robot/internal/foundation/config"
 )
 
+// waitAutoPortProbeIdle blocks until the background game-port probe finishes.
+// The probe runs in its own goroutine, so a test that wants to exercise the
+// cache TTL must wait for the in-flight flag to clear instead of assuming the
+// goroutine was scheduled promptly.
+func waitAutoPortProbeIdle(t *testing.T, m *RobotManager) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		m.autoMu.Lock()
+		inflight := m.autoPortProbeInflight
+		m.autoMu.Unlock()
+		if !inflight {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("game port probe did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestAutoGamePortProbeUsesBoundedCache(t *testing.T) {
 	m := NewRobotManager(nil, &config.SysConfig{RobotConnectIP: "127.0.0.1", RobotGamePort: 10011}, nil)
-	calls := 0
+	var calls atomic.Int32
 	probeDone := make(chan struct{}, 4)
 	m.autoPortDial = func(_, _ string, _ time.Duration) (net.Conn, error) {
-		calls++
+		calls.Add(1)
 		client, server := net.Pipe()
 		_ = server.Close()
 		probeDone <- struct{}{}
@@ -25,15 +46,26 @@ func TestAutoGamePortProbeUsesBoundedCache(t *testing.T) {
 	rc := robotconfig.RuntimeConfig{AutoGamePortCheckTimeoutMS: 10, AutoGamePortStableSec: 1}
 	now := time.Unix(100, 0)
 	_ = m.autoGamePortStable(now, rc)
-	<-probeDone
-	_ = m.autoGamePortStable(now.Add(500*time.Millisecond), rc)
-	if calls != 1 {
-		t.Fatalf("dial calls within cache TTL = %d, want 1", calls)
+	select {
+	case <-probeDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("initial probe did not start")
 	}
+	waitAutoPortProbeIdle(t, m)
+
+	_ = m.autoGamePortStable(now.Add(500*time.Millisecond), rc)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("dial calls within cache TTL = %d, want 1", got)
+	}
+
 	_ = m.autoGamePortStable(now.Add(1100*time.Millisecond), rc)
-	<-probeDone
-	if calls != 2 {
-		t.Fatalf("dial calls after cache TTL = %d, want 2", calls)
+	select {
+	case <-probeDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("probe after cache TTL did not start")
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("dial calls after cache TTL = %d, want 2", got)
 	}
 }
 
