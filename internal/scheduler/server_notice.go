@@ -1,14 +1,23 @@
 package scheduler
 
 import (
+	"fmt"
 	"time"
 
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/shared"
 )
 
-// serverNoticeKind picks the trigger kind for one fleet-wide event. The
-// per-robot stock writer provisions whatever kind this chooses.
+// serverNoticeAreaWindow paces one village/area independently. Every area with
+// robots gets its own announcement stream instead of sharing one global slot.
+type serverNoticeAreaWindow struct {
+	nextAt      time.Time
+	windowAt    time.Time
+	windowCount int
+}
+
+// serverNoticeKind picks the trigger kind for one notice event. The per-robot
+// stock writer provisions whatever kind this chooses.
 func (m *RobotManager) serverNoticeKind(rc robotconfig.RuntimeConfig) shared.ServerNoticeKind {
 	if rc.ServerNoticeLotteryPercent <= 0 {
 		return shared.ServerNoticeUpgrade
@@ -22,10 +31,13 @@ func (m *RobotManager) serverNoticeKind(rc robotconfig.RuntimeConfig) shared.Ser
 	return shared.ServerNoticeUpgrade
 }
 
-// claimServerNoticeSlot is the fleet-wide pacing gate. Every actor asks before
-// running its due notice action; only one claim succeeds per gap, and the
-// hourly cap bounds bursts even when many actors become due together.
-func (m *RobotManager) claimServerNoticeSlot(rc robotconfig.RuntimeConfig) bool {
+// claimServerNoticeSlot is the per-area pacing gate. Each village/area keeps
+// its own minimum gap and hourly cap, so a fleet spread over many towns
+// produces one stream per area instead of one stream for the whole server.
+// When the optional village/area filter is configured the caller already
+// matched it; the window still keys on the robot's own area so the pacing
+// stays predictable.
+func (m *RobotManager) claimServerNoticeSlot(rc robotconfig.RuntimeConfig, village, area int) bool {
 	if m == nil {
 		return false
 	}
@@ -36,22 +48,31 @@ func (m *RobotManager) claimServerNoticeSlot(rc robotconfig.RuntimeConfig) bool 
 	}
 	gap := time.Duration(m.randBetween(minGap, maxGap)) * time.Second
 	now := time.Now()
+	key := fmt.Sprintf("%d/%d", village, area)
 	m.serverNoticeMu.Lock()
 	defer m.serverNoticeMu.Unlock()
-	if !m.serverNoticeNextAt.IsZero() && now.Before(m.serverNoticeNextAt) {
+	if m.serverNoticeAreas == nil {
+		m.serverNoticeAreas = make(map[string]*serverNoticeAreaWindow)
+	}
+	window := m.serverNoticeAreas[key]
+	if window == nil {
+		window = &serverNoticeAreaWindow{}
+		m.serverNoticeAreas[key] = window
+	}
+	if !window.nextAt.IsZero() && now.Before(window.nextAt) {
 		return false
 	}
 	if rc.ServerNoticeMaxPerHour > 0 {
-		if m.serverNoticeWindowAt.IsZero() || now.Sub(m.serverNoticeWindowAt) >= time.Hour {
-			m.serverNoticeWindowAt = now
-			m.serverNoticeWindowCount = 0
+		if window.windowAt.IsZero() || now.Sub(window.windowAt) >= time.Hour {
+			window.windowAt = now
+			window.windowCount = 0
 		}
-		if m.serverNoticeWindowCount >= rc.ServerNoticeMaxPerHour {
+		if window.windowCount >= rc.ServerNoticeMaxPerHour {
 			return false
 		}
-		m.serverNoticeWindowCount++
+		window.windowCount++
 	}
-	m.serverNoticeNextAt = now.Add(gap)
+	window.nextAt = now.Add(gap)
 	return true
 }
 

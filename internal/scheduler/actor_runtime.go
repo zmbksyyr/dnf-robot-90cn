@@ -410,7 +410,7 @@ func (r *RobotRuntime) runServerNotice(uid int, shouldStop func() bool, paced bo
 			r.manager.addServerNotice(0, 1, 0)
 			return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateFailed, Message: "port_unavailable"}
 		}
-		if paced && !r.manager.claimServerNoticeSlot(rc) {
+		if paced && !r.manager.claimServerNoticeSlot(rc, st.Village, st.Area) {
 			return robotcap.ActionResult{UID: uid, CID: cid, OK: false, State: robotcap.ActionStateCancelled, Message: "not_due"}
 		}
 		kind := r.manager.serverNoticeKind(rc)

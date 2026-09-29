@@ -12,36 +12,49 @@ import (
 
 func forceServerNoticeSlotDue(m *RobotManager) {
 	m.serverNoticeMu.Lock()
-	m.serverNoticeNextAt = time.Now().Add(-time.Second)
+	for _, window := range m.serverNoticeAreas {
+		window.nextAt = time.Now().Add(-time.Second)
+	}
 	m.serverNoticeMu.Unlock()
 }
 
-func TestServerNoticeClaimPacesGlobally(t *testing.T) {
+func TestServerNoticeClaimPacesEachAreaSeparately(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	rc := robotconfig.RuntimeConfig{ServerNoticeMinGapSec: 60, ServerNoticeMaxGapSec: 60, ServerNoticeMaxPerHour: 0}
-	if !m.claimServerNoticeSlot(rc) {
-		t.Fatal("first claim rejected")
+	if !m.claimServerNoticeSlot(rc, 1, 1) {
+		t.Fatal("first claim in 1/1 rejected")
 	}
-	if m.claimServerNoticeSlot(rc) {
-		t.Fatal("second immediate claim accepted inside the global gap")
+	if m.claimServerNoticeSlot(rc, 1, 1) {
+		t.Fatal("second immediate claim in 1/1 accepted inside the gap")
+	}
+	// A different area keeps its own stream.
+	if !m.claimServerNoticeSlot(rc, 2, 3) {
+		t.Fatal("first claim in 2/3 rejected while 1/1 was cooling down")
+	}
+	if m.claimServerNoticeSlot(rc, 2, 3) {
+		t.Fatal("second immediate claim in 2/3 accepted inside the gap")
 	}
 	forceServerNoticeSlotDue(m)
-	if !m.claimServerNoticeSlot(rc) {
-		t.Fatal("claim after the gap rejected")
+	if !m.claimServerNoticeSlot(rc, 1, 1) {
+		t.Fatal("claim after the per-area gap rejected")
 	}
 }
 
-func TestServerNoticeClaimHonorsHourlyCap(t *testing.T) {
+func TestServerNoticeClaimHonorsPerAreaHourlyCap(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	rc := robotconfig.RuntimeConfig{ServerNoticeMinGapSec: 30, ServerNoticeMaxGapSec: 30, ServerNoticeMaxPerHour: 2}
 	for index := 0; index < 2; index++ {
-		if !m.claimServerNoticeSlot(rc) {
-			t.Fatalf("claim %d rejected below the hourly cap", index)
+		if !m.claimServerNoticeSlot(rc, 7, 1) {
+			t.Fatalf("claim %d in 7/1 rejected below the hourly cap", index)
 		}
 		forceServerNoticeSlotDue(m)
 	}
-	if m.claimServerNoticeSlot(rc) {
-		t.Fatal("claim above the hourly cap accepted")
+	if m.claimServerNoticeSlot(rc, 7, 1) {
+		t.Fatal("claim above the 7/1 hourly cap accepted")
+	}
+	// The cap is per area: another area still accepts.
+	if !m.claimServerNoticeSlot(rc, 7, 2) {
+		t.Fatal("claim in 7/2 rejected by the 7/1 hourly cap")
 	}
 }
 

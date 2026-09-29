@@ -120,9 +120,7 @@ type RobotManager struct {
 	serverNoticeTrigger             shared.ServerNoticer
 	serverNoticeStock               shared.ServerNoticeStockWriter
 	serverNoticeMu                  lockhub.Locker
-	serverNoticeNextAt              time.Time
-	serverNoticeWindowAt            time.Time
-	serverNoticeWindowCount         int
+	serverNoticeAreas               map[string]*serverNoticeAreaWindow
 	followAccountLocator            shared.FollowAccountLocator
 	accountOnlineChecker            shared.AccountOnlineChecker
 	storePointsCoord                *storecap.PointCoordinator
