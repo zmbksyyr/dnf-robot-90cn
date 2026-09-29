@@ -692,6 +692,10 @@ WHERE a.m_id = ? AND (c.name = ? OR CAST(c.name AS TEXT) = ?) AND c.delete_flag 
 	if err != nil {
 		return 0, 0, info, fmt.Errorf("resolve S4A21 character %s/%s: %w", account, info.Name, err)
 	}
+	// Reused characters and freshly provisioned robots alike must carry the
+	// server character id into the robot directory: the offline profession
+	// writer and the server-notice stock writer key on it.
+	info.CID = characterID
 	return accountID, characterID, info, nil
 }
 
