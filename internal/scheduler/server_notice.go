@@ -47,6 +47,9 @@ func (m *RobotManager) claimServerNoticeSlot(rc robotconfig.RuntimeConfig, villa
 		minGap = 600
 	}
 	gap := time.Duration(m.randBetween(minGap, maxGap)) * time.Second
+	// The first claim of a fresh area waits a random slice of the gap so a
+	// fleet restart does not fire every area in the same second.
+	initialDelay := time.Duration(m.randBetween(0, maxGap)) * time.Second
 	now := time.Now()
 	key := fmt.Sprintf("%d/%d", village, area)
 	m.serverNoticeMu.Lock()
@@ -56,7 +59,7 @@ func (m *RobotManager) claimServerNoticeSlot(rc robotconfig.RuntimeConfig, villa
 	}
 	window := m.serverNoticeAreas[key]
 	if window == nil {
-		window = &serverNoticeAreaWindow{}
+		window = &serverNoticeAreaWindow{nextAt: now.Add(initialDelay)}
 		m.serverNoticeAreas[key] = window
 	}
 	if !window.nextAt.IsZero() && now.Before(window.nextAt) {

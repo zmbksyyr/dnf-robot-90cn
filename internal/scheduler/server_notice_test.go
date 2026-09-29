@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -18,9 +19,21 @@ func forceServerNoticeSlotDue(m *RobotManager) {
 	m.serverNoticeMu.Unlock()
 }
 
+// makeServerNoticeAreaDue pre-creates one area window in the past, bypassing
+// the first-claim stagger so tests can assert the steady-state pacing.
+func makeServerNoticeAreaDue(m *RobotManager, village, area int) {
+	m.serverNoticeMu.Lock()
+	if m.serverNoticeAreas == nil {
+		m.serverNoticeAreas = make(map[string]*serverNoticeAreaWindow)
+	}
+	m.serverNoticeAreas[fmt.Sprintf("%d/%d", village, area)] = &serverNoticeAreaWindow{nextAt: time.Now().Add(-time.Second)}
+	m.serverNoticeMu.Unlock()
+}
+
 func TestServerNoticeClaimPacesEachAreaSeparately(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	rc := robotconfig.RuntimeConfig{ServerNoticeMinGapSec: 60, ServerNoticeMaxGapSec: 60, ServerNoticeMaxPerHour: 0}
+	makeServerNoticeAreaDue(m, 1, 1)
 	if !m.claimServerNoticeSlot(rc, 1, 1) {
 		t.Fatal("first claim in 1/1 rejected")
 	}
@@ -28,6 +41,7 @@ func TestServerNoticeClaimPacesEachAreaSeparately(t *testing.T) {
 		t.Fatal("second immediate claim in 1/1 accepted inside the gap")
 	}
 	// A different area keeps its own stream.
+	makeServerNoticeAreaDue(m, 2, 3)
 	if !m.claimServerNoticeSlot(rc, 2, 3) {
 		t.Fatal("first claim in 2/3 rejected while 1/1 was cooling down")
 	}
@@ -43,6 +57,7 @@ func TestServerNoticeClaimPacesEachAreaSeparately(t *testing.T) {
 func TestServerNoticeClaimHonorsPerAreaHourlyCap(t *testing.T) {
 	m := testRobotManagerWithConfig(t, "")
 	rc := robotconfig.RuntimeConfig{ServerNoticeMinGapSec: 30, ServerNoticeMaxGapSec: 30, ServerNoticeMaxPerHour: 2}
+	makeServerNoticeAreaDue(m, 7, 1)
 	for index := 0; index < 2; index++ {
 		if !m.claimServerNoticeSlot(rc, 7, 1) {
 			t.Fatalf("claim %d in 7/1 rejected below the hourly cap", index)
@@ -53,6 +68,7 @@ func TestServerNoticeClaimHonorsPerAreaHourlyCap(t *testing.T) {
 		t.Fatal("claim above the 7/1 hourly cap accepted")
 	}
 	// The cap is per area: another area still accepts.
+	makeServerNoticeAreaDue(m, 7, 2)
 	if !m.claimServerNoticeSlot(rc, 7, 2) {
 		t.Fatal("claim in 7/2 rejected by the 7/1 hourly cap")
 	}
