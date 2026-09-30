@@ -143,6 +143,14 @@ func (a *cn90PVFArchive) buildStrings(data []byte) {
 		return
 	}
 	offset := 8
+	if a.protected {
+		// The 90CN runtime archive is protected_nkpi: its string pools are
+		// keyed StRa/StRw, carry an encoded original size next to the encoded
+		// size, and use the protected (UTF-16 seed) keystream.
+		a.strA = cn90PVFProtectedStringBuffer(data, &offset, "StRa", 0xAA74472E)
+		a.strW = cn90PVFProtectedStringBuffer(data, &offset, "StRw", 0x9A82F037)
+		return
+	}
 	a.strA = cn90PVFStringBuffer(data, &offset, "sTrA", 0xAA74472E)
 	a.strW = cn90PVFStringBuffer(data, &offset, "sTrW", 0x9A82F037)
 }
@@ -301,6 +309,8 @@ func (a *cn90PVFArchive) resolveString(value int) string {
 	return cn90PVFUTF8String(a.strA, value>>1)
 }
 
+// cn90PVFStringBuffer decodes one legacy NKPI string pool (sTrA/sTrW): a
+// u32 encoded size, four reserved bytes, the encrypted pool and zlib.
 func cn90PVFStringBuffer(data []byte, offset *int, key string, xor uint32) []byte {
 	if *offset < 0 || *offset+8 > len(data) {
 		return nil
@@ -313,16 +323,45 @@ func cn90PVFStringBuffer(data []byte, offset *int, key string, xor uint32) []byt
 	encrypted := append([]byte(nil), data[*offset:*offset+size]...)
 	*offset += size
 	cn90PVFDecrypt(key, encrypted, 0x269EC9)
+	return cn90PVFInflateStringBuffer(encrypted)
+}
+
+// cn90PVFProtectedStringBuffer decodes one protected_nkpi string pool
+// (StRa/StRw): a u32 encoded size and a u32 encoded original size, the
+// protected-keystream pool and zlib. The original size check is best-effort:
+// a mismatch only rejects the pool, it never panics on a corrupt archive.
+func cn90PVFProtectedStringBuffer(data []byte, offset *int, key string, xor uint32) []byte {
+	if *offset < 0 || *offset+8 > len(data) {
+		return nil
+	}
+	encodedSize := binary.LittleEndian.Uint32(data[*offset : *offset+4])
+	encodedOriginalSize := binary.LittleEndian.Uint32(data[*offset+4 : *offset+8])
+	*offset += 8
+	size := int(encodedSize ^ xor)
+	if size <= 0 || size > len(data)-*offset {
+		return nil
+	}
+	encrypted := append([]byte(nil), data[*offset:*offset+size]...)
+	*offset += size
+	cn90PVFDecryptProtected(key, encrypted, 0x269EC9)
+	decoded := cn90PVFInflateStringBuffer(encrypted)
+	if decoded == nil {
+		return nil
+	}
+	if want := int(encodedOriginalSize ^ uint32(size)); want >= 0 && want != len(decoded) {
+		return nil
+	}
+	return decoded
+}
+
+func cn90PVFInflateStringBuffer(encrypted []byte) []byte {
 	reader, err := zlib.NewReader(bytes.NewReader(encrypted))
 	if err != nil {
 		return nil
 	}
 	decoded, err := io.ReadAll(io.LimitReader(reader, cn90PVFMaxStringBytes+1))
 	_ = reader.Close()
-	if err != nil {
-		return nil
-	}
-	if len(decoded) > cn90PVFMaxStringBytes {
+	if err != nil || len(decoded) > cn90PVFMaxStringBytes {
 		return nil
 	}
 	return decoded
