@@ -200,7 +200,9 @@ func (a *SQLiteLoadoutApplier) ReconcileRobotLoadouts(ctx context.Context, accou
 // equipmentNeedsLoadout reports whether the account's active character still
 // wears only server starter rows (or nothing): generated rows carry the
 // robot_loadout marker, so any marked row means the loadout was already
-// applied and operator edits must survive.
+// applied and operator edits must survive. When pets are enabled the creature
+// state is checked the same way so a character created before the pet stage is
+// upgraded on the next startup.
 func (a *SQLiteLoadoutApplier) equipmentNeedsLoadout(ctx context.Context, account string) (bool, error) {
 	readCtx, cancel := context.WithTimeout(ctx, cn90PersistenceTimeout)
 	defer cancel()
@@ -219,7 +221,22 @@ func (a *SQLiteLoadoutApplier) equipmentNeedsLoadout(ctx context.Context, accoun
 		row.characterID).Scan(&marked); err != nil {
 		return false, fmt.Errorf("count 90CN generated equipment character=%s: %w", row.characterID, err)
 	}
-	return marked == 0, nil
+	if marked == 0 {
+		return true, nil
+	}
+	if !a.Config.PetEnabled {
+		return false, nil
+	}
+	if a.Config.PetProbabilityPercent < 100 && cn90DeterministicPercent(row.characterID) >= a.Config.PetProbabilityPercent {
+		return false, nil
+	}
+	var petMarked int
+	if err := db.QueryRowContext(readCtx,
+		`SELECT COUNT(*) FROM `+dnfPetEntryExtraTable+` WHERE character_id=? AND extra_key='robot_loadout'`,
+		row.characterID).Scan(&petMarked); err != nil {
+		return false, fmt.Errorf("count 90CN generated pet character=%s: %w", row.characterID, err)
+	}
+	return petMarked == 0, nil
 }
 
 // ResolveCharacterProfile reads the robot account's active character row.
@@ -302,7 +319,7 @@ func (a *SQLiteLoadoutApplier) seedAccountQuestGates(ctx context.Context, accoun
 }
 
 // applyAccountLoadout resolves the account's character row and replaces its
-// worn equipment and avatars.
+// worn equipment, avatars and creature state.
 func (a *SQLiteLoadoutApplier) applyAccountLoadout(ctx context.Context, account string, info robotcap.Info) error {
 	account = strings.TrimSpace(account)
 	if account == "" {
@@ -326,7 +343,10 @@ func (a *SQLiteLoadoutApplier) applyAccountLoadout(ctx context.Context, account 
 		if row.level < 1 {
 			row.level = 1
 		}
-		return a.applyRobotLoadout(jobCtx, db, row.characterID, row.job, row.level)
+		if err := a.applyRobotLoadout(jobCtx, db, row.characterID, row.job, row.level); err != nil {
+			return err
+		}
+		return a.applyRobotPet(jobCtx, db, row.characterID)
 	})
 }
 

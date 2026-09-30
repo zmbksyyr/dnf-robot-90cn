@@ -573,15 +573,30 @@ func parsePVFList(text string) []pvfListEntry {
 		}
 		fields = append(fields, field)
 	}
-	var out []pvfListEntry
-	for i := 0; i+1 < len(fields); i += 2 {
+	// The list is a flat sequence of id/path pairs, but sparse or malformed
+	// rows (a missing id, a path containing whitespace) shift every following
+	// pair. Resynchronize on the next id-like field instead of silently
+	// dropping the remainder of the list.
+	out := make([]pvfListEntry, 0, len(fields)/2)
+	for i := 0; i+1 < len(fields); i++ {
 		id := atoi(fields[i])
-		path := normalizePVFPath(fields[i+1])
-		if id > 0 && path != "" {
-			out = append(out, pvfListEntry{ID: id, Path: path})
+		if id <= 0 {
+			continue
 		}
+		path := normalizePVFPath(fields[i+1])
+		if path == "" || !pvfListPathLike(path) {
+			continue
+		}
+		out = append(out, pvfListEntry{ID: id, Path: path})
+		i++
 	}
 	return out
+}
+
+// pvfListPathLike distinguishes a file reference from a stray value token so a
+// misaligned pair cannot be accepted as a path.
+func pvfListPathLike(path string) bool {
+	return strings.ContainsAny(path, "/.")
 }
 
 type townArea struct {

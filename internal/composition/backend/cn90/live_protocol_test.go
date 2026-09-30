@@ -3,6 +3,7 @@ package cn90
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -161,6 +162,7 @@ func TestLiveRobotProvisionAndSession(t *testing.T) {
 		t.Fatalf("leveled info = %+v", leveled)
 	}
 	liveEquipmentSummary(t, databasePath, account)
+	livePetSummary(t, databasePath, account)
 
 	// Log in and take the selected character through the town route.
 	factory := SessionFactory{ConnectHost: "127.0.0.1", Channels: channels, Timeout: 30 * time.Second, Binder: binder}
@@ -253,6 +255,47 @@ func liveEquipmentSummary(t *testing.T, databasePath, account string) {
 		t.Fatalf("live loadout produced %d worn rows, want at least 12: %v", len(slots), slots)
 	}
 	t.Logf("live loadout worn rows: %v", slots)
+}
+
+// livePetSummary logs the creature rows the pet writer produced so the live
+// run records the creature projection the server later reads.
+func livePetSummary(t *testing.T, databasePath, account string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", sqliteReadOnlyDSN(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	configureSQLitePool(db)
+	var equippedKey string
+	var townDisplay int
+	if err := db.QueryRow(`SELECT p.equipped_key, p.town_display FROM dnf_pets p JOIN dnf_characters c ON c.character_id=p.character_id WHERE c.account_id=? AND c.delete_flag=0`, account).
+		Scan(&equippedKey, &townDisplay); err != nil {
+		t.Fatalf("live pet parent: %v", err)
+	}
+	if equippedKey == "" || townDisplay != 1 {
+		t.Fatalf("live pet parent equipped=%q display=%d", equippedKey, townDisplay)
+	}
+	var petItem, petLevel, satiety int
+	if err := db.QueryRow(`SELECT item_id, pet_level, satiety FROM dnf_pet_entries e JOIN dnf_characters c ON c.character_id=e.character_id WHERE c.account_id=? AND c.delete_flag=0`, account).
+		Scan(&petItem, &petLevel, &satiety); err != nil {
+		t.Fatalf("live pet entry: %v", err)
+	}
+	var wornItem int
+	var raw []byte
+	if err := db.QueryRow(`SELECT item_id, raw_entry FROM dnf_equipment_entries e JOIN dnf_characters c ON c.character_id=e.character_id WHERE c.account_id=? AND c.delete_flag=0 AND e.entry_key='26'`, account).
+		Scan(&wornItem, &raw); err != nil {
+		t.Fatalf("live pet equipment row: %v", err)
+	}
+	if wornItem != petItem || len(raw) != 46 || binary.LittleEndian.Uint32(raw[24:28]) == 0 {
+		t.Fatalf("live pet equipment row item=%d petItem=%d rawLen=%d", wornItem, petItem, len(raw))
+	}
+	var artifactKinds string
+	if err := db.QueryRow(`SELECT COALESCE(group_concat(entry_key, ','), '') FROM (SELECT a.entry_key FROM dnf_pet_artifacts a JOIN dnf_characters c ON c.character_id=a.character_id WHERE c.account_id=? AND c.delete_flag=0 ORDER BY a.entry_key)`, account).
+		Scan(&artifactKinds); err != nil {
+		t.Fatalf("live pet artifacts: %v", err)
+	}
+	t.Logf("live pet: item=%d level=%d satiety=%d serial=%d artifacts=[%s]", petItem, petLevel, satiety, binary.LittleEndian.Uint32(raw[24:28]), artifactKinds)
 }
 
 // liveClearAccount logs into the account and removes every character on it.
