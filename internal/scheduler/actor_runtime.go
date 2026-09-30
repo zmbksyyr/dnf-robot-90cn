@@ -213,6 +213,7 @@ func (r *RobotRuntime) AutoShout(uid int, world bool, msg string) robotcap.Actio
 func (r *RobotRuntime) AutoStore(uid int, shouldStop func() bool) robotcap.ActionResult {
 	return r.run(uid, func() robotcap.ActionResult {
 		if err := r.manager.requireBackendCapability(shared.CapabilityStore); err != nil {
+			robotLogf("[STORE_CAPABILITY_BLOCKED] uid=%d err=%v\n", uid, err)
 			return robotcap.ActionResult{UID: uid, OK: false, State: robotcap.ActionStateCancelled, Message: err.Error()}
 		}
 		st, ok := r.Status(uid)
@@ -225,6 +226,7 @@ func (r *RobotRuntime) AutoStore(uid int, shouldStop func() bool) robotcap.Actio
 		expert, releaseStoreType := r.manager.beginAdaptiveStoreType()
 		defer releaseStoreType()
 		if expert {
+			robotLogf("[STORE_EXPERT_ATTEMPT] uid=%d cid=%d\n", uid, st.CID)
 			return r.autoExpertJobStore(uid, st, shouldStop)
 		}
 		return r.autoItemStore(st, shouldStop)
@@ -292,6 +294,13 @@ func (r *RobotRuntime) autoExpertJobStore(uid int, st robotcap.RuntimeStatus, sh
 	reuseSession := false
 	setAreaStalls := 0
 	allowedPosition := func(pos storecap.Position) bool { return shared.GenericAreaAllowed(info.GuildID, pos.Village) }
+	// Adapters whose server cannot confirm cross-town transitions restrict the
+	// point pool to the robot's current town.
+	if placement, ok := r.manager.storePolicy.(shared.BackendStorePlacementPolicy); ok && placement.StoreSameTownOnly() {
+		sameTown := info.Village
+		base := allowedPosition
+		allowedPosition = func(pos storecap.Position) bool { return pos.Village == sameTown && base(pos) }
+	}
 	for try := 1; try <= tries; try++ {
 		if shouldStop != nil && shouldStop() {
 			points.DiscardAttemptFailure(uid, &failureState)

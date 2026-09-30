@@ -13,3 +13,12 @@ type BackendStorePolicy interface {
 	// reasons. known=false lets the scheduler keep its own reason semantics.
 	DisjointReasonRetryable(reason string) (retry bool, known bool)
 }
+
+// BackendStorePlacementPolicy is an optional extension: adapters whose server
+// cannot confirm cross-town area transitions (every store point outside the
+// robot's current town fails) restrict store placements to the robot's town.
+type BackendStorePlacementPolicy interface {
+	// StoreSameTownOnly reports that store points outside the robot's current
+	// town must not be attempted.
+	StoreSameTownOnly() bool
+}

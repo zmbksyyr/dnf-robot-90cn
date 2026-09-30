@@ -27,6 +27,11 @@ func (StorePolicy) EnchantStoreCost() uint32 { return cn90EnchantStoreCostGold }
 // alternate attempts into the unavailable item workflow.
 func (StorePolicy) ItemStoreSupported() bool { return false }
 
+// StoreSameTownOnly keeps store placements inside the robot's current town:
+// the DNF90 server never confirms a cross-town area transition, so a global
+// point pool only wastes attempts.
+func (StorePolicy) StoreSameTownOnly() bool { return true }
+
 // DisjointFailure maps a wire failure code to a stable reason string and
 // whether a different coordinate may retry on the same session.
 //

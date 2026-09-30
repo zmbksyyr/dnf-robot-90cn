@@ -297,9 +297,59 @@ func (t *ActionTransport) StartExpertJobStore(uid int, kind shared.ExpertJobStor
 			uid, kind.Name(), status.Village, status.Area, status.X, status.Y, err)
 		return false
 	}
+	t.markStoreOpened(uid, kind)
 	foundationlog.Robotf("[CN90_STORE_STARTED] uid=%d kind=%s at=%d/%d/%d/%d charge=%d\n",
 		uid, kind.Name(), status.Village, status.Area, status.X, status.Y, cost)
 	return true
+}
+
+// markStoreOpened publishes the store state the scheduler waits for. The
+// server acks the create on op598 but never sends the owner a create
+// notification, so the acknowledgement is the authoritative success signal.
+func (t *ActionTransport) markStoreOpened(uid int, kind shared.ExpertJobStoreKind) {
+	if t == nil || uid <= 0 {
+		return
+	}
+	t.mu.Lock()
+	status := t.status[uid]
+	status.UID = uid
+	status.RobotType = 3
+	status.StoreCreated = true
+	status.StoreDisplayAck = true
+	if kind == shared.ExpertJobStoreDisjoint {
+		status.DisjointCreateSent = true
+		status.DisjointDirectAck = true
+		status.DisjointActive = true
+		status.LastDisjointError = 0
+	} else {
+		status.EnchantCreateSent = true
+		status.EnchantDirectAck = true
+		status.EnchantActive = true
+		status.LastEnchantError = 0
+	}
+	t.status[uid] = status
+	t.mu.Unlock()
+}
+
+// clearStoreOpened drops the store state after a close or a failed attempt so
+// the scheduler does not keep counting the robot as an active stall owner.
+func (t *ActionTransport) clearStoreOpened(uid int) {
+	if t == nil || uid <= 0 {
+		return
+	}
+	t.mu.Lock()
+	status := t.status[uid]
+	status.RobotType = 0
+	status.StoreCreated = false
+	status.StoreDisplayAck = false
+	status.DisjointCreateSent = false
+	status.DisjointDirectAck = false
+	status.DisjointActive = false
+	status.EnchantCreateSent = false
+	status.EnchantDirectAck = false
+	status.EnchantActive = false
+	t.status[uid] = status
+	t.mu.Unlock()
 }
 
 // CloseExpertJobStore closes the robot's stall. The server also closes a stall
@@ -320,8 +370,10 @@ func (t *ActionTransport) CloseExpertJobStore(uid int) bool {
 	defer cancel()
 	if err := closer.CloseExpertJobStore(ctx); err != nil {
 		foundationlog.Robotf("[CN90_STORE_CLOSE_FAILED] uid=%d err=%v\n", uid, err)
+		t.clearStoreOpened(uid)
 		return false
 	}
+	t.clearStoreOpened(uid)
 	foundationlog.Robotf("[CN90_STORE_CLOSED] uid=%d\n", uid)
 	return true
 }
