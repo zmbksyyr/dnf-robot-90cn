@@ -11,7 +11,7 @@ import (
 	runtimeinit "robot/internal/bootstrap/runtime"
 	"robot/internal/capability/robotconfig"
 	backendregistry "robot/internal/composition/backend"
-	s4a21backend "robot/internal/composition/backend/s4a21"
+	cn90backend "robot/internal/composition/backend/cn90"
 	"robot/internal/entry/tcpapi"
 	"robot/internal/entry/webadmin"
 	"robot/internal/foundation/config"
@@ -46,7 +46,7 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	manager := scheduler.NewRobotManager(nil, cfg, nil)
 	// The adapter owns PVF, database, protocol and path rules; the composition
 	// root only wires the returned components onto the scheduler ports.
-	bundle, err := s4a21backend.ComposeRuntime(context.Background(), s4a21backend.RuntimeComposeOptions{
+	bundle, err := cn90backend.ComposeRuntime(context.Background(), cn90backend.RuntimeComposeOptions{
 		ServerDirectory: cfg.ServerDirectory,
 		DatabasePath:    backendSetting(selection, "database_path"),
 		AccountPrefix:   robotAccountPrefix,
@@ -75,10 +75,10 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 		foundationlog.Robotf("ADAPTER_RUNTIME_MARK_FAILED err=%v\n", err)
 		return 1
 	}
-	manager.ConfigureBackendRuntime(info, s4a21backend.NewPersistenceInspector(bundle.DatabasePath), nil)
-	manager.SetBackendStorePolicy(s4a21backend.StorePolicy{})
+	manager.ConfigureBackendRuntime(info, cn90backend.NewPersistenceInspector(bundle.DatabasePath), nil)
+	manager.SetBackendStorePolicy(cn90backend.StorePolicy{})
 	manager.SetBackendStoreRuntime(bundle.Transport)
-	manager.SetBackendExpertJobProfessionWriter(s4a21backend.ExpertJobProfessionWriter{DatabasePath: bundle.DatabasePath})
+	manager.SetBackendExpertJobProfessionWriter(cn90backend.ExpertJobProfessionWriter{DatabasePath: bundle.DatabasePath})
 	manager.SetBackendServerNoticeRuntime(bundle.Transport)
 	manager.SetBackendServerNoticeStockWriter(bundle.NoticeStock)
 	manager.SetBackendAccountOnlineChecker(bundle.Transport)

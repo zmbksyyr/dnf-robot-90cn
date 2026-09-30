@@ -46,7 +46,7 @@ func DecodePVFBytes(raw []byte) string {
 	return best
 }
 
-// DecodeWireName decodes an A21 online character name. The server stores names
+// DecodeWireName decodes an online game-server character name. The server stores names
 // and protocol strings as GBK (code page 936); legacy databases may still carry
 // UTF-8 wire bytes, which are detected by strict UTF-8 validity. Unlike
 // DecodePVFBytes this never falls back to Big5, because a GBK name whose bytes

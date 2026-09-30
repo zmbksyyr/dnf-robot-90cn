@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestEmbeddedAssetsContainCoreS4A21UI(t *testing.T) {
+func TestEmbeddedAssetsContainCoreCN90UI(t *testing.T) {
 	checks := []struct {
 		name, content string
 		required      []string

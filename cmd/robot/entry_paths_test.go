@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	robotconfig "robot/internal/capability/robotconfig"
-	s4a21backend "robot/internal/composition/backend/s4a21"
+	cn90backend "robot/internal/composition/backend/cn90"
 	"robot/internal/foundation/config"
 	"robot/internal/shared"
 )
@@ -43,13 +43,13 @@ func TestApplyBackendSelectionSettingsValidatesInput(t *testing.T) {
 }
 
 func TestComposeRuntimeRejectsIncompleteOptions(t *testing.T) {
-	for _, opts := range []s4a21backend.RuntimeComposeOptions{
+	for _, opts := range []cn90backend.RuntimeComposeOptions{
 		{},
 		{AccountPrefix: "robot"},
 		{AccountPrefix: "robot", ConnectIP: "127.0.0.1"},
 		{AccountPrefix: "robot", ConnectIP: "127.0.0.1", GamePort: 10011},
 	} {
-		if _, err := s4a21backend.ComposeRuntime(context.Background(), opts); err == nil {
+		if _, err := cn90backend.ComposeRuntime(context.Background(), opts); err == nil {
 			t.Fatalf("incomplete compose options accepted: %+v", opts)
 		}
 	}

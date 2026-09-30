@@ -127,7 +127,7 @@ func TestLogoutUIDDoesNotInvalidateWhileRuntimeStillExists(t *testing.T) {
 }
 
 func TestLogoutUIDConfirmsStoppedRuntimeEntry(t *testing.T) {
-	// S4A21 keeps a "stop" entry after Close instead of deleting the UID. A
+	// 90CN keeps a "stop" entry after Close instead of deleting the UID. A
 	// stopped runtime is not a live connection, so logout must be confirmed.
 	env := &directLogoutEnv{
 		freshStatus: map[int]robotcap.RuntimeStatus{17000001: {UID: 17000001, StateName: shared.RuntimeStateStop}},

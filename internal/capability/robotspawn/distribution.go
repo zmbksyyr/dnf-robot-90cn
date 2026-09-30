@@ -240,7 +240,7 @@ func Crowded(maps []shared.MapCatalogItem, locations []shared.MapLocation, villa
 	return mine*weights[leastKey] > counts[leastKey]*weights[mineKey]*bias
 }
 
-// MapFamilyKey returns a stable signature of a map's movement geometry. A21
+// MapFamilyKey returns a stable signature of a map's movement geometry. Server
 // town lists contain mirror instances (channels) of the same map as separate
 // areas; capacity planning must treat them as one logical map.
 func MapFamilyKey(mp shared.MapCatalogItem) string {

@@ -20,7 +20,7 @@ func TestInitConfigOnlyDoesNotRequirePVF(t *testing.T) {
 	}
 }
 
-func TestInitConfigForS4A21ReleasesOnlySupportedFiles(t *testing.T) {
+func TestInitConfigForCN90ReleasesOnlySupportedFiles(t *testing.T) {
 	dir := t.TempDir()
 	if err := InitConfigForBackend(&config.SysConfig{ConfigDir: dir}, backendInfoForTest()); err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func TestInitConfigForS4A21ReleasesOnlySupportedFiles(t *testing.T) {
 	paths := layout.New(dir)
 	for _, path := range []string{paths.RobotConfig(), paths.NameTemplates(), paths.ShoutTemplates()} {
 		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("S4A21 runtime file was not released: %s: %v", path, err)
+			t.Fatalf("90CN runtime file was not released: %s: %v", path, err)
 		}
 	}
 	for _, path := range []string{paths.PartySkills(), paths.StoreTitles()} {
@@ -41,7 +41,7 @@ func TestInitConfigForS4A21ReleasesOnlySupportedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rc.AutoMailNotify || rc.MaxOnlineRobots != 10000 || rc.MaxPetArtifactSlots != 3 {
-		t.Fatalf("S4A21 runtime config was not selected: %+v", rc)
+		t.Fatalf("90CN runtime config was not selected: %+v", rc)
 	}
 }
 

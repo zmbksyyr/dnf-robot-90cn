@@ -10,5 +10,5 @@
 - Do not reintroduce removed native-server code, configuration, keys, service scripts, market/mail entrypoints, or generated artifacts.
 - Do not use PowerShell to read or write source files. Use `rg`, `cmd /c type` or other repository-aware read commands; use `apply_patch` for manual edits.
 - Read detailed design rules from `doc/`; keep this file limited to execution constraints.
-- Keep the version capability matrix current in [`doc/S4A21能力状态.md`](doc/S4A21能力状态.md). Update it together with the S4A21 adapter descriptor whenever an ability is added, removed, verified, or found unsupported; do not overstate compile-only support as runtime verification.
+- Keep the version capability matrix current in [`doc/90CN能力状态.md`](doc/90CN能力状态.md). Update it together with the 90CN adapter descriptor whenever an ability is added, removed, verified, or found unsupported; do not overstate compile-only support as runtime verification.
 - Preserve unrelated worktree changes. Make focused staged commits and run relevant tests before committing.

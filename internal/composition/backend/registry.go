@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"runtime"
 
-	s4a21backend "robot/internal/composition/backend/s4a21"
+	cn90backend "robot/internal/composition/backend/cn90"
 	"robot/internal/shared"
 )
 
 // Available returns the only backend implemented by this build. It does not
 // detect the environment or start external services.
 func Available() []shared.BackendInfo {
-	return []shared.BackendInfo{s4a21backend.Info()}
+	return []shared.BackendInfo{cn90backend.Info()}
 }
 
-func DefaultID() shared.BackendID { return s4a21backend.BackendID }
+func DefaultID() shared.BackendID { return cn90backend.BackendID }
 
 func Select(id shared.BackendID, platform string) (shared.BackendInfo, error) {
 	if platform == "" {

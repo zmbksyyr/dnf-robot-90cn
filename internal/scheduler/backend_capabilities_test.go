@@ -74,7 +74,7 @@ func TestSimulatorStoreIsRejectedWithStableCapabilityError(t *testing.T) {
 	}
 	var unsupported shared.UnsupportedCapabilityError
 	if !errors.As(err, &unsupported) || unsupported.Backend != shared.BackendID("test") || unsupported.Operation != shared.CapabilityStore {
-		t.Fatalf("error = %v, want S4A21 store unsupported", err)
+		t.Fatalf("error = %v, want 90CN store unsupported", err)
 	}
 	if !strings.Contains(err.Error(), shared.CodeBackendCapabilityUnsupported) {
 		t.Fatalf("error = %v, missing stable capability code", err)

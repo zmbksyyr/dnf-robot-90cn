@@ -47,7 +47,7 @@ func TestRetryDisjointInCurrentSessionOnlyForTransientPositionState(t *testing.T
 	// The adapter classifies its own wire codes; the scheduler keeps the
 	// semantics of its local reasons.
 	m := testRobotManagerWithConfig(t, "")
-	m.SetBackendStorePolicy(s4a21TestStorePolicy{})
+	m.SetBackendStorePolicy(cn90TestStorePolicy{})
 	for _, reason := range []string{"set_area_failed", "ack_timeout", "disjoint_err_0x52", "disjoint_err_0xbe"} {
 		if !m.expertJobStoreReasonRetryable(shared.ExpertJobStoreDisjoint, reason) {
 			t.Fatalf("reason %q should retry in current session", reason)
@@ -75,7 +75,7 @@ func TestDisjointFailureClassificationFollowsAdapterPolicy(t *testing.T) {
 	if reason, retry := m.expertJobStoreFailure(shared.ExpertJobStoreDisjoint, 0x52); reason != "disjoint_err_0x52" || retry {
 		t.Fatalf("default classification = %q retry=%t, want neutral", reason, retry)
 	}
-	m.SetBackendStorePolicy(s4a21TestStorePolicy{})
+	m.SetBackendStorePolicy(cn90TestStorePolicy{})
 	if reason, retry := m.expertJobStoreFailure(shared.ExpertJobStoreDisjoint, 0x52); reason != "disjoint_err_0x52" || !retry {
 		t.Fatalf("adapter classification = %q retry=%t, want retryable", reason, retry)
 	}
@@ -115,14 +115,14 @@ func TestExpertJobStoreKindForUID(t *testing.T) {
 	}
 }
 
-// s4a21TestStorePolicy mirrors the adapter policy matrix without importing the
+// cn90TestStorePolicy mirrors the adapter policy matrix without importing the
 // adapter package (scheduler must stay backend-neutral).
-type s4a21TestStorePolicy struct{}
+type cn90TestStorePolicy struct{}
 
 // disjointOnlyStorePolicy mirrors an adapter that implements the disassembler
 // machine but not the private item stall.
 type disjointOnlyStorePolicy struct {
-	s4a21TestStorePolicy
+	cn90TestStorePolicy
 }
 
 func (disjointOnlyStorePolicy) ItemStoreSupported() bool { return false }
@@ -145,9 +145,9 @@ func TestAdaptiveStoreTypeHonorsAdapterKindSupport(t *testing.T) {
 	}
 }
 
-func (s4a21TestStorePolicy) DisjointStoreCost() uint32 { return 500 }
+func (cn90TestStorePolicy) DisjointStoreCost() uint32 { return 500 }
 
-func (s4a21TestStorePolicy) DisjointFailure(errCode byte) (string, bool) {
+func (cn90TestStorePolicy) DisjointFailure(errCode byte) (string, bool) {
 	reason := "disjoint_failed"
 	if errCode != 0 {
 		reason = fmt.Sprintf("disjoint_err_0x%02x", errCode)
@@ -159,7 +159,7 @@ func (s4a21TestStorePolicy) DisjointFailure(errCode byte) (string, bool) {
 	return reason, false
 }
 
-func (s4a21TestStorePolicy) DisjointReasonRetryable(reason string) (bool, bool) {
+func (cn90TestStorePolicy) DisjointReasonRetryable(reason string) (bool, bool) {
 	switch reason {
 	case "disjoint_err_0x52", "disjoint_err_0xbe":
 		return true, true
@@ -169,9 +169,9 @@ func (s4a21TestStorePolicy) DisjointReasonRetryable(reason string) (bool, bool) 
 	return false, false
 }
 
-func (s4a21TestStorePolicy) EnchantStoreCost() uint32 { return 500 }
+func (cn90TestStorePolicy) EnchantStoreCost() uint32 { return 500 }
 
-func (s4a21TestStorePolicy) EnchantFailure(errCode byte) (string, bool) {
+func (cn90TestStorePolicy) EnchantFailure(errCode byte) (string, bool) {
 	reason := "enchant_failed"
 	if errCode != 0 {
 		reason = fmt.Sprintf("enchant_err_0x%02x", errCode)
@@ -183,7 +183,7 @@ func (s4a21TestStorePolicy) EnchantFailure(errCode byte) (string, bool) {
 	return reason, false
 }
 
-func (s4a21TestStorePolicy) EnchantReasonRetryable(reason string) (bool, bool) {
+func (cn90TestStorePolicy) EnchantReasonRetryable(reason string) (bool, bool) {
 	switch reason {
 	case "enchant_err_0x52", "enchant_err_0xbe":
 		return true, true

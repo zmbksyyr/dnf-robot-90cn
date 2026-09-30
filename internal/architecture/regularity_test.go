@@ -29,7 +29,7 @@ var forbiddenRuntimeArtifactSuffixes = []string{
 
 var sqlImportAllowedDirs = []string{
 	"cmd/robot",
-	"internal/composition/backend/s4a21",
+	"internal/composition/backend/cn90",
 }
 
 var actionResultStateDirs = []string{
@@ -246,7 +246,7 @@ func TestCommandEntryStaysBackendNeutralOutsideAssembly(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", entry.Name(), err)
 		}
-		for _, token := range []string{"composition/backend/s4a21", "protocol/s4a21", "S4A21"} {
+		for _, token := range []string{"composition/backend/cn90", "protocol/cn90", "90CN"} {
 			if strings.Contains(string(data), token) {
 				t.Errorf("cmd/robot/%s references concrete adapter token %q; move adapter assembly to runtime_main.go or the adapter package", entry.Name(), token)
 			}
@@ -346,7 +346,7 @@ func TestSchedulerDoesNotExposeActionFacadeMethods(t *testing.T) {
 func TestSchedulerDoesNotReferenceConcreteBackends(t *testing.T) {
 	root := repoRoot(t)
 	dir := filepath.Join(root, "internal", "scheduler")
-	forbidden := []string{"BackendS4A21", "sim_a21", "composition/backend/s4a21", "protocol/s4a21"}
+	forbidden := []string{"Backend90CN", "sim_90cn", "90CN", "CN90", "composition/backend/cn90", "protocol/cn90"}
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -388,7 +388,7 @@ func TestPublicLayersDoNotReferenceConcreteBackendNames(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			for _, token := range []string{"S4A21", "sim_a21", "protocol/s4a21", "composition/backend/s4a21"} {
+			for _, token := range []string{"CN90", "90CN", "sim_90cn", "protocol/cn90", "composition/backend/cn90"} {
 				if strings.Contains(string(data), token) {
 					t.Errorf("%s references concrete backend token %q", path, token)
 				}

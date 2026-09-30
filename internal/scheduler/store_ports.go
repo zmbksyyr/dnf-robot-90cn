@@ -271,7 +271,7 @@ func (e storeMaintenanceEnv) SelectRobots(req robotcap.CommandRequest) ([]robotc
 }
 
 func (e storeMaintenanceEnv) SyncCharacterVillage(cid int, village int) (int, error) {
-	// The A21 position plane is applied through the game session; there is no
-	// character village column in this adapter's persistence boundary.
+	// The server position plane is applied through the game session; there is
+	// no character village column in this adapter's persistence boundary.
 	return village, nil
 }

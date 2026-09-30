@@ -1,4 +1,4 @@
-# Web 交互清单（S4A21 适配端）
+# Web 交互清单（90CN 适配端）
 
 本文档逐个列出假人管理 Web 的按钮、输入项、弹窗、提示与错误文案，作为阶段三「Web 全量文案与语义治理」的对照基线。名称栏中的键对应 `internal/entry/webadmin/assets/i18n.js`，实现位于 `assets/index.html`、`assets/app.js`、`assets/login.html`。
 

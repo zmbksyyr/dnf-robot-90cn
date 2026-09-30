@@ -20,17 +20,17 @@ import (
 )
 
 // TestRobotProcessLifecycle builds the real binary, starts it against the
-// configured S4A21 fixture, drives the Web admin login and stop action, and
+// configured 90CN fixture, drives the Web admin login and stop action, and
 // verifies the clean exit plus the shutdown log order. It requires the live
 // fixture paths because the adapter refuses to start without a readable PVF.
 func TestRobotProcessLifecycle(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("the distribution gate keeps the process on Windows")
 	}
-	pvfPath := os.Getenv("S4A21_TEST_PVF")
-	dbPath := os.Getenv("S4A21_TEST_DB")
+	pvfPath := os.Getenv("CN90_TEST_PVF")
+	dbPath := os.Getenv("CN90_TEST_DB")
 	if pvfPath == "" || dbPath == "" {
-		t.Skip("S4A21_TEST_PVF and S4A21_TEST_DB are required for the lifecycle test")
+		t.Skip("CN90_TEST_PVF and CN90_TEST_DB are required for the lifecycle test")
 	}
 	if _, err := os.Stat(pvfPath); err != nil {
 		t.Fatalf("PVF fixture: %v", err)
@@ -85,7 +85,7 @@ max_response_bytes = 4194304
 		t.Fatal(err)
 	}
 	selection := fmt.Sprintf(`{
-  "backend_id": "sim_a21",
+  "backend_id": "sim_90cn",
   "config_generation": 1,
   "selected_at": "2026-09-27T00:00:00Z",
   "settings": {

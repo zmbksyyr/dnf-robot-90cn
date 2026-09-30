@@ -6,13 +6,13 @@ import (
 	"robot/internal/shared"
 )
 
-func TestSelectS4A21AcrossSupportedPlatforms(t *testing.T) {
+func TestSelectCN90AcrossSupportedPlatforms(t *testing.T) {
 	if _, err := Select("missing", "linux"); err == nil {
 		t.Fatal("unknown backend must fail closed")
 	}
 	for _, platform := range []string{"linux", "windows"} {
 		if info, err := Select(DefaultID(), platform); err != nil || !info.Selectable {
-			t.Fatalf("S4A21 on %s = %+v, %v", platform, info, err)
+			t.Fatalf("90CN on %s = %+v, %v", platform, info, err)
 		}
 	}
 }
