@@ -144,6 +144,13 @@ func (c *Client) SetUserPosition(ctx context.Context, x, y int16, movementCode b
 	return c.send(ctx, CmdSetUserPosition, SetUserPositionBody(x, y, movementCode, opaqueScaled))
 }
 
+// TownSceneReady sends the legacy type1345 u32(2) acknowledgement the live
+// client emits right after the first typed op24. The server uses it to release
+// the deferred scene tail and the HUD gauges.
+func (c *Client) TownSceneReady(ctx context.Context) error {
+	return c.send(ctx, CmdTownSceneReady, []byte{2, 0, 0, 0})
+}
+
 // CheckConnection sends the heartbeat. The server answers only after a
 // character has been selected.
 func (c *Client) CheckConnection(ctx context.Context) error {

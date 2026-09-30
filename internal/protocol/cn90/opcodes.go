@@ -22,6 +22,7 @@ const (
 	CmdCreateExpertStore  uint16 = 598
 	CmdCloseExpertStore   uint16 = 600
 	CmdCheckCharacterName uint16 = 692
+	CmdTownSceneReady     uint16 = 1345
 	CmdCheckConnection    uint16 = 1276
 )
 

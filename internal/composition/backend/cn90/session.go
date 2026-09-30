@@ -138,6 +138,13 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	if _, err := waitUpperPacket(openCtx, client, protocol.ClassNotice, protocol.NotiSceneTransition); err != nil {
 		return nil, fmt.Errorf("90CN initial town: %w", err)
 	}
+	// The live client acknowledges the first typed op24 with legacy 1345
+	// u32(2); the server defers the scene tail (and later store acceptance)
+	// until that boundary. A rejected ack only degrades projections, so the
+	// login continues.
+	if err := client.TownSceneReady(openCtx); err != nil {
+		foundationlog.Robotf("CN90_SCENE_READY_FAILED err=%v\n", err)
+	}
 	if request.InitialTownKnown {
 		if err := initializeTownPresence(openCtx, client, request); err != nil {
 			// The persisted login location is owned by the server. A spawn
