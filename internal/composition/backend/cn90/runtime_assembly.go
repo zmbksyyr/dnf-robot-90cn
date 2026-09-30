@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -32,6 +31,10 @@ type RuntimeBundle struct {
 	Purger         SQLiteRobotPurger
 	Inspector      SQLitePopulationInspector
 	DatabasePath   string
+	GameAddress    string
+	GamePort       int
+	AdminAddress   string
+	AdminToken     string
 	TownMaps       []shared.MapCatalogItem
 	FollowAccounts FollowAccountLocator
 	NoticeStock    ServerNoticeStock
@@ -50,7 +53,8 @@ func (b RuntimeBundle) Close() error {
 }
 
 // RuntimeComposeOptions carries the backend-neutral inputs needed to assemble
-// the 90CN runtime.
+// the 90CN runtime. GamePort 0 means "resolve the channel port from the DNF90
+// runtime instance"; a positive value is an operator override.
 type RuntimeComposeOptions struct {
 	ServerDirectory string
 	DatabasePath    string
@@ -73,7 +77,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if prefix == "" {
 		return bundle, fmt.Errorf("90CN account prefix is required")
 	}
-	if opts.ConnectIP == "" || opts.GamePort <= 0 {
+	if strings.TrimSpace(opts.ConnectIP) == "" {
 		return bundle, fmt.Errorf("90CN game address is incomplete")
 	}
 	if opts.RandIntn == nil || opts.RandBetween == nil {
@@ -86,7 +90,11 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		stageStarted = time.Now()
 	}
 
-	pvfPath, pvfSource, err := resolvePVFPath(opts.ServerDirectory)
+	serverLayout, err := resolveRuntimeLayout(opts.ServerDirectory)
+	if err != nil {
+		return bundle, fmt.Errorf("90CN runtime: %w", err)
+	}
+	pvfPath, pvfSource, err := serverLayout.pvfPath()
 	if err != nil {
 		return bundle, fmt.Errorf("PVF: %w", err)
 	}
@@ -107,12 +115,21 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		return bundle, fmt.Errorf("town map catalog: %w", err)
 	}
 	logStartupStage("item_catalog_export")
-	databasePath, databaseSource, err := resolveDatabasePath(opts.ServerDirectory, opts.DatabasePath)
+	databasePath, databaseSource, err := resolveDatabasePath(serverLayout, opts.DatabasePath)
 	if err != nil {
 		return bundle, fmt.Errorf("loadout database: %w", err)
 	}
 	foundationlog.Robotf("CN90_DATABASE_RESOLVED path=%s source=%s\n", databasePath, databaseSource)
-	logDatabaseSourceConflict(opts.ServerDirectory, opts.DatabasePath)
+	gamePort, err := resolveGamePort(serverLayout, opts.GamePort)
+	if err != nil {
+		return bundle, fmt.Errorf("90CN channel port: %w", err)
+	}
+	adminAddress, adminToken, err := serverLayout.adminEndpoint()
+	if err != nil {
+		return bundle, fmt.Errorf("90CN admin endpoint: %w", err)
+	}
+	foundationlog.Robotf("CN90_CHANNEL_RESOLVED address=%s source=%s\n",
+		net.JoinHostPort(opts.ConnectIP, fmt.Sprint(gamePort)), gamePortSource(opts.GamePort))
 	inventory, err := (SQLiteStartupInventory{
 		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config, Equipment: catalogs.Equipment,
 		JobGrows: catalogs.JobGrows, StatTables: catalogs.StatTables,
@@ -160,7 +177,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if replaced > 0 {
 		foundationlog.Robotf("CN90_LOADOUT_RECONCILED robots=%d\n", replaced)
 	}
-	transport, err := NewRuntimeTransport(opts.ConnectIP, opts.GamePort)
+	transport, err := NewRuntimeTransport(opts.ConnectIP, gamePort)
 	if err != nil {
 		_ = loadouts.Close()
 		return bundle, fmt.Errorf("transport: %w", err)
@@ -168,7 +185,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	noticeStock := NewServerNoticeStock(databasePath, catalogs.Equipment)
 	transport.SetServerNoticeStock(noticeStock)
 	logStartupStage("transport")
-	address := net.JoinHostPort(opts.ConnectIP, fmt.Sprint(opts.GamePort))
+	address := net.JoinHostPort(opts.ConnectIP, fmt.Sprint(gamePort))
 	names := catalog.NameTemplates(opts.Paths.Templates)
 
 	bundle.Inventory = inventory
@@ -176,6 +193,10 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	bundle.Loadouts = loadouts
 	bundle.Transport = transport
 	bundle.DatabasePath = databasePath
+	bundle.GameAddress = address
+	bundle.GamePort = gamePort
+	bundle.AdminAddress = adminAddress
+	bundle.AdminToken = adminToken
 	bundle.TownMaps = catalogs.TownMaps
 	bundle.FollowAccounts = FollowAccountLocator{DatabasePath: databasePath}
 	bundle.NoticeStock = noticeStock
@@ -233,176 +254,76 @@ func ExportTownMapCatalog(paths layout.Paths, maps []shared.MapCatalogItem) erro
 	return nil
 }
 
-// pvfArchivePathEnv is the environment override Server90CN itself reads when
-// locating the PVF archive.
-const pvfArchivePathEnv = "PVF_ARCHIVE_PATH"
-
-// inventoryDatabasePathEnv is the environment override Server90CN itself
-// reads when locating the SQLite inventory database.
-const inventoryDatabasePathEnv = "INVENTORY_DATABASE_PATH"
-
-// ResolvePVFPath mirrors the 90CN server's GameWorldConfig.PvfArchivePath
-// resolution relative to the server base directory: PVF_ARCHIVE_PATH when that
-// file exists, otherwise Data/Pvf/Script.pvf, otherwise the first *.pvf under
-// Data/Pvf, otherwise the first *.pvf directly under the server base. The
-// archive directory is never treated as the server base.
+// ResolvePVFPath resolves the Script.pvf the DNF90 runtime reads: the instance
+// game.pvfPath (relative to the runtime directory), defaulting to the locked
+// data/dnf/Script.pvf profile path. The server directory may be the one-click
+// project root or the runtime directory itself.
 func ResolvePVFPath(serverDirectory string) (string, error) {
-	path, _, err := resolvePVFPath(serverDirectory)
+	serverLayout, err := resolveRuntimeLayout(serverDirectory)
+	if err != nil {
+		return "", err
+	}
+	path, _, err := serverLayout.pvfPath()
 	return path, err
 }
 
-// resolvePVFPath also reports which rule selected the archive so startup can
-// log the exact PVF source.
-func resolvePVFPath(serverDirectory string) (string, string, error) {
-	base, err := resolveServerBase(serverDirectory)
-	if err != nil {
-		return "", "", err
-	}
-	if override := strings.TrimSpace(os.Getenv(pvfArchivePathEnv)); override != "" {
-		candidate := override
-		if !filepath.IsAbs(candidate) {
-			candidate = filepath.Join(base, candidate)
-		}
-		if isRegularFile(candidate) {
-			return candidate, "env " + pvfArchivePathEnv, nil
-		}
-	}
-	if candidate := filepath.Join(base, "Data", "Pvf", "Script.pvf"); isRegularFile(candidate) {
-		return candidate, "Data/Pvf/Script.pvf", nil
-	}
-	if candidate := firstPVFArchive(filepath.Join(base, "Data", "Pvf")); candidate != "" {
-		return candidate, "first .pvf under Data/Pvf", nil
-	}
-	if candidate := firstPVFArchive(base); candidate != "" {
-		return candidate, "first .pvf under the server directory", nil
-	}
-	return "", "", fmt.Errorf("90CN PVF not found under %q; expected Data/Pvf/Script.pvf or %s", base, pvfArchivePathEnv)
-}
-
-// ResolveDatabasePath mirrors the 90CN server's ServerPaths.DatabasePath
-// resolution: the explicit adapter setting wins, then INVENTORY_DATABASE_PATH
-// (absolute, or relative to the server base), then Data/inventory.db under the
-// server base. The PVF location never contributes to this path.
+// ResolveDatabasePath resolves the SQLite database the robot writes: the
+// explicit adapter setting wins (absolute, or relative to the runtime
+// directory), then the instance database.path (relative to the runtime
+// directory), then the locked data/dnf90.db default.
 func ResolveDatabasePath(serverDirectory, configured string) (string, error) {
-	path, _, err := resolveDatabasePath(serverDirectory, configured)
+	serverLayout, err := resolveRuntimeLayout(serverDirectory)
+	if err != nil {
+		return "", err
+	}
+	path, _, err := resolveDatabasePath(serverLayout, configured)
 	return path, err
 }
 
 // resolveDatabasePath also reports which rule selected the database file so
 // startup can log the exact database source.
-func resolveDatabasePath(serverDirectory, configured string) (string, string, error) {
+func resolveDatabasePath(serverLayout runtimeLayout, configured string) (string, string, error) {
 	if value := strings.TrimSpace(configured); value != "" {
-		if _, err := os.Stat(value); err != nil {
-			return "", "", fmt.Errorf("90CN database %q: %w", value, err)
-		}
-		return value, "adapter database_path setting", nil
-	}
-	if override := strings.TrimSpace(os.Getenv(inventoryDatabasePathEnv)); override != "" {
-		candidate := override
+		candidate := value
 		if !filepath.IsAbs(candidate) {
-			base, err := resolveServerBase(serverDirectory)
-			if err != nil {
-				return "", "", err
-			}
-			candidate = filepath.Join(base, candidate)
+			candidate = filepath.Join(serverLayout.root, candidate)
 		}
-		if _, err := os.Stat(candidate); err != nil {
-			return "", "", fmt.Errorf("90CN database %q: %w", candidate, err)
+		if !isRegularFile(candidate) {
+			return "", "", fmt.Errorf("90CN database %q does not exist", candidate)
 		}
-		return candidate, "env " + inventoryDatabasePathEnv, nil
+		return candidate, "adapter database_path setting", nil
 	}
-	base, err := resolveServerBase(serverDirectory)
+	path, source, err := serverLayout.databasePath()
 	if err != nil {
 		return "", "", err
 	}
-	candidate := filepath.Join(base, "Data", "inventory.db")
-	if _, err := os.Stat(candidate); err != nil {
-		return "", "", fmt.Errorf("90CN database %q: %w", candidate, err)
+	if !isRegularFile(path) {
+		return "", "", fmt.Errorf("90CN database %q does not exist; start the DNF90 server once so it creates the SQLite file", path)
 	}
-	return candidate, "Data/inventory.db", nil
+	return path, source, nil
 }
 
-// logDatabaseSourceConflict warns when the adapter database setting and
-// INVENTORY_DATABASE_PATH name different files. The adapter setting wins for
-// the robot, but the game server itself opens the environment path, so both
-// processes may silently use different databases.
-func logDatabaseSourceConflict(serverDirectory, configured string) {
-	configured = strings.TrimSpace(configured)
-	override := strings.TrimSpace(os.Getenv(inventoryDatabasePathEnv))
-	if configured == "" || override == "" {
-		return
+// resolveGamePort returns the operator override when one is configured,
+// otherwise the channel port from the runtime instance. The DNF90 channel
+// listen address is loopback-locked by the server itself.
+func resolveGamePort(serverLayout runtimeLayout, configured int) (int, error) {
+	if configured > 0 {
+		if configured > 65535 {
+			return 0, fmt.Errorf("game port %d is out of range", configured)
+		}
+		return configured, nil
 	}
-	base, err := resolveServerBase(serverDirectory)
-	if err != nil {
-		return
-	}
-	if !filepath.IsAbs(override) {
-		override = filepath.Join(base, override)
-	}
-	if samePath(configured, override) {
-		return
-	}
-	foundationlog.Robotf("CN90_DATABASE_SOURCE_CONFLICT setting=%s %s=%s effective=%s\n",
-		configured, inventoryDatabasePathEnv, override, configured)
+	return serverLayout.channelPort()
 }
 
-func samePath(left, right string) bool {
-	leftAbs, leftErr := filepath.Abs(left)
-	rightAbs, rightErr := filepath.Abs(right)
-	if leftErr != nil || rightErr != nil {
-		return filepath.Clean(left) == filepath.Clean(right)
+func gamePortSource(configured int) string {
+	if configured > 0 {
+		return "adapter game_port setting"
 	}
-	leftAbs = filepath.Clean(leftAbs)
-	rightAbs = filepath.Clean(rightAbs)
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(leftAbs, rightAbs)
-	}
-	return leftAbs == rightAbs
-}
-
-// resolveServerBase maps the configured server directory, or the configured
-// server executable, onto the directory Server90CN uses as its base. A .pvf
-// path cannot identify that base and is rejected instead of guessing.
-func resolveServerBase(serverDirectory string) (string, error) {
-	value := strings.TrimSpace(serverDirectory)
-	if value == "" {
-		return "", fmt.Errorf("90CN server directory is empty")
-	}
-	if strings.EqualFold(filepath.Ext(value), ".pvf") {
-		return "", fmt.Errorf("90CN server directory %q is a .pvf file; configure the directory that contains the server executable", value)
-	}
-	switch stat, err := os.Stat(value); {
-	case err == nil && stat.IsDir():
-		return value, nil
-	case err == nil:
-		return filepath.Dir(value), nil
-	case filepath.Ext(value) != "":
-		return filepath.Dir(value), nil
-	default:
-		return value, nil
-	}
+	return "instance server.channelListen"
 }
 
 func isRegularFile(path string) bool {
 	stat, err := os.Stat(path)
 	return err == nil && stat.Mode().IsRegular()
-}
-
-// firstPVFArchive mirrors the server's fallback of picking the first archive
-// in a directory when Script.pvf is absent.
-func firstPVFArchive(dir string) string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".pvf") {
-			continue
-		}
-		candidate := filepath.Join(dir, entry.Name())
-		if isRegularFile(candidate) {
-			return candidate
-		}
-	}
-	return ""
 }

@@ -10,202 +10,195 @@ import (
 	"robot/internal/foundation/layout"
 )
 
-func TestResolvePVFPathUsesServerDataLayout(t *testing.T) {
-	t.Setenv(pvfArchivePathEnv, "")
-	dir := t.TempDir()
-	pvf := filepath.Join(dir, "Data", "Pvf", "Script.pvf")
-	if err := os.MkdirAll(filepath.Dir(pvf), 0755); err != nil {
+// writeTestRuntime builds a minimal DNF90 one-click layout: a project root
+// carrying runtime/config/instance.json plus the PVF and SQLite files the
+// instance points at. Unknown instance fields are included on purpose so the
+// reader stays tolerant of newer server releases.
+func writeTestRuntime(t *testing.T, channelListen string) (projectRoot string, instancePath string) {
+	t.Helper()
+	projectRoot = t.TempDir()
+	runtimeRoot := filepath.Join(projectRoot, projectRuntimeDirName)
+	configDir := filepath.Join(runtimeRoot, "config")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(pvf, []byte("pvf"), 0644); err != nil {
+	instance := `{
+  "schemaVersion": 1,
+  "installationId": "inst_test",
+  "mode": "local-single-account",
+  "server": {
+    "advertiseIp": "127.0.0.1",
+    "channelListen": "` + channelListen + `",
+    "adminListen": "127.0.0.1:18111",
+    "adminToken": "adm_test",
+    "accountId": "dnf:test",
+    "packetLog": false,
+    "partyUdpRelayPortStart": 30000,
+    "partyUdpRelayPortCount": 64
+  },
+  "database": {"mode": "sqlite", "path": "data/dnf90.db"},
+  "game": {
+    "shardId": "9999",
+    "pvfPath": "data/dnf/Script.pvf",
+    "pvfMaxBytes": 536870912,
+    "channelInfoPath": "data/dnf/channel_info.etc"
+  },
+  "protocol": {
+    "profile": "90cn-decode-bypass-v1",
+    "gameUpperHeader": "server16",
+    "gameUpperBodyCodec": "plaintext",
+    "gameUpperClientBodyCodec": "plaintext",
+    "gameOuterToken": "de509f65e9ccaae621cb7278fc2b8e6c",
+    "channelServerIndex": 1,
+    "channelAdvertiseServerIndex": 0
+  },
+  "build": {"goExecutable": "go"},
+  "client": {"directory": "", "initialGamePort": 0, "hookCreate": true}
+}`
+	instancePath = filepath.Join(configDir, "instance.json")
+	if err := os.WriteFile(instancePath, []byte(instance), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := ResolvePVFPath(dir); err != nil || got != pvf {
-		t.Fatalf("directory resolution = %q, %v", got, err)
+	writeTestFile(t, filepath.Join(runtimeRoot, "data", "dnf", "Script.pvf"))
+	writeTestFile(t, filepath.Join(runtimeRoot, "data", "dnf90.db"))
+	return projectRoot, instancePath
+}
+
+func writeTestFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
 	}
-	if got, err := ResolvePVFPath(filepath.Join(dir, "DfoServer.exe")); err != nil || got != pvf {
-		t.Fatalf("executable resolution = %q, %v", got, err)
+	if err := os.WriteFile(path, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := ResolvePVFPath(""); err == nil {
+}
+
+func TestResolveRuntimeLayoutAcceptsProjectRootAndRuntimeDir(t *testing.T) {
+	projectRoot, instancePath := writeTestRuntime(t, "127.0.0.1:7001")
+	runtimeRoot := filepath.Join(projectRoot, projectRuntimeDirName)
+
+	for _, input := range []string{projectRoot, runtimeRoot} {
+		serverLayout, err := resolveRuntimeLayout(input)
+		if err != nil {
+			t.Fatalf("resolve %q: %v", input, err)
+		}
+		if serverLayout.root != runtimeRoot {
+			t.Fatalf("runtime root = %q, want %q", serverLayout.root, runtimeRoot)
+		}
+		if serverLayout.instance.InstallationID != "inst_test" {
+			t.Fatalf("installation = %q", serverLayout.instance.InstallationID)
+		}
+	}
+	if _, err := resolveRuntimeLayout(""); err == nil {
 		t.Fatal("empty server directory was accepted")
 	}
-	if _, err := ResolvePVFPath(t.TempDir()); err == nil {
-		t.Fatal("directory without a PVF archive was accepted")
+	if _, err := resolveRuntimeLayout(t.TempDir()); err == nil {
+		t.Fatal("directory without a DNF90 runtime was accepted")
 	}
-	if _, err := ResolvePVFPath(pvf); err == nil {
+	if _, err := resolveRuntimeLayout(instancePath); err == nil {
+		t.Fatal("an instance.json file was accepted as the server directory")
+	}
+	if _, err := resolveRuntimeLayout(filepath.Join(runtimeRoot, "data", "dnf", "Script.pvf")); err == nil {
 		t.Fatal("a .pvf file was accepted as the server directory")
 	}
 }
 
-func TestResolvePVFPathMirrorsServerArchiveOverride(t *testing.T) {
-	dir := t.TempDir()
-	defaultPVF := filepath.Join(dir, "Data", "Pvf", "Script.pvf")
-	if err := os.MkdirAll(filepath.Dir(defaultPVF), 0755); err != nil {
-		t.Fatal(err)
+func TestResolvePVFPathFollowsInstance(t *testing.T) {
+	projectRoot, _ := writeTestRuntime(t, "127.0.0.1:7001")
+	want := filepath.Join(projectRoot, projectRuntimeDirName, "data", "dnf", "Script.pvf")
+	if got, err := ResolvePVFPath(projectRoot); err != nil || got != want {
+		t.Fatalf("PVF path = %q, %v", got, err)
 	}
-	if err := os.WriteFile(defaultPVF, []byte("pvf"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	custom := filepath.Join(dir, "custom.pvf")
-	if err := os.WriteFile(custom, []byte("pvf"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(pvfArchivePathEnv, custom)
-	if got, err := ResolvePVFPath(dir); err != nil || got != custom {
-		t.Fatalf("absolute override = %q, %v", got, err)
-	}
-	t.Setenv(pvfArchivePathEnv, "custom.pvf")
-	if got, err := ResolvePVFPath(dir); err != nil || got != custom {
-		t.Fatalf("relative override = %q, %v", got, err)
-	}
-	t.Setenv(pvfArchivePathEnv, "missing.pvf")
-	if got, err := ResolvePVFPath(dir); err != nil || got != defaultPVF {
-		t.Fatalf("missing override fallback = %q, %v", got, err)
+	if _, err := ResolvePVFPath(filepath.Join(projectRoot, "go-server")); err == nil {
+		t.Fatal("a directory without a runtime was accepted")
 	}
 }
 
-func TestResolvePVFPathFallsBackToFirstArchive(t *testing.T) {
-	t.Setenv(pvfArchivePathEnv, "")
-	dir := t.TempDir()
-	pvfDir := filepath.Join(dir, "Data", "Pvf")
-	if err := os.MkdirAll(pvfDir, 0755); err != nil {
+func TestResolvePVFPathRejectsMissingArchive(t *testing.T) {
+	projectRoot, _ := writeTestRuntime(t, "127.0.0.1:7001")
+	if err := os.Remove(filepath.Join(projectRoot, projectRuntimeDirName, "data", "dnf", "Script.pvf")); err != nil {
 		t.Fatal(err)
 	}
-	archive := filepath.Join(pvfDir, "Other.pvf")
-	if err := os.WriteFile(archive, []byte("pvf"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := ResolvePVFPath(dir); err != nil || got != archive {
-		t.Fatalf("Data/Pvf fallback = %q, %v", got, err)
-	}
-
-	legacy := t.TempDir()
-	legacyArchive := filepath.Join(legacy, "Client.pvf")
-	if err := os.WriteFile(legacyArchive, []byte("pvf"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := ResolvePVFPath(legacy); err != nil || got != legacyArchive {
-		t.Fatalf("server base fallback = %q, %v", got, err)
+	if _, err := ResolvePVFPath(projectRoot); err == nil {
+		t.Fatal("missing Script.pvf was accepted")
 	}
 }
 
-func TestResolvePathsReportSources(t *testing.T) {
-	t.Setenv(pvfArchivePathEnv, "")
-	t.Setenv(inventoryDatabasePathEnv, "")
-	dir := t.TempDir()
-	pvf := filepath.Join(dir, "Data", "Pvf", "Script.pvf")
-	if err := os.MkdirAll(filepath.Dir(pvf), 0755); err != nil {
+func TestResolveDatabasePathFollowsInstanceAndOverrides(t *testing.T) {
+	projectRoot, _ := writeTestRuntime(t, "127.0.0.1:7001")
+	runtimeRoot := filepath.Join(projectRoot, projectRuntimeDirName)
+	want := filepath.Join(runtimeRoot, "data", "dnf90.db")
+
+	if got, err := ResolveDatabasePath(projectRoot, ""); err != nil || got != want {
+		t.Fatalf("instance database = %q, %v", got, err)
+	}
+	serverLayout, err := resolveRuntimeLayout(projectRoot)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(pvf, []byte("pvf"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	db := filepath.Join(dir, "Data", "inventory.db")
-	if err := os.WriteFile(db, []byte("db"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if _, source, err := resolvePVFPath(dir); err != nil || source != "Data/Pvf/Script.pvf" {
-		t.Fatalf("default PVF source=%q err=%v", source, err)
-	}
-	if _, source, err := resolveDatabasePath(dir, ""); err != nil || source != "Data/inventory.db" {
-		t.Fatalf("derived database source=%q err=%v", source, err)
+	if path, source, err := resolveDatabasePath(serverLayout, ""); err != nil || path != want || source != "instance database.path" {
+		t.Fatalf("instance database path=%q source=%q err=%v", path, source, err)
 	}
 
-	custom := filepath.Join(dir, "custom.pvf")
-	if err := os.WriteFile(custom, []byte("pvf"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(pvfArchivePathEnv, custom)
-	if path, source, err := resolvePVFPath(dir); err != nil || path != custom || source != "env "+pvfArchivePathEnv {
-		t.Fatalf("override PVF path=%q source=%q err=%v", path, source, err)
-	}
-
-	explicit := filepath.Join(dir, "explicit.db")
-	if err := os.WriteFile(explicit, []byte("db"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if path, source, err := resolveDatabasePath(dir, explicit); err != nil || path != explicit || source != "adapter database_path setting" {
-		t.Fatalf("explicit database path=%q source=%q err=%v", path, source, err)
-	}
-	t.Setenv(inventoryDatabasePathEnv, "env.db")
-	if err := os.WriteFile(filepath.Join(dir, "env.db"), []byte("db"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if _, source, err := resolveDatabasePath(dir, ""); err != nil || source != "env "+inventoryDatabasePathEnv {
-		t.Fatalf("environment database source=%q err=%v", source, err)
-	}
-}
-
-func TestSamePathNormalizesRelativeSegments(t *testing.T) {
-	dir := t.TempDir()
-	if !samePath(filepath.Join(dir, "a.db"), filepath.Join(dir, ".", "a.db")) {
-		t.Fatal("equivalent paths reported as different")
-	}
-	if samePath(filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")) {
-		t.Fatal("different paths reported as equal")
-	}
-}
-
-func TestResolveDatabasePathPrefersExplicitPath(t *testing.T) {
-	t.Setenv(inventoryDatabasePathEnv, "")
-	dbDir := t.TempDir()
-	explicit := filepath.Join(dbDir, "custom.db")
-	if err := os.WriteFile(explicit, []byte("db"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := ResolveDatabasePath("", explicit); err != nil || got != explicit {
+	explicit := filepath.Join(t.TempDir(), "custom.db")
+	writeTestFile(t, explicit)
+	if got, err := ResolveDatabasePath(projectRoot, explicit); err != nil || got != explicit {
 		t.Fatalf("explicit database = %q, %v", got, err)
 	}
+	if path, source, err := resolveDatabasePath(serverLayout, explicit); err != nil || path != explicit || source != "adapter database_path setting" {
+		t.Fatalf("explicit database path=%q source=%q err=%v", path, source, err)
+	}
 
-	serverDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(serverDir, "Data"), 0755); err != nil {
+	relative := filepath.Join(runtimeRoot, "custom.db")
+	writeTestFile(t, relative)
+	if got, err := ResolveDatabasePath(projectRoot, "custom.db"); err != nil || got != relative {
+		t.Fatalf("relative database = %q, %v", got, err)
+	}
+
+	if _, err := ResolveDatabasePath(projectRoot, filepath.Join(t.TempDir(), "missing.db")); err == nil {
+		t.Fatal("missing explicit database was accepted")
+	}
+	if err := os.Remove(want); err != nil {
 		t.Fatal(err)
 	}
-	derived := filepath.Join(serverDir, "Data", "inventory.db")
-	if err := os.WriteFile(derived, []byte("db"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := ResolveDatabasePath(serverDir, ""); err != nil || got != derived {
-		t.Fatalf("derived database = %q, %v", got, err)
-	}
-	if got, err := ResolveDatabasePath(filepath.Join(serverDir, "DfoServer.exe"), ""); err != nil || got != derived {
-		t.Fatalf("executable database = %q, %v", got, err)
-	}
-	if _, err := ResolveDatabasePath(filepath.Join(serverDir, "Data", "Pvf", "Script.pvf"), ""); err == nil {
-		t.Fatal("a .pvf file was accepted as the server base for the database")
-	}
-	if _, err := ResolveDatabasePath("", ""); err == nil {
-		t.Fatal("empty server directory was accepted")
+	if _, err := ResolveDatabasePath(projectRoot, ""); err == nil {
+		t.Fatal("missing instance database was accepted")
 	}
 }
 
-func TestResolveDatabasePathMirrorsServerOverride(t *testing.T) {
-	serverDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(serverDir, "Data"), 0755); err != nil {
+func TestResolveGamePortUsesInstanceAndOverride(t *testing.T) {
+	projectRoot, _ := writeTestRuntime(t, "127.0.0.1:7001")
+	serverLayout, err := resolveRuntimeLayout(projectRoot)
+	if err != nil {
 		t.Fatal(err)
 	}
-	derived := filepath.Join(serverDir, "Data", "inventory.db")
-	if err := os.WriteFile(derived, []byte("db"), 0644); err != nil {
+	if port, err := resolveGamePort(serverLayout, 0); err != nil || port != 7001 {
+		t.Fatalf("instance port = %d, %v", port, err)
+	}
+	if port, err := resolveGamePort(serverLayout, 10011); err != nil || port != 10011 {
+		t.Fatalf("override port = %d, %v", port, err)
+	}
+	if _, err := resolveGamePort(serverLayout, 70000); err == nil {
+		t.Fatal("out-of-range override was accepted")
+	}
+	if source := gamePortSource(0); source != "instance server.channelListen" {
+		t.Fatalf("instance source = %q", source)
+	}
+	if source := gamePortSource(10011); source != "adapter game_port setting" {
+		t.Fatalf("override source = %q", source)
+	}
+}
+
+func TestAdminEndpointFollowsInstance(t *testing.T) {
+	projectRoot, _ := writeTestRuntime(t, "127.0.0.1:7001")
+	serverLayout, err := resolveRuntimeLayout(projectRoot)
+	if err != nil {
 		t.Fatal(err)
 	}
-	custom := filepath.Join(serverDir, "custom.db")
-	if err := os.WriteFile(custom, []byte("db"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(inventoryDatabasePathEnv, custom)
-	if got, err := ResolveDatabasePath(serverDir, ""); err != nil || got != custom {
-		t.Fatalf("absolute override = %q, %v", got, err)
-	}
-	t.Setenv(inventoryDatabasePathEnv, "custom.db")
-	if got, err := ResolveDatabasePath(serverDir, ""); err != nil || got != custom {
-		t.Fatalf("relative override = %q, %v", got, err)
-	}
-	if got, err := ResolveDatabasePath(serverDir, derived); err != nil || got != derived {
-		t.Fatalf("explicit setting = %q, %v", got, err)
-	}
-	t.Setenv(inventoryDatabasePathEnv, "missing.db")
-	if _, err := ResolveDatabasePath(serverDir, ""); err == nil {
-		t.Fatal("missing override was accepted")
+	address, token, err := serverLayout.adminEndpoint()
+	if err != nil || address != "127.0.0.1:18111" || token != "adm_test" {
+		t.Fatalf("admin endpoint = %q/%q, %v", address, token, err)
 	}
 }
 
@@ -216,7 +209,7 @@ func TestNewRuntimeTransportValidatesAddress(t *testing.T) {
 	if _, err := NewRuntimeTransport("127.0.0.1", 0); err == nil {
 		t.Fatal("missing port was accepted")
 	}
-	transport, err := NewRuntimeTransport("127.0.0.1", 10011)
+	transport, err := NewRuntimeTransport("127.0.0.1", 7001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,12 +219,13 @@ func TestNewRuntimeTransportValidatesAddress(t *testing.T) {
 }
 
 func TestComposeRuntimeRequiresAdapterInputs(t *testing.T) {
+	projectRoot, _ := writeTestRuntime(t, "127.0.0.1:7001")
 	paths := layout.New(t.TempDir())
 	cases := []RuntimeComposeOptions{
 		{},
 		{AccountPrefix: "robot"},
-		{AccountPrefix: "robot", ConnectIP: "127.0.0.1", GamePort: 10011},
-		{AccountPrefix: "robot", ConnectIP: "127.0.0.1", GamePort: 10011, RandIntn: func(int) int { return 0 }, RandBetween: func(int, int) int { return 0 }},
+		{AccountPrefix: "robot", ConnectIP: "127.0.0.1"},
+		{AccountPrefix: "robot", ConnectIP: "127.0.0.1", ServerDirectory: projectRoot},
 	}
 	for _, opts := range cases {
 		opts.Paths = paths
@@ -241,7 +235,7 @@ func TestComposeRuntimeRequiresAdapterInputs(t *testing.T) {
 	}
 	// Missing random sources fail before any file or network access.
 	_, err := ComposeRuntime(context.Background(), RuntimeComposeOptions{
-		AccountPrefix: "robot", ConnectIP: "127.0.0.1", GamePort: 10011,
+		AccountPrefix: "robot", ConnectIP: "127.0.0.1", ServerDirectory: projectRoot,
 		Paths: paths, Config: robotconfig.Default(),
 	})
 	if err == nil {

@@ -19,7 +19,6 @@ type SysConfig struct {
 	RobotConnectIP        string
 	RobotConnectIPSetting string
 	RobotGamePort         int
-	PartyRoute0Port       int
 	WebPort               int
 	WebPassword           string
 	WebPasswordHash       string
@@ -69,8 +68,13 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 	// [Ports] section
 	cfg.RobotPort = dec.Int("Ports", "RobotAPI", 8111)
 	cfg.WebPort = dec.Int("Ports", "Web", 8112)
-	cfg.RobotGamePort = dec.Int("Ports", "Game", 10011)
-	cfg.PartyRoute0Port = dec.Int("Ports", "PartyRoute0", 5063)
+	// Game port 0 means "resolve the channel port from the selected adapter's
+	// server instance"; an operator override stays an explicit positive value.
+	cfg.RobotGamePort = dec.Int("Ports", "Game", 0)
+	// Deprecated: the legacy native-server route-0 UDP port. A config.ini
+	// carried over from that profile must still load, but the current adapter
+	// has no route-0 plane, so the value is intentionally ignored.
+	_ = dec.Int("Ports", "PartyRoute0", 0)
 
 	// [Robot] section
 	cfg.ServerDirectory = strings.TrimSpace(dec.String("Robot", "ServerDirectory", ""))
@@ -111,9 +115,8 @@ func decodeSysConfig(ini *INIConfig) (*SysConfig, error) {
 	checkPort("Ports", "RobotAPI", cfg.RobotPort)
 	checkPort("Ports", "Web", cfg.WebPort)
 	// The cache invalidation UDP port is Game+1000, so Game must leave room
-	// below the upper TCP port boundary.
-	dec.Check("Ports", "Game", cfg.RobotGamePort >= 1 && cfg.RobotGamePort <= 64535, "must be between 1 and 64535")
-	checkPort("Ports", "PartyRoute0", cfg.PartyRoute0Port)
+	// below the upper TCP port boundary when it is configured explicitly.
+	dec.Check("Ports", "Game", cfg.RobotGamePort >= 0 && cfg.RobotGamePort <= 64535, "must be 0 or between 1 and 64535")
 	dec.Check("Robot", "RobotInnerIp", strings.TrimSpace(cfg.RobotInnerIP) != "", "must not be empty")
 	dec.Check("Robot", "RobotConnectIp", strings.TrimSpace(cfg.RobotConnectIPSetting) != "", "must not be empty")
 	dec.Check("Web", "WebPassword", strings.TrimSpace(cfg.WebPassword) != "" || cfg.WebPasswordHash != "", "must not be empty unless WebPasswordHash is set")
@@ -227,7 +230,7 @@ func generateDefaultConfig(path string) error {
 		"RobotAPI = 8111",
 		"Web = 8112",
 	}
-	portLines = append(portLines, "Game = 10011", "PartyRoute0 = 5063")
+	portLines = append(portLines, "Game = 0")
 
 	lines := []string{
 		"# robot main config. Restart robot after editing.",

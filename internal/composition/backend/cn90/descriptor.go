@@ -29,10 +29,10 @@ func Info() shared.BackendInfo {
 		ID: BackendID, DisplayName: "90CN", SupportedOS: []string{"linux", "windows"}, Selectable: true,
 		Capabilities: capabilities, MaxOnline: 10000,
 		Settings: []shared.BackendSetting{
-			{Key: "server_directory", Label: "Server directory", LabelZH: "服务端目录", Hint: "Server directory containing the server executable and Data; Script.pvf is read from Data/Pvf/Script.pvf, honoring PVF_ARCHIVE_PATH.", HintZH: "包含服务端可执行文件和 Data 目录的服务端目录；Script.pvf 从 Data/Pvf/Script.pvf 读取，并遵循 PVF_ARCHIVE_PATH。", InputType: "path", Required: true, RuntimeSource: "server_directory"},
-			{Key: "server_host", Label: "Game host", LabelZH: "游戏地址", Hint: "Game protocol address.", HintZH: "游戏协议地址。", InputType: "text", Required: true, Default: "127.0.0.1", RuntimeSource: "game_host"},
-			{Key: "game_port", Label: "Port", LabelZH: "端口", Hint: "Game protocol port.", HintZH: "游戏协议端口。", InputType: "number", Required: true, Default: "10011", RuntimeSource: "game_port"},
-			{Key: "database_path", Label: "Database", LabelZH: "数据库", Hint: `Optional override; defaults to INVENTORY_DATABASE_PATH or Data\inventory.db under the server directory.`, HintZH: `可选覆盖；默认使用 INVENTORY_DATABASE_PATH 或服务目录下的 Data\inventory.db。`, InputType: "path", Placeholder: `Data\inventory.db (auto)`, DerivedFrom: "server_directory", PathSuffix: []string{"Data", "inventory.db"}},
+			{Key: "server_directory", Label: "Server directory", LabelZH: "服务端目录", Hint: "DNF90 one-click project directory (containing runtime/) or the runtime directory itself; runtime/config/instance.json defines the channel, database and PVF paths.", HintZH: "DNF90 一键工程目录（包含 runtime/）或 runtime 目录本身；通道、数据库与 PVF 路径由 runtime/config/instance.json 定义。", InputType: "path", Required: true, RuntimeSource: "server_directory"},
+			{Key: "server_host", Label: "Game host", LabelZH: "游戏地址", Hint: "Game channel host; the 90CN profile binds the channel to 127.0.0.1.", HintZH: "游戏通道地址；90CN 方案将通道绑定在 127.0.0.1。", InputType: "text", Required: true, Default: "127.0.0.1", RuntimeSource: "game_host"},
+			{Key: "game_port", Label: "Port", LabelZH: "端口", Hint: "Optional channel port override; empty follows instance.json server.channelListen.", HintZH: "可选通道端口覆盖；留空则跟随 instance.json 的 server.channelListen。", InputType: "number", RuntimeSource: "game_port"},
+			{Key: "database_path", Label: "Database", LabelZH: "数据库", Hint: "Optional SQLite override (absolute, or relative to the runtime directory); empty follows instance.json database.path.", HintZH: "可选 SQLite 覆盖（绝对路径，或相对 runtime 目录）；留空则跟随 instance.json 的 database.path。", InputType: "path", Placeholder: "runtime/data/dnf90.db (auto)"},
 		},
 	}
 }

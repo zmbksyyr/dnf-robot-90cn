@@ -55,8 +55,14 @@ func applyBackendSelectionSettings(cfg *config.SysConfig, info shared.BackendInf
 		}
 		applied[source] = true
 	}
-	for _, required := range []string{"server_directory", "game_host", "game_port"} {
-		if !applied[required] {
+	// The adapter descriptor declares which runtime sources it needs; only
+	// fields marked required must have been applied.
+	for _, field := range info.Settings {
+		source := strings.TrimSpace(field.RuntimeSource)
+		if source == "" || !field.Required {
+			continue
+		}
+		if !applied[source] {
 			return fmt.Errorf("backend %s runtime settings are incomplete", info.ID)
 		}
 	}

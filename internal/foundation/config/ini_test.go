@@ -164,7 +164,7 @@ WebPassword = twadmin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RobotPort != 18111 || cfg.WebPort != 18112 || cfg.RobotGamePort != 20011 || cfg.PartyRoute0Port != 5064 {
+	if cfg.RobotPort != 18111 || cfg.WebPort != 18112 || cfg.RobotGamePort != 20011 {
 		t.Fatalf("ports not loaded: %+v", cfg)
 	}
 	if cfg.ServerDirectory != "/srv/cn90/DfoServer" {
@@ -176,7 +176,7 @@ WebPassword = twadmin
 }
 
 func TestLoadConfigResolvesAutoConnectIP(t *testing.T) {
-	text := strings.Replace("[Ports]\nRobotAPI = 8111\nWeb = 8112\nGame = 10011\nPartyRoute0 = 5063\n\n[Robot]\nServerDirectory = /srv/cn90/DfoServer\nRobotInnerIp = 10.0.0.1\nRobotConnectIp = 127.0.0.1\n\n[Web]\nWebPassword = twadmin\n", "RobotConnectIp = 127.0.0.1", "RobotConnectIp = auto", 1)
+	text := strings.Replace("[Ports]\nRobotAPI = 8111\nWeb = 8112\nGame = 0\n\n[Robot]\nServerDirectory = /srv/cn90/DfoServer\nRobotInnerIp = 10.0.0.1\nRobotConnectIp = 127.0.0.1\n\n[Web]\nWebPassword = twadmin\n", "RobotConnectIp = 127.0.0.1", "RobotConnectIp = auto", 1)
 	cfg, err := ParseConfig(text)
 	if err != nil {
 		t.Fatal(err)

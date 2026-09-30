@@ -61,6 +61,12 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 		foundationlog.Robotf("ADAPTER_RUNTIME_FAILED err=%v\n", err)
 		return 1
 	}
+	// The adapter resolves the channel port from the DNF90 runtime instance
+	// when no explicit override is configured. Publish the effective port so
+	// shared diagnostics and the game-port probe follow the same endpoint.
+	if bundle.GamePort > 0 {
+		cfg.RobotGamePort = bundle.GamePort
+	}
 	defer func() {
 		if err := bundle.Close(); err != nil {
 			foundationlog.Robotf("ADAPTER_RUNTIME_CLOSE_FAILED err=%v\n", err)
