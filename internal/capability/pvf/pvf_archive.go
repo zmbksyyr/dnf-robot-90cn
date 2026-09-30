@@ -354,6 +354,7 @@ func extractMapListFromText(readText func(string) string, listPath, prefix strin
 			storeProbe := coordinateReady && area.Kind == "other"
 			out = append(out, shared.MapCatalogItem{
 				Village: entry.ID, VillageName: villageName, Area: area.ID, Level: level,
+				MinLevel: area.MinLevel, NeedQuests: append([]int(nil), area.NeedQuests...),
 				XMin: xMin, XMax: xMax, YMin: yMin, YMax: yMax, Rectangles: rectangles, Use: coordinateReady, Gate: area.Gate,
 				NormalEligible: boolPointer(normalEligible), StoreEligible: boolPointer(storeEligible), StoreProbe: boolPointer(storeProbe),
 			})

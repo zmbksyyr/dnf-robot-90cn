@@ -312,6 +312,7 @@ func (a *SQLiteLoadoutApplier) replaceEquipmentRows(ctx context.Context, tx *sql
 			"durability":               strconv.Itoa(durability),
 			"max_durability":           strconv.Itoa(durability),
 			"repair_gold":              "0",
+			"robot_loadout":            "1",
 		} {
 			if err := insertExtra(slot, key, value); err != nil {
 				return err
@@ -344,6 +345,7 @@ func (a *SQLiteLoadoutApplier) replaceEquipmentRows(ctx context.Context, tx *sql
 			"current_exe_equipment_type": strconv.Itoa(slot),
 			"avatar_ability_no":          "0",
 			"equipment_type":             token,
+			"robot_loadout":              "1",
 		} {
 			if err := insertExtra(slot, key, value); err != nil {
 				return err

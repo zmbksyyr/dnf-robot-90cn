@@ -585,10 +585,12 @@ func parsePVFList(text string) []pvfListEntry {
 }
 
 type townArea struct {
-	ID      int
-	MapPath string
-	Gate    bool
-	Kind    string
+	ID         int
+	MapPath    string
+	Gate       bool
+	Kind       string
+	MinLevel   int
+	NeedQuests []int
 }
 
 func parseTownAreas(body string) []townArea {
@@ -621,12 +623,53 @@ func parseTownAreas(body string) []townArea {
 				case strings.Contains(lowerBlock, "[normal]"):
 					kind = "normal"
 				}
-				out = append(out, townArea{ID: id, MapPath: mapPath, Gate: kind == "gate", Kind: kind})
+				area := townArea{ID: id, MapPath: mapPath, Gate: kind == "gate", Kind: kind}
+				area.MinLevel, area.NeedQuests = townAreaRequirements(block)
+				out = append(out, area)
 			}
 		}
 		start = j + len("[/area]")
 	}
 	return out
+}
+
+// townAreaRequirements reads the area's [need level] and [need quest] gate
+// requirements from one [area] block.
+func townAreaRequirements(block string) (int, []int) {
+	lines := splitPVFLines(block)
+	minLevel := 0
+	quests := make([]int, 0, 4)
+	for index := 0; index < len(lines); index++ {
+		line := lines[index]
+		if !strings.HasPrefix(line, "[") {
+			continue
+		}
+		section := strings.ToLower(strings.Trim(line, "[] "))
+		values := make([]int, 0, 4)
+		for next := index + 1; next < len(lines); next++ {
+			candidate := strings.TrimSpace(lines[next])
+			if candidate == "" {
+				continue
+			}
+			if strings.HasPrefix(candidate, "[") {
+				break
+			}
+			value := atoi(candidate)
+			if value <= 0 {
+				break
+			}
+			values = append(values, value)
+		}
+		switch section {
+		case "need level":
+			if len(values) > 0 && minLevel == 0 {
+				minLevel = values[0]
+			}
+		case "need quest":
+			quests = append(quests, values...)
+		}
+	}
+	return minLevel, quests
 }
 
 func townMapArchivePath(path string) string {

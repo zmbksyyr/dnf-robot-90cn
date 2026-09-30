@@ -150,12 +150,22 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		return bundle, fmt.Errorf("startup identities: %w", err)
 	}
 	logStartupStage("state_identities")
+	questGates := mergeTownNeedQuests(catalogs.QuestGates, catalogs.TownMaps)
+	seeded, err := SeedRobotQuestGates(ctx, databasePath, inventory.Robots, questGates)
+	if err != nil {
+		return bundle, fmt.Errorf("quest gates: %w", err)
+	}
+	if seeded > 0 {
+		foundationlog.Robotf("CN90_QUEST_GATES_SEEDED completed=%d active=%d robots=%d\n",
+			len(questGates.CompletedQuestIDs), len(questGates.ActiveQuestIDs), seeded)
+	}
 	loadouts, err := NewSQLiteLoadoutApplier(ctx, databasePath, opts.Config, catalogs.Equipment, pvfPath, opts.RandIntn)
 	if err != nil {
 		return bundle, fmt.Errorf("loadout applier: %w", err)
 	}
 	logStartupStage("loadout_applier")
 	loadouts.LevelThresholds = catalogs.LevelThresholds
+	loadouts.QuestGates = questGates
 	replaced, err := loadouts.ReconcileRobotLoadouts(ctx, prefix, inventory.Robots)
 	if err != nil {
 		_ = loadouts.Close()

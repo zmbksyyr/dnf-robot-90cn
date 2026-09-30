@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	capabilitypvf "robot/internal/capability/pvf"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/foundation/lockhub"
@@ -58,6 +59,7 @@ type SQLiteLoadoutApplier struct {
 	Config          robotconfig.RuntimeConfig
 	LevelThresholds []int
 	Equipment       []shared.EquipmentCatalogItem
+	QuestGates      capabilitypvf.QuestGates
 	PVFPath         string
 	RandIntn        func(int) int
 	db              *sql.DB
@@ -180,11 +182,11 @@ func (a *SQLiteLoadoutApplier) ReconcileRobotLoadouts(ctx context.Context, accou
 			continue
 		}
 		account := prefix + strconv.Itoa(info.UID)
-		empty, err := a.equipmentMissing(ctx, account)
+		needs, err := a.equipmentNeedsLoadout(ctx, account)
 		if err != nil {
 			return replaced, err
 		}
-		if !empty {
+		if !needs {
 			continue
 		}
 		if err := a.applyAccountLoadout(ctx, account, info); err != nil {
@@ -195,9 +197,11 @@ func (a *SQLiteLoadoutApplier) ReconcileRobotLoadouts(ctx context.Context, accou
 	return replaced, nil
 }
 
-// equipmentMissing reports whether the account's active character has no worn
-// equipment rows yet.
-func (a *SQLiteLoadoutApplier) equipmentMissing(ctx context.Context, account string) (bool, error) {
+// equipmentNeedsLoadout reports whether the account's active character still
+// wears only server starter rows (or nothing): generated rows carry the
+// robot_loadout marker, so any marked row means the loadout was already
+// applied and operator edits must survive.
+func (a *SQLiteLoadoutApplier) equipmentNeedsLoadout(ctx context.Context, account string) (bool, error) {
 	readCtx, cancel := context.WithTimeout(ctx, cn90PersistenceTimeout)
 	defer cancel()
 	db, release, err := a.database(readCtx)
@@ -209,11 +213,13 @@ func (a *SQLiteLoadoutApplier) equipmentMissing(ctx context.Context, account str
 	if err != nil {
 		return false, err
 	}
-	var count int
-	if err := db.QueryRowContext(readCtx, `SELECT COUNT(*) FROM `+dnfEquipmentEntriesTable+` WHERE character_id=?`, row.characterID).Scan(&count); err != nil {
-		return false, fmt.Errorf("count 90CN equipment character=%s: %w", row.characterID, err)
+	var marked int
+	if err := db.QueryRowContext(readCtx,
+		`SELECT COUNT(*) FROM `+dnfEquipmentExtraTable+` WHERE character_id=? AND extra_key='robot_loadout'`,
+		row.characterID).Scan(&marked); err != nil {
+		return false, fmt.Errorf("count 90CN generated equipment character=%s: %w", row.characterID, err)
 	}
-	return count == 0, nil
+	return marked == 0, nil
 }
 
 // ResolveCharacterProfile reads the robot account's active character row.
@@ -260,7 +266,39 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 	if err := a.applyAccountLoadout(ctx, account, updated); err != nil {
 		return updated, err
 	}
+	if err := a.seedAccountQuestGates(ctx, account); err != nil {
+		return updated, err
+	}
 	return updated, nil
+}
+
+// seedAccountQuestGates installs the fixed quest gate set for the account's
+// character so quest-based town/dungeon gates cannot block it.
+func (a *SQLiteLoadoutApplier) seedAccountQuestGates(ctx context.Context, account string) error {
+	if a.QuestGates.Empty() {
+		return nil
+	}
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return fmt.Errorf("90CN quest gate account is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, cn90PersistenceTimeout)
+	defer cancel()
+	return a.persistenceDo(ctx, func(jobCtx context.Context) error {
+		db, release, err := a.database(jobCtx)
+		if err != nil {
+			return fmt.Errorf("open 90CN quest gate database: %w", err)
+		}
+		defer release()
+		row, err := loadCharacterProfileRow(jobCtx, db, account)
+		if err != nil {
+			return err
+		}
+		return applyQuestGates(jobCtx, db, row.characterID, a.QuestGates)
+	})
 }
 
 // applyAccountLoadout resolves the account's character row and replaces its

@@ -53,6 +53,8 @@ type MapCatalogItem struct {
 	VillageName    string         `json:"village_name,omitempty"`
 	Area           int            `json:"area"`
 	Level          int            `json:"level"`
+	MinLevel       int            `json:"min_level,omitempty"`
+	NeedQuests     []int          `json:"need_quests,omitempty"`
 	XMin           int            `json:"x_min"`
 	XMax           int            `json:"x_max"`
 	YMin           int            `json:"y_min"`
