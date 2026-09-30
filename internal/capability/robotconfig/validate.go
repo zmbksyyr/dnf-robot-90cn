@@ -63,7 +63,9 @@ func validateRuntimeConfig(dec *foundationconfig.Decoder, rc RuntimeConfig) erro
 	checkRange("online", "online_dispatch_interval_ms", rc.OnlineDispatchIntervalMS, 0, 60000)
 	checkRange("online", "online_confirm_timeout_ms", rc.OnlineConfirmTimeoutMS, 5000, 120000)
 
-	checkListRange("equipment", "equip_slots", rc.EquipSlots, 1, 12)
+	// Equipment type 13 is an earring slot in the current client profile;
+	// 1..12 are the classic weapon/title/armor/accessory types.
+	checkListRange("equipment", "equip_slots", rc.EquipSlots, 1, 13)
 	checkRange("equipment", "equip_rarity_min", rc.EquipRarityMin, 0, 255)
 	checkRange("equipment", "equip_rarity_max", rc.EquipRarityMax, 0, 255)
 	checkOrder("equipment", "equip_rarity_min", rc.EquipRarityMin, "equip_rarity_max", rc.EquipRarityMax)

@@ -2,6 +2,7 @@ package cn90
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"os"
@@ -145,7 +146,7 @@ func TestLiveRobotProvisionAndSession(t *testing.T) {
 	t.Logf("provisioned character=%q slot=%d", result.CharacterName, *result.BackendSlot)
 
 	// Write the planned level while the character is offline.
-	applier, err := NewSQLiteLoadoutApplier(ctx, databasePath, robotconfig.Default())
+	applier, err := NewSQLiteLoadoutApplier(ctx, databasePath, robotconfig.Default(), catalogs.Equipment, pvfPath, nil)
 	if err != nil {
 		t.Fatalf("loadout applier: %v", err)
 	}
@@ -159,6 +160,7 @@ func TestLiveRobotProvisionAndSession(t *testing.T) {
 	if leveled.Level != 70 {
 		t.Fatalf("leveled info = %+v", leveled)
 	}
+	liveEquipmentSummary(t, databasePath, account)
 
 	// Log in and take the selected character through the town route.
 	factory := SessionFactory{ConnectHost: "127.0.0.1", Channels: channels, Timeout: 30 * time.Second, Binder: binder}
@@ -211,6 +213,46 @@ func TestLiveRobotProvisionAndSession(t *testing.T) {
 		t.Fatalf("cleanup: %v", err)
 	}
 	t.Logf("test character removed")
+}
+
+// liveEquipmentSummary logs the worn rows the loadout writer produced so the
+// live run records the exact equipment projection.
+func liveEquipmentSummary(t *testing.T, databasePath, account string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", sqliteReadOnlyDSN(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	configureSQLitePool(db)
+	rows, err := db.Query(`SELECT e.slot_index, e.item_id, length(e.raw_entry),
+ (SELECT COUNT(*) FROM dnf_equipment_entry_extra x WHERE x.character_id=e.character_id AND x.entry_key=e.entry_key)
+ FROM dnf_equipment_entries e JOIN dnf_characters c ON c.character_id=e.character_id
+ WHERE c.account_id=? AND c.delete_flag=0 ORDER BY e.slot_index`, account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	slots := make([]string, 0, 24)
+	seen := make(map[int]bool, 24)
+	for rows.Next() {
+		var slot, item, rawLen, extras int
+		if err := rows.Scan(&slot, &item, &rawLen, &extras); err != nil {
+			t.Fatal(err)
+		}
+		if seen[slot] {
+			t.Fatalf("duplicate worn slot %d in the live loadout", slot)
+		}
+		seen[slot] = true
+		slots = append(slots, fmt.Sprintf("%d:%d(raw%d/ex%d)", slot, item, rawLen, extras))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(slots) < 12 {
+		t.Fatalf("live loadout produced %d worn rows, want at least 12: %v", len(slots), slots)
+	}
+	t.Logf("live loadout worn rows: %v", slots)
 }
 
 // liveClearAccount logs into the account and removes every character on it.

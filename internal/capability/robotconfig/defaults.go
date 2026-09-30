@@ -12,7 +12,7 @@ func Default() RuntimeConfig {
 		MoveSpeedMin: 180, MoveSpeedMax: 260, MoveType: 5, MoveSteps: 4, MoveStepDelayMS: 1200,
 		LoginDelayMS: 1000, ReconnectDelayMS: 5000, MaxReconnect: 2, MaxOnlineRobots: 10000, MaxOnlinePerCommand: 1000, OnlineDispatchIntervalMS: 1000, OnlineConfirmTimeoutMS: 90000,
 		InventoryCapacity: 16,
-		EquipSlots:        []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, EquipRarityMin: 0, EquipRarityMax: 5, EquipIntensifyMin: 7, EquipIntensifyMax: 10, EquipSmithingMin: 0, EquipSmithingMax: 8,
+		EquipSlots:        []int{1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}, EquipRarityMin: 0, EquipRarityMax: 5, EquipIntensifyMin: 7, EquipIntensifyMax: 10, EquipSmithingMin: 0, EquipSmithingMax: 8,
 		PreferEquipSets: true, EquipSetMinSlots: 5,
 		AvatarSlots: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, MinAvatarSlots: 8, PreferAvatarSets: true, AvatarSetMinSlots: 6,
 		PetEnabled: true, PetProbabilityPercent: 80, PetArtifactEnabled: true, PetArtifactSlots: []int{31, 32, 33}, MinPetArtifactSlots: 1, MaxPetArtifactSlots: 2,

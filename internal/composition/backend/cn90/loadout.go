@@ -57,13 +57,19 @@ type SQLiteLoadoutApplier struct {
 	DatabasePath    string
 	Config          robotconfig.RuntimeConfig
 	LevelThresholds []int
+	Equipment       []shared.EquipmentCatalogItem
+	PVFPath         string
+	RandIntn        func(int) int
 	db              *sql.DB
+	archive         *cn90PVFArchive
+	archiveTried    bool
+	nativeTypes     map[string]equipmentTypeInfo
 	executorMu      lockhub.Locker
 	executor        *persistenceExecutor
 	closed          bool
 }
 
-func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config robotconfig.RuntimeConfig) (*SQLiteLoadoutApplier, error) {
+func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config robotconfig.RuntimeConfig, equipment []shared.EquipmentCatalogItem, pvfPath string, randIntn func(int) int) (*SQLiteLoadoutApplier, error) {
 	if strings.TrimSpace(databasePath) == "" {
 		return nil, fmt.Errorf("90CN loadout database path is required")
 	}
@@ -82,6 +88,7 @@ func NewSQLiteLoadoutApplier(ctx context.Context, databasePath string, config ro
 	}
 	return &SQLiteLoadoutApplier{
 		DatabasePath: databasePath, Config: config,
+		Equipment: equipment, PVFPath: pvfPath, RandIntn: randIntn,
 		db: db, executor: newPersistenceExecutor(cn90PersistenceQueueSize),
 	}, nil
 }
@@ -148,16 +155,65 @@ func configureSQLitePool(db *sql.DB) {
 	db.SetMaxIdleConns(1)
 }
 
-// ApplyCharacterLoadout is a no-op at this stage: new characters receive the
-// server's own initialization defaults, and level/grow are written by
-// InitializeCharacter/ApplyPlannedCharacterLevel.
+// ApplyCharacterLoadout regenerates the account's worn equipment and avatars.
+// It is the explicit loadout path for adopted characters; fresh characters use
+// InitializeCharacter.
 func (a *SQLiteLoadoutApplier) ApplyCharacterLoadout(ctx context.Context, account string, info robotcap.Info) error {
-	return nil
+	return a.applyAccountLoadout(ctx, account, info)
 }
 
-// ReconcileRobotLoadouts has no equipment work at this stage.
+// ReconcileRobotLoadouts gives robots without any worn rows their generated
+// loadout. Robots that already wear equipment are left untouched so operator
+// edits survive restarts.
 func (a *SQLiteLoadoutApplier) ReconcileRobotLoadouts(ctx context.Context, accountPrefix string, robots []robotcap.Info) (int, error) {
-	return 0, nil
+	if a == nil || len(robots) == 0 {
+		return 0, nil
+	}
+	prefix := strings.TrimSpace(accountPrefix)
+	if prefix == "" {
+		return 0, fmt.Errorf("90CN loadout reconcile account prefix is required")
+	}
+	replaced := 0
+	for index := range robots {
+		info := robots[index]
+		if info.UID <= 0 || strings.TrimSpace(info.Name) == "" {
+			continue
+		}
+		account := prefix + strconv.Itoa(info.UID)
+		empty, err := a.equipmentMissing(ctx, account)
+		if err != nil {
+			return replaced, err
+		}
+		if !empty {
+			continue
+		}
+		if err := a.applyAccountLoadout(ctx, account, info); err != nil {
+			return replaced, fmt.Errorf("reconcile 90CN loadout uid=%d: %w", info.UID, err)
+		}
+		replaced++
+	}
+	return replaced, nil
+}
+
+// equipmentMissing reports whether the account's active character has no worn
+// equipment rows yet.
+func (a *SQLiteLoadoutApplier) equipmentMissing(ctx context.Context, account string) (bool, error) {
+	readCtx, cancel := context.WithTimeout(ctx, cn90PersistenceTimeout)
+	defer cancel()
+	db, release, err := a.database(readCtx)
+	if err != nil {
+		return false, fmt.Errorf("open 90CN loadout database: %w", err)
+	}
+	defer release()
+	row, err := loadCharacterProfileRow(readCtx, db, account)
+	if err != nil {
+		return false, err
+	}
+	var count int
+	if err := db.QueryRowContext(readCtx, `SELECT COUNT(*) FROM `+dnfEquipmentEntriesTable+` WHERE character_id=?`, row.characterID).Scan(&count); err != nil {
+		return false, fmt.Errorf("count 90CN equipment character=%s: %w", row.characterID, err)
+	}
+	return count == 0, nil
 }
 
 // ResolveCharacterProfile reads the robot account's active character row.
@@ -190,9 +246,9 @@ func (a *SQLiteLoadoutApplier) ApplyPlannedCharacterLevel(ctx context.Context, a
 }
 
 // InitializeCharacter writes the planned level and grow type for a freshly
-// created character and marks the dungeon tutorial as completed: the DNF90
-// server otherwise routes a fresh character into the tutorial preview instead
-// of the town scene, and robots are town residents by design.
+// created character, marks the dungeon tutorial as completed (the DNF90 server
+// otherwise routes a fresh character into the tutorial preview instead of the
+// town scene) and applies the generated equipment/avatar loadout.
 func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account string, info robotcap.Info, level, grow int) (robotcap.Info, error) {
 	updated, err := a.writeProgression(ctx, account, info, level, grow)
 	if err != nil {
@@ -201,7 +257,39 @@ func (a *SQLiteLoadoutApplier) InitializeCharacter(ctx context.Context, account 
 	if err := a.markTutorialCompleted(ctx, account); err != nil {
 		return updated, err
 	}
+	if err := a.applyAccountLoadout(ctx, account, updated); err != nil {
+		return updated, err
+	}
 	return updated, nil
+}
+
+// applyAccountLoadout resolves the account's character row and replaces its
+// worn equipment and avatars.
+func (a *SQLiteLoadoutApplier) applyAccountLoadout(ctx context.Context, account string, info robotcap.Info) error {
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return fmt.Errorf("90CN loadout account is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, cn90PersistenceTimeout)
+	defer cancel()
+	return a.persistenceDo(ctx, func(jobCtx context.Context) error {
+		db, release, err := a.database(jobCtx)
+		if err != nil {
+			return fmt.Errorf("open 90CN loadout database: %w", err)
+		}
+		defer release()
+		row, err := loadCharacterProfileRow(jobCtx, db, account)
+		if err != nil {
+			return err
+		}
+		if row.level < 1 {
+			row.level = 1
+		}
+		return a.applyRobotLoadout(jobCtx, db, row.characterID, row.job, row.level)
+	})
 }
 
 // markTutorialCompleted persists the same marker the server writes after the

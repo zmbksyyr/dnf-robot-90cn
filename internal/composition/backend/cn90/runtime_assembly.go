@@ -150,7 +150,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		return bundle, fmt.Errorf("startup identities: %w", err)
 	}
 	logStartupStage("state_identities")
-	loadouts, err := NewSQLiteLoadoutApplier(ctx, databasePath, opts.Config)
+	loadouts, err := NewSQLiteLoadoutApplier(ctx, databasePath, opts.Config, catalogs.Equipment, pvfPath, opts.RandIntn)
 	if err != nil {
 		return bundle, fmt.Errorf("loadout applier: %w", err)
 	}

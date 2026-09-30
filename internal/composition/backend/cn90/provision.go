@@ -78,7 +78,14 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	if err != nil {
 		return result, err
 	}
-	defer client.Close()
+	defer func() {
+		// Announce an orderly channel exit so the server does not log a read
+		// failure when this short-lived provisioning connection closes.
+		exitCtx, cancelExit := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = client.Exit(exitCtx)
+		cancelExit()
+		_ = client.Close()
+	}()
 	if _, err := client.CompleteHandshakeFrom(ctx, first); err != nil {
 		return result, fmt.Errorf("90CN login: %w", err)
 	}

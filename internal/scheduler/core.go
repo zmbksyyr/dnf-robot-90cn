@@ -23,51 +23,51 @@ import (
 )
 
 type RobotManager struct {
-	mutationMu                      lockhub.RWLocker
-	actorMutationMu                 lockhub.Locker
-	database                        any
-	robotState                      robotstate.Directory
-	cfg                             *config.SysConfig
-	doll                            Runtime
-	gameCommandGate                 shared.GameCommandGate
-	actions                         BackendActionTransport
-	sessions                        sessionDriver
-	backendRobotCreator             BackendRobotCreator
-	backendRobotCleaner             BackendRobotCleaner
-	backendRobotPurger              BackendRobotPurger
-	backendPopulationInspector      BackendPopulationInspector
-	backendInfo                     shared.BackendInfo
-	persistenceInspector            shared.PersistenceInspector
-	systemAnnouncer                 shared.SystemAnnouncer
-	worldShout                      WorldShout
-	locks                           *lockhub.Hub
-	startedAt                       time.Time
-	autoMu                          lockhub.Locker
-	sessionMu                       lockhub.Locker
-	rand                            *rand.Rand
-	sessionLastLogout               map[int]time.Time
-	sessionReloginDelay             time.Duration
-	sessionLogoutCleanupAt          time.Time
-	autoStoreBusy                   map[int]bool
-	autoStoreItemPending            int
-	autoStoreDisjointPending        int
-	cleanupPendingUIDs              map[int]time.Time
-	autoStoreActive                 int
-	autoItemStoreActive             int
-	autoEnabled                     bool
-	autoPortSince                   time.Time
-	autoPortReady                   bool
-	autoPortLog                     time.Time
-	autoPortProbeAt                 time.Time
-	autoPortProbeAddr               string
-	autoPortProbeOpen               bool
-	autoPortProbeError              string
-	autoPortProbeInflight           bool
-	autoPortDial                    func(string, string, time.Duration) (net.Conn, error)
+	mutationMu                 lockhub.RWLocker
+	actorMutationMu            lockhub.Locker
+	database                   any
+	robotState                 robotstate.Directory
+	cfg                        *config.SysConfig
+	doll                       Runtime
+	gameCommandGate            shared.GameCommandGate
+	actions                    BackendActionTransport
+	sessions                   sessionDriver
+	backendRobotCreator        BackendRobotCreator
+	backendRobotCleaner        BackendRobotCleaner
+	backendRobotPurger         BackendRobotPurger
+	backendPopulationInspector BackendPopulationInspector
+	backendInfo                shared.BackendInfo
+	persistenceInspector       shared.PersistenceInspector
+	systemAnnouncer            shared.SystemAnnouncer
+	worldShout                 WorldShout
+	locks                      *lockhub.Hub
+	startedAt                  time.Time
+	autoMu                     lockhub.Locker
+	sessionMu                  lockhub.Locker
+	rand                       *rand.Rand
+	sessionLastLogout          map[int]time.Time
+	sessionReloginDelay        time.Duration
+	sessionLogoutCleanupAt     time.Time
+	autoStoreBusy              map[int]bool
+	autoStoreItemPending       int
+	autoStoreDisjointPending   int
+	cleanupPendingUIDs         map[int]time.Time
+	autoStoreActive            int
+	autoItemStoreActive        int
+	autoEnabled                bool
+	autoPortSince              time.Time
+	autoPortReady              bool
+	autoPortLog                time.Time
+	autoPortProbeAt            time.Time
+	autoPortProbeAddr          string
+	autoPortProbeOpen          bool
+	autoPortProbeError         string
+	autoPortProbeInflight      bool
+	autoPortDial               func(string, string, time.Duration) (net.Conn, error)
 	// autoPortProbe is an adapter-provided readiness probe. Backends whose
 	// game listener allocates a session per connection install one so the
 	// periodic AutoGate check does not create game work.
-	autoPortProbe func() bool
+	autoPortProbe                   func() bool
 	autoStats                       robotcap.AutoStatus
 	autoBreakerUntil                time.Time
 	autoBreakerReason               string

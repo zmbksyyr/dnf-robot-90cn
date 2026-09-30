@@ -910,6 +910,8 @@ func equipmentType(v string) int {
 		return 11
 	case "magicstone", "magic stone", "magic_stone":
 		return 12
+	case "earring", "ear ring":
+		return 13
 	case "hatavatar":
 		return 20
 	case "hairavatar":

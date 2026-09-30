@@ -162,7 +162,14 @@ func (d CharacterDeleter) DeleteCharacter(ctx context.Context, identity robotsta
 	if err != nil {
 		return false, err
 	}
-	defer client.Close()
+	defer func() {
+		// Announce an orderly channel exit so the server does not log a read
+		// failure when this short-lived cleanup connection closes.
+		exitCtx, cancelExit := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = client.Exit(exitCtx)
+		cancelExit()
+		_ = client.Close()
+	}()
 	if _, err := client.CompleteHandshakeFrom(ctx, first); err != nil {
 		return false, fmt.Errorf("90CN delete login: %w", err)
 	}

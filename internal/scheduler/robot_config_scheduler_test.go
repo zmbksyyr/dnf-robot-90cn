@@ -248,7 +248,7 @@ func TestLoadRobotConfigSchedulerOnlineDefaults(t *testing.T) {
 	if rc.SchedulerPortDownReleaseBatch != 5 {
 		t.Fatalf("SchedulerPortDownReleaseBatch got %d want 5", rc.SchedulerPortDownReleaseBatch)
 	}
-	assertIntSlice(t, rc.EquipSlots, []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
+	assertIntSlice(t, rc.EquipSlots, []int{1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13})
 	if rc.EquipIntensifyMin != 7 || rc.EquipIntensifyMax != 10 {
 		t.Fatalf("EquipIntensify got %d..%d want 7..10", rc.EquipIntensifyMin, rc.EquipIntensifyMax)
 	}

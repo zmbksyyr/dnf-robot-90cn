@@ -6,7 +6,7 @@ const BackendID shared.BackendID = "sim_90cn"
 
 func Info() shared.BackendInfo {
 	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "90CN capability is not implemented yet"})
-	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true, Reason: "protocol character creation plus offline level/grow writes; equipment generation is a later stage"}
+	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true, Reason: "protocol character creation plus offline level/grow and equipment/avatar generation; pets are a later stage"}
 	capabilities[shared.CapabilityTownMove] = shared.CapabilityStatus{Enabled: true, Reason: "op36 town/area and op35 position requests follow the current client shapes; verified live"}
 	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Reason: "90CN party/dungeon follower is not implemented yet"}
 	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Reason: "90CN party protocol is not implemented yet"}
