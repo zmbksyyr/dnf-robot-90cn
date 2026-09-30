@@ -14,6 +14,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityProvision, shared.CapabilityTownMove,
 		shared.CapabilityCleanup, shared.CapabilityDangerousDelete, shared.CapabilityDatabase,
+		shared.CapabilityStore,
 	} {
 		if !info.Supports(capability) {
 			t.Fatalf("verified capability %s is disabled: %+v", capability, info.Capabilities[capability])
@@ -24,7 +25,7 @@ func TestMetadataReflectsVerifiedCapabilities(t *testing.T) {
 	}
 	for _, capability := range []shared.BackendCapability{
 		shared.CapabilityDungeonFollow, shared.CapabilityParty, shared.CapabilityGuildInvite,
-		shared.CapabilityShout, shared.CapabilityStore,
+		shared.CapabilityShout,
 	} {
 		if info.Supports(capability) || info.Capabilities[capability].Reason == "" {
 			t.Fatalf("%s must remain disabled with reason: %+v", capability, info.Capabilities[capability])

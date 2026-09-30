@@ -6,13 +6,13 @@ const BackendID shared.BackendID = "sim_90cn"
 
 func Info() shared.BackendInfo {
 	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "90CN capability is not implemented yet"})
-	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true, Reason: "protocol character creation plus offline level/grow and equipment/avatar generation; pets are a later stage"}
+	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true, Reason: "protocol character creation plus offline level/grow, equipment/avatar and pet generation; live verified"}
 	capabilities[shared.CapabilityTownMove] = shared.CapabilityStatus{Enabled: true, Reason: "op36 town/area and op35 position requests follow the current client shapes; verified live"}
 	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Reason: "90CN party/dungeon follower is not implemented yet"}
 	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Reason: "90CN party protocol is not implemented yet"}
 	capabilities[shared.CapabilityGuildInvite] = shared.CapabilityStatus{Reason: "90CN guild invitation protocol is not implemented yet"}
 	capabilities[shared.CapabilityShout] = shared.CapabilityStatus{Reason: "90CN chat transport is not implemented yet"}
-	capabilities[shared.CapabilityStore] = shared.CapabilityStatus{Reason: "90CN expert-job store protocol is not implemented yet"}
+	capabilities[shared.CapabilityStore] = shared.CapabilityStatus{Enabled: true, Reason: "disassembler machine (op598 kind 0) and enchanter stall (op598 kind 3) with offline profession preparation; the private item stall stays unsupported; live protocol verified"}
 	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "90CN has no verified world-shout protocol mode"}
 	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Enabled: true, Reason: "verified roster deletion protocol; live verified"}
 	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Enabled: true, Reason: "adapter-owned SQLite purge over the dnf_* tables; not yet live verified"}
