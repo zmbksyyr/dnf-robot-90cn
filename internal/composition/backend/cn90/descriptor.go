@@ -20,8 +20,8 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "90CN mail notification is not implemented"}
 	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the dnf_* schema of the configured SQLite file; live verified"}
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "90CN diagnostics are not implemented"}
-	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "90CN system announcement transport is not implemented"}
-	capabilities[shared.CapabilityServerNotice] = shared.CapabilityStatus{Reason: "90CN server notice transport is not implemented"}
+	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "the DNF90 server implements no announcement broadcast"}
+	capabilities[shared.CapabilityServerNotice] = shared.CapabilityStatus{Reason: "the DNF90 server implements no notice broadcast: op477 has no handler and op503 is a passive client report; no admin broadcast route exists"}
 	capabilities[shared.CapabilityServiceControl] = shared.CapabilityStatus{Reason: "90CN service control is not implemented"}
 	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "90CN dungeon movement is not implemented"}
 	capabilities[shared.CapabilityMarket] = shared.CapabilityStatus{Reason: "90CN exposes no verified auction or gold-consignment path"}
