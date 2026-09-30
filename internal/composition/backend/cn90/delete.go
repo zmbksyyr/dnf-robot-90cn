@@ -132,9 +132,10 @@ func cleanupUIDSelected(uid int, request robotcap.CleanupRequest, wanted map[int
 }
 
 type CharacterDeleter struct {
-	Address string
-	Timeout time.Duration
-	Binder  *AccountBinder
+	ConnectHost string
+	Channels    channelCatalog
+	Timeout     time.Duration
+	Binder      *AccountBinder
 }
 
 // DeleteCharacter clears the roster of one robot-owned account through the
@@ -153,7 +154,11 @@ func (d CharacterDeleter) DeleteCharacter(ctx context.Context, identity robotsta
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	client, first, err := dialBoundSession(ctx, d.Binder, d.Address, identity.Account)
+	address, err := channelAddress(d.ConnectHost, d.Channels, identity.Account)
+	if err != nil {
+		return false, err
+	}
+	client, first, err := dialBoundSession(ctx, d.Binder, address, identity.Account)
 	if err != nil {
 		return false, err
 	}

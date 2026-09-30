@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	capabilitypvf "robot/internal/capability/pvf"
 	robotcap "robot/internal/capability/robot"
@@ -48,21 +50,16 @@ func ReconcileRobotGrowth(ctx context.Context, databasePath string, robots []rob
 			continue
 		}
 		var level int
-		if err := tx.QueryRowContext(ctx, `SELECT level FROM characters WHERE character_id=? AND delete_flag=0`, info.CID).Scan(&level); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT level FROM `+dnfCharactersTable+` WHERE character_id=? AND delete_flag=0`, strconv.Itoa(info.CID)).Scan(&level); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
 			return changed, fmt.Errorf("read 90CN growth reconcile level id=%d: %w", info.CID, err)
 		}
 		info.Level = level
-		if err := updateCharacterGrow(ctx, tx, info.CID, grow); err != nil {
-			return changed, err
-		}
-		if err := writeCombatStats(ctx, tx, info.CID, info.Job, info.Level, grow, statTables); err != nil {
-			return changed, err
-		}
-		if err := resetCharacterSkills(ctx, tx, info.CID); err != nil {
-			return changed, err
+		if _, err := tx.ExecContext(ctx, `UPDATE `+dnfCharactersTable+` SET grow_type=?, updated_at=? WHERE character_id=?`,
+			grow, time.Now().UTC(), strconv.Itoa(info.CID)); err != nil {
+			return changed, fmt.Errorf("write 90CN growth reconcile id=%d: %w", info.CID, err)
 		}
 		info.Grow = grow
 		changed++

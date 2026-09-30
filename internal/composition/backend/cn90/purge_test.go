@@ -13,7 +13,7 @@ import (
 )
 
 func TestSQLiteRobotPurgerOpenConfiguresBusyTimeout(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "inventory.db")
+	path := filepath.Join(t.TempDir(), "dnf90.db")
 	purger := SQLiteRobotPurger{DatabasePath: path, AccountPrefix: "robot"}
 	db, err := purger.open(context.Background())
 	if err != nil {
@@ -75,9 +75,13 @@ func TestSQLiteRobotPurgerRangeDeletesStrictRobotAccountsAndState(t *testing.T) 
 	}
 	db := openPurgeTestDatabase(t, path)
 	defer db.Close()
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id IN ('robot17000001','robot17000002','robot17000005')`, 0)
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id IN ('player17000001','robot17000003x','robot0017000004')`, 3)
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM character_data WHERE character_id IN (101,102,103)`, 0)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_accounts WHERE account_id IN ('robot17000001','robot17000002','robot17000005')`, 0)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_accounts WHERE account_id IN ('player17000001','robot17000003x','robot0017000004')`, 3)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_character_stats WHERE character_id IN (101,102,103)`, 0)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_inventory_items WHERE character_id IN (101,102,103)`, 0)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_settings WHERE scope IN ('character:101:container_state','character:102:container_state','character:103:container_state')`, 0)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_character_stats WHERE character_id=104`, 1)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_settings WHERE scope='character:104:container_state'`, 1)
 }
 
 func TestSQLiteRobotPurgerCIDDeletesOneCharacterAndRetainsNonemptyAccount(t *testing.T) {
@@ -103,9 +107,9 @@ func TestSQLiteRobotPurgerCIDDeletesOneCharacterAndRetainsNonemptyAccount(t *tes
 	}
 	db := openPurgeTestDatabase(t, path)
 	defer db.Close()
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id='robot17000002'`, 1)
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id=102`, 0)
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id=103`, 1)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_accounts WHERE account_id='robot17000002'`, 1)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_characters WHERE character_id='102'`, 0)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_characters WHERE character_id='103'`, 1)
 	identities, err := state.Identities(context.Background(), BackendID)
 	if err != nil || len(identities) != 1 || identities[0].Account != "player17000001" {
 		t.Fatalf("identities=%+v err=%v", identities, err)
@@ -128,8 +132,8 @@ func TestSQLiteRobotPurgerRejectsChangedDeletePlan(t *testing.T) {
 	// A new matching robot appears after the preview: the execution must abort
 	// rather than delete a set the operator never confirmed.
 	db := openPurgeTestDatabase(t, path)
-	if _, err := db.Exec(`INSERT INTO accounts(account_id,m_id) VALUES (7,'robot17000007');
-INSERT INTO characters(character_id,account_id,name) VALUES (107,7,'late');`); err != nil {
+	if _, err := db.Exec(`INSERT INTO dnf_accounts(account_id) VALUES ('robot17000007');
+INSERT INTO dnf_characters(character_id,account_id,slot,name,job,level,grow_type) VALUES ('107','robot17000007',0,'late','1',70,0);`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -143,8 +147,8 @@ INSERT INTO characters(character_id,account_id,name) VALUES (107,7,'late');`); e
 
 	db = openPurgeTestDatabase(t, path)
 	defer db.Close()
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id IN ('robot17000001','robot17000002','robot17000005','robot17000007')`, 4)
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id IN (101,102,103,107)`, 4)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_accounts WHERE account_id IN ('robot17000001','robot17000002','robot17000005','robot17000007')`, 4)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_characters WHERE character_id IN ('101','102','103','107')`, 4)
 }
 
 func TestSQLiteRobotPurgerCIDNeverDeletesPlayerCharacter(t *testing.T) {
@@ -160,14 +164,14 @@ func TestSQLiteRobotPurgerCIDNeverDeletesPlayerCharacter(t *testing.T) {
 	}
 	db := openPurgeTestDatabase(t, path)
 	defer db.Close()
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM characters WHERE character_id=104`, 1)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_characters WHERE character_id='104'`, 1)
 }
 
 func TestSQLiteRobotPurgerTransactionFailureKeepsRuntimeState(t *testing.T) {
 	path := newPurgeTestDatabase(t)
 	db := openPurgeTestDatabase(t, path)
-	if _, err := db.Exec(`CREATE TRIGGER reject_robot_delete BEFORE DELETE ON accounts
-WHEN OLD.m_id='robot17000001' BEGIN SELECT RAISE(ABORT,'blocked'); END;`); err != nil {
+	if _, err := db.Exec(`CREATE TRIGGER reject_robot_delete BEFORE DELETE ON dnf_accounts
+WHEN OLD.account_id='robot17000001' BEGIN SELECT RAISE(ABORT,'blocked'); END;`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -187,23 +191,31 @@ WHEN OLD.m_id='robot17000001' BEGIN SELECT RAISE(ABORT,'blocked'); END;`); err !
 	}
 	db = openPurgeTestDatabase(t, path)
 	defer db.Close()
-	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM accounts WHERE m_id='robot17000001'`, 1)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_accounts WHERE account_id='robot17000001'`, 1)
+	assertPurgeRowCount(t, db, `SELECT COUNT(*) FROM dnf_characters WHERE character_id='101'`, 1)
 }
 
 func newPurgeTestDatabase(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "inventory.db")
+	path := filepath.Join(t.TempDir(), "dnf90.db")
 	db := openPurgeTestDatabase(t, path)
 	defer db.Close()
 	_, err := db.Exec(`PRAGMA foreign_keys=ON;
-CREATE TABLE accounts(account_id INTEGER PRIMARY KEY,m_id TEXT UNIQUE);
-CREATE TABLE characters(character_id INTEGER PRIMARY KEY,account_id INTEGER NOT NULL,name TEXT,FOREIGN KEY(account_id) REFERENCES accounts(account_id) ON DELETE CASCADE);
-CREATE TABLE character_data(character_id INTEGER PRIMARY KEY,value TEXT,FOREIGN KEY(character_id) REFERENCES characters(character_id) ON DELETE CASCADE);
-INSERT INTO accounts(account_id,m_id) VALUES
-(1,'robot17000001'),(2,'robot17000002'),(3,'player17000001'),(4,'robot17000003x'),(5,'robot0017000004'),(6,'robot17000005');
-INSERT INTO characters(character_id,account_id,name) VALUES
-(101,1,'one'),(102,2,'two'),(103,2,'two-alt'),(104,3,'player'),(105,4,'suffix'),(106,5,'leading-zero');
-INSERT INTO character_data(character_id,value) SELECT character_id,'data' FROM characters;`)
+CREATE TABLE dnf_accounts(account_id TEXT PRIMARY KEY, state TEXT, updated_at TEXT);
+CREATE TABLE dnf_characters(character_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, slot INT, name TEXT, job TEXT, level INT, grow_type INT, delete_flag INT DEFAULT 0, updated_at TEXT);
+CREATE TABLE dnf_character_stats(character_id TEXT, stat_key TEXT, stat_value INT);
+CREATE TABLE dnf_inventory_items(character_id TEXT, entry_key TEXT, item_id INT);
+CREATE TABLE dnf_settings(scope TEXT, key TEXT);
+INSERT INTO dnf_accounts(account_id) VALUES
+('robot17000001'),('robot17000002'),('player17000001'),('robot17000003x'),('robot0017000004'),('robot17000005');
+INSERT INTO dnf_characters(character_id,account_id,slot,name,job,level,grow_type) VALUES
+('101','robot17000001',0,'one','1',70,0),
+('102','robot17000002',0,'two','2',71,0),
+('103','robot17000002',1,'two-alt','2',72,0),
+('104','player17000001',0,'player','3',80,0);
+INSERT INTO dnf_character_stats(character_id,stat_key,stat_value) SELECT character_id,'hp',1 FROM dnf_characters;
+INSERT INTO dnf_inventory_items(character_id,entry_key,item_id) SELECT character_id,'0:0',1 FROM dnf_characters;
+INSERT INTO dnf_settings(scope,key) SELECT 'character:'||character_id||':container_state','header' FROM dnf_characters;`)
 	if err != nil {
 		t.Fatal(err)
 	}

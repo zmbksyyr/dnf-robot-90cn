@@ -3,27 +3,25 @@ package cn90
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	equipmentcap "robot/internal/capability/equipment"
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/shared"
 )
 
 // SQLitePopulationInspector performs an operator-requested, read-only audit.
-// It deliberately reuses startup/loadout validation rules so reported
-// coverage has the same meaning as adapter-owned character compliance.
+// The first persistence stage reports account/character identity, job, gender
+// and town coverage; equipment and avatar coverage arrive with the equipment
+// stage.
 type SQLitePopulationInspector struct {
 	DatabasePath  string
 	AccountPrefix string
 	Config        robotconfig.RuntimeConfig
-	Equipment     []shared.EquipmentCatalogItem
 	Maps          []shared.MapCatalogItem
 }
 
@@ -42,123 +40,76 @@ func (p SQLitePopulationInspector) PopulationReport(ctx context.Context) (robotc
 	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout=5000;`); err != nil {
 		return robotcap.PopulationReport{}, fmt.Errorf("configure 90CN population database: %w", err)
 	}
-	scanner := SQLiteStartupInventory{AccountPrefix: p.AccountPrefix, Config: p.Config, Equipment: p.Equipment}
-	scanner.Config.RobotUIDStart = 1
-	scanner.Config.RobotUIDEnd = int(^uint(0) >> 1)
-	accounts, characterIDs, err := scanner.readOwnedAccounts(ctx, db, p.AccountPrefix)
+	characters, err := p.readCharacters(ctx, db)
 	if err != nil {
 		return robotcap.PopulationReport{}, err
 	}
-	index, err := readStartupInventoryIndex(ctx, db, p.AccountPrefix, characterIDs)
+	accounts, err := p.readAccountCount(ctx, db)
 	if err != nil {
 		return robotcap.PopulationReport{}, err
 	}
-	return p.summarize(accounts, index), nil
+	return p.summarize(accounts, characters), nil
 }
 
-func (p SQLitePopulationInspector) summarize(accounts []startupAccount, index startupInventoryIndex) robotcap.PopulationReport {
-	report := robotcap.PopulationReport{Accounts: len(accounts), GeneratedAt: time.Now().UTC()}
+type populationCharacter struct {
+	job     int
+	level   int
+	grow    int
+	village int
+	area    int
+}
+
+func (p SQLitePopulationInspector) readAccountCount(ctx context.Context, db *sql.DB) (int, error) {
+	var accounts int
+	query := `SELECT COUNT(*) FROM ` + dnfCharactersTable +
+		` WHERE account_id LIKE ? AND delete_flag=0`
+	if err := db.QueryRowContext(ctx, query, p.AccountPrefix+"%").Scan(&accounts); err != nil {
+		return 0, fmt.Errorf("count 90CN population accounts: %w", err)
+	}
+	return accounts, nil
+}
+
+func (p SQLitePopulationInspector) readCharacters(ctx context.Context, db *sql.DB) ([]populationCharacter, error) {
+	query := `SELECT job, level, grow_type, town_id, area_id FROM ` + dnfCharactersTable +
+		` WHERE account_id LIKE ? AND delete_flag=0`
+	rows, err := db.QueryContext(ctx, query, p.AccountPrefix+"%")
+	if err != nil {
+		return nil, fmt.Errorf("read 90CN population characters: %w", err)
+	}
+	defer rows.Close()
+	characters := make([]populationCharacter, 0, 64)
+	for rows.Next() {
+		var jobText string
+		var character populationCharacter
+		if err := rows.Scan(&jobText, &character.level, &character.grow, &character.village, &character.area); err != nil {
+			return nil, fmt.Errorf("scan 90CN population character: %w", err)
+		}
+		if parsed, parseErr := strconv.Atoi(strings.TrimSpace(jobText)); parseErr == nil {
+			character.job = parsed
+		}
+		characters = append(characters, character)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate 90CN population characters: %w", err)
+	}
+	return characters, nil
+}
+
+func (p SQLitePopulationInspector) summarize(accounts int, characters []populationCharacter) robotcap.PopulationReport {
+	report := robotcap.PopulationReport{Accounts: accounts, GeneratedAt: time.Now().UTC()}
 	jobs := make(map[int]int)
 	genders := make(map[string]int)
 	areas := make(map[shared.MapAreaKey]int)
-	items := equipmentByID(p.Equipment)
-	equipSlots := configuredEquipmentSlots(p.Config)
-	avatarSlots := configuredAvatarSlots(p.Config)
-	for _, account := range accounts {
-		for _, character := range account.characters {
-			if character.deleteFlag != 0 {
-				continue
-			}
-			report.Characters++
-			jobs[character.job]++
-			genders[cn90JobGender(character.job)]++
-			areas[shared.MapAreaKey{Village: character.village, Area: character.area}]++
-			cores := index.cores[character.id]
-			measureEquipment(&report.Equipment, character, cores, items, equipSlots, p.Config)
-			measureAvatars(&report.Avatars, character, cores, index.avatarDetails[character.id], items, avatarSlots, p.Config)
-		}
+	for _, character := range characters {
+		report.Characters++
+		jobs[character.job]++
+		genders[cn90JobGender(character.job)]++
+		areas[shared.MapAreaKey{Village: character.village, Area: character.area}]++
 	}
 	report.Genders = genderBuckets(genders, report.Characters)
 	report.Jobs = jobBuckets(jobs, report.Characters)
-	finalizeLoadout(&report.Equipment, report.Characters)
-	finalizeLoadout(&report.Avatars, report.Characters)
 	p.measureAreas(&report, areas)
 	return report
-}
-
-func configuredEquipmentSlots(rc robotconfig.RuntimeConfig) []int {
-	if len(rc.EquipSlots) > 0 {
-		return rc.EquipSlots
-	}
-	return []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
-}
-
-func configuredAvatarSlots(rc robotconfig.RuntimeConfig) []int {
-	if len(rc.AvatarSlots) > 0 {
-		return rc.AvatarSlots
-	}
-	return []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-}
-
-func measureEquipment(out *robotcap.PopulationLoadout, character startupCharacter, cores map[int][]byte, items map[int]shared.EquipmentCatalogItem, slots []int, rc robotconfig.RuntimeConfig) {
-	out.ExpectedSlots += len(slots)
-	setCounts := make(map[string]int)
-	filled := 0
-	for _, slot := range slots {
-		item, ok := startupCoreItem(cores[slot+11], cn90ItemKindEquipment, items)
-		if !ok || item.ItemType != slot || !equipmentcap.UsableByJob(item.UseJob, character.job) || slot < 11 && item.Level > character.level {
-			continue
-		}
-		filled++
-		addSetKeys(setCounts, item.SetKey)
-	}
-	out.FilledSlots += filled
-	if len(slots) > 0 && filled == len(slots) {
-		out.FullCharacters++
-	}
-	if filled > 0 && maxSetCount(setCounts) >= requiredSetCoverage(filled, rc.EquipSetMinSlots, 5) {
-		out.SetCharacters++
-	}
-}
-
-func measureAvatars(out *robotcap.PopulationLoadout, character startupCharacter, cores map[int][]byte, details map[int]struct{}, items map[int]shared.EquipmentCatalogItem, slots []int, rc robotconfig.RuntimeConfig) {
-	out.ExpectedSlots += len(slots)
-	setCounts := make(map[string]int)
-	filled := 0
-	for _, slot := range slots {
-		core := cores[slot]
-		item, ok := startupCoreItem(core, cn90ItemKindAvatar, items)
-		if !ok || item.ItemType != slot+20 || !equipmentcap.AvatarRenderable(item) || !equipmentcap.AvatarUsableByJob(item, cn90AvatarJob(character.job)) || len(core) < 9 {
-			continue
-		}
-		itemUID := int(binary.LittleEndian.Uint32(core[5:9]))
-		if _, ok := details[itemUID]; !ok {
-			continue
-		}
-		filled++
-		addSetKeys(setCounts, item.SetKey)
-	}
-	out.FilledSlots += filled
-	if len(slots) > 0 && filled == len(slots) {
-		out.FullCharacters++
-	}
-	if filled > 0 && maxSetCount(setCounts) >= requiredSetCoverage(filled, rc.AvatarSetMinSlots, 6) {
-		out.SetCharacters++
-	}
-}
-
-func addSetKeys(counts map[string]int, value string) {
-	for _, key := range strings.Split(value, "|") {
-		if key = strings.TrimSpace(key); key != "" {
-			counts[key]++
-		}
-	}
-}
-
-func finalizeLoadout(out *robotcap.PopulationLoadout, characters int) {
-	out.SlotCoveragePercent = percent(out.FilledSlots, out.ExpectedSlots)
-	out.FullPercent = percent(out.FullCharacters, characters)
-	out.SetPercent = percent(out.SetCharacters, characters)
 }
 
 func cn90JobGender(job int) string {

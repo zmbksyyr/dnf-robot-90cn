@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -16,12 +17,25 @@ import (
 )
 
 type SessionFactory struct {
-	Address string
-	Timeout time.Duration
+	// ConnectHost is the loopback host the DNF90 game listeners are bound to.
+	ConnectHost string
+	// Channels carries the runtime channel ports; the account name selects a
+	// stable port so one robot process can populate several channels.
+	Channels channelCatalog
+	Timeout  time.Duration
 	// Binder registers the robot process id with the account the DNF90
 	// launcher would normally launch. It may be nil when the deployment only
 	// uses the server fallback account.
 	Binder *AccountBinder
+}
+
+// channelAddress resolves the game endpoint for one account.
+func channelAddress(host string, channels channelCatalog, account string) (string, error) {
+	port := channels.portForAccount(account, 0)
+	if port <= 0 || port > 65535 || strings.TrimSpace(host) == "" {
+		return "", fmt.Errorf("90CN game address is incomplete")
+	}
+	return net.JoinHostPort(host, fmt.Sprint(port)), nil
 }
 
 const sessionKeepaliveInterval = 5 * time.Second
@@ -143,7 +157,11 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 // dialBound registers the account for this process id, dials the game channel
 // and returns the connection plus the first inbound packet.
 func (f SessionFactory) dialBound(ctx context.Context, accountName string, first **protocol.Packet) (*protocol.Client, error) {
-	client, packet, err := dialBoundSession(ctx, f.Binder, f.Address, accountName)
+	address, err := channelAddress(f.ConnectHost, f.Channels, accountName)
+	if err != nil {
+		return nil, err
+	}
+	client, packet, err := dialBoundSession(ctx, f.Binder, address, accountName)
 	if err != nil {
 		return nil, err
 	}

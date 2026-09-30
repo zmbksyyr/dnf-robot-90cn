@@ -119,19 +119,19 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		return bundle, fmt.Errorf("loadout database: %w", err)
 	}
 	foundationlog.Robotf("CN90_DATABASE_RESOLVED path=%s source=%s\n", databasePath, databaseSource)
-	gamePort, err := resolveGamePort(serverLayout, opts.GamePort)
+	channels, channelSource, err := resolveChannelCatalog(serverLayout, opts.GamePort)
 	if err != nil {
-		return bundle, fmt.Errorf("90CN channel port: %w", err)
+		return bundle, fmt.Errorf("90CN channel catalog: %w", err)
 	}
+	gamePort := channels.ports[0]
 	adminAddress, adminToken, err := serverLayout.adminEndpoint()
 	if err != nil {
 		return bundle, fmt.Errorf("90CN admin endpoint: %w", err)
 	}
-	foundationlog.Robotf("CN90_CHANNEL_RESOLVED address=%s source=%s\n",
-		net.JoinHostPort(opts.ConnectIP, fmt.Sprint(gamePort)), gamePortSource(opts.GamePort))
+	foundationlog.Robotf("CN90_CHANNEL_RESOLVED ports=%v address=%s source=%s\n",
+		channels.ports, net.JoinHostPort(opts.ConnectIP, fmt.Sprint(gamePort)), channelSource)
 	inventory, err := (SQLiteStartupInventory{
-		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config, Equipment: catalogs.Equipment,
-		JobGrows: catalogs.JobGrows, StatTables: catalogs.StatTables,
+		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config,
 	}).ScanAndClean(ctx)
 	if err != nil {
 		return bundle, fmt.Errorf("startup inventory: %w", err)
@@ -145,27 +145,16 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if reconciled > 0 {
 		foundationlog.Robotf("CN90_GROWTH_RECONCILED count=%d\n", reconciled)
 	}
-	seeded, err := SeedRobotQuestGates(ctx, databasePath, inventory.Robots, catalogs.QuestGates)
-	if err != nil {
-		return bundle, fmt.Errorf("quest gates: %w", err)
-	}
-	logStartupStage("quest_gates")
-	if seeded > 0 {
-		foundationlog.Robotf("CN90_QUEST_GATES_SEEDED completed=%d active=%d robots=%d\n",
-			len(catalogs.QuestGates.CompletedQuestIDs), len(catalogs.QuestGates.ActiveQuestIDs), seeded)
-	}
 	state := robotstate.NewMemoryStore(inventory.Robots)
 	if err := state.RegisterIdentities(ctx, inventory.Identities); err != nil {
 		return bundle, fmt.Errorf("startup identities: %w", err)
 	}
 	logStartupStage("state_identities")
-	loadouts, err := NewSQLiteLoadoutApplier(ctx, databasePath, opts.Config, catalogs.Equipment, opts.RandIntn)
+	loadouts, err := NewSQLiteLoadoutApplier(ctx, databasePath, opts.Config)
 	if err != nil {
 		return bundle, fmt.Errorf("loadout applier: %w", err)
 	}
 	logStartupStage("loadout_applier")
-	loadouts.QuestGates = catalogs.QuestGates
-	loadouts.StatTables = catalogs.StatTables
 	loadouts.LevelThresholds = catalogs.LevelThresholds
 	replaced, err := loadouts.ReconcileRobotLoadouts(ctx, prefix, inventory.Robots)
 	if err != nil {
@@ -176,7 +165,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if replaced > 0 {
 		foundationlog.Robotf("CN90_LOADOUT_RECONCILED robots=%d\n", replaced)
 	}
-	transport, err := NewRuntimeTransport(opts.ConnectIP, gamePort, NewAccountBinder(adminAddress, adminToken))
+	transport, err := NewRuntimeTransport(opts.ConnectIP, channels, NewAccountBinder(adminAddress, adminToken))
 	if err != nil {
 		_ = loadouts.Close()
 		return bundle, fmt.Errorf("transport: %w", err)
@@ -198,7 +187,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	bundle.TownMaps = catalogs.TownMaps
 	bundle.FollowAccounts = FollowAccountLocator{DatabasePath: databasePath}
 	bundle.Creator = RobotCreator{
-		Provisioner: Provisioner{Address: address, Binder: binder},
+		Provisioner: Provisioner{ConnectHost: opts.ConnectIP, Channels: channels, Binder: binder},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state,
 		Config: opts.Config, Names: names, Maps: catalogs.TownMaps, JobGrows: catalogs.JobGrows,
 		AccountPrefix: prefix, IDStart: opts.Config.RobotUIDStart,
@@ -206,7 +195,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		Loadouts: loadouts, Profiles: loadouts,
 	}
 	bundle.Cleaner = RobotCleaner{
-		Protocol: CharacterDeleter{Address: address, Binder: binder},
+		Protocol: CharacterDeleter{ConnectHost: opts.ConnectIP, Channels: channels, Binder: binder},
 		State:    state, Sessions: transport,
 	}
 	bundle.Purger = SQLiteRobotPurger{
@@ -214,19 +203,20 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	}
 	bundle.Inspector = SQLitePopulationInspector{
 		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config,
-		Equipment: catalogs.Equipment, Maps: catalogs.TownMaps,
+		Maps: catalogs.TownMaps,
 	}
 	return bundle, nil
 }
 
 // NewRuntimeTransport dials the 90CN game server for both actions and session
-// lifecycle. The same transport implements both scheduler ports. The binder
-// registers each robot account for this process id before dialing.
-func NewRuntimeTransport(connectIP string, gamePort int, binder *AccountBinder) (*ActionTransport, error) {
-	if strings.TrimSpace(connectIP) == "" || gamePort <= 0 {
+// lifecycle. The same transport implements both scheduler ports. Each account
+// is registered for this process id before dialing and is spread across the
+// runtime channel ports.
+func NewRuntimeTransport(connectHost string, channels channelCatalog, binder *AccountBinder) (*ActionTransport, error) {
+	if strings.TrimSpace(connectHost) == "" || len(channels.ports) == 0 {
 		return nil, fmt.Errorf("90CN game address is incomplete")
 	}
-	factory := SessionFactory{Address: net.JoinHostPort(connectIP, fmt.Sprint(gamePort)), Binder: binder}
+	factory := SessionFactory{ConnectHost: connectHost, Channels: channels, Binder: binder}
 	return NewActionTransport(factory), nil
 }
 
@@ -301,24 +291,25 @@ func resolveDatabasePath(serverLayout runtimeLayout, configured string) (string,
 	return path, source, nil
 }
 
-// resolveGamePort returns the operator override when one is configured,
-// otherwise the channel port from the runtime instance. The DNF90 channel
-// listen address is loopback-locked by the server itself.
-func resolveGamePort(serverLayout runtimeLayout, configured int) (int, error) {
+// resolveChannelCatalog returns the dialable game ports. An explicit operator
+// override pins a single port; otherwise the runtime channel_info.etc defines
+// the per-channel game ports (10000 + channel id).
+func resolveChannelCatalog(serverLayout runtimeLayout, configured int) (channelCatalog, string, error) {
 	if configured > 0 {
 		if configured > 65535 {
-			return 0, fmt.Errorf("game port %d is out of range", configured)
+			return channelCatalog{}, "", fmt.Errorf("game port %d is out of range", configured)
 		}
-		return configured, nil
+		return singlePortCatalog(configured), "adapter game_port setting", nil
 	}
-	return serverLayout.channelPort()
-}
-
-func gamePortSource(configured int) string {
-	if configured > 0 {
-		return "adapter game_port setting"
+	serverIndex := serverLayout.instance.Protocol.ChannelServerID
+	if serverIndex <= 0 {
+		serverIndex = 1
 	}
-	return "instance server.channelListen"
+	channels, err := loadChannelCatalog(serverLayout.root, serverLayout.instance.Game.ChannelInfoPath, serverIndex)
+	if err != nil {
+		return channelCatalog{}, "", err
+	}
+	return channels, "instance game.channelInfoPath", nil
 }
 
 func isRegularFile(path string) bool {

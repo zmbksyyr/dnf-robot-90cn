@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -168,21 +167,17 @@ func (l runtimeLayout) databasePath() (string, string, error) {
 	return filepath.Join(l.root, filepath.FromSlash(relative)), source, nil
 }
 
-// channelPort resolves the game channel port from server.channelListen.
-func (l runtimeLayout) channelPort() (int, error) {
-	listen := strings.TrimSpace(l.instance.Server.ChannelListen)
-	if listen == "" {
-		return 0, fmt.Errorf("instance server.channelListen is empty")
+// channelInfoPath resolves the runtime channel_info.etc the game ports are
+// derived from. The channel directory port (server.channelListen) is a
+// different protocol and is not a valid game endpoint.
+func (l runtimeLayout) channelInfoPath() (string, string) {
+	relative := strings.TrimSpace(l.instance.Game.ChannelInfoPath)
+	source := "instance game.channelInfoPath"
+	if relative == "" {
+		relative = defaultChannelFile
+		source = "default data/dnf/channel_info.etc"
 	}
-	_, portText, err := net.SplitHostPort(listen)
-	if err != nil {
-		return 0, fmt.Errorf("instance server.channelListen %q: %w", listen, err)
-	}
-	port, err := strconv.Atoi(portText)
-	if err != nil || port < 1 || port > 65535 {
-		return 0, fmt.Errorf("instance server.channelListen %q has an invalid port", listen)
-	}
-	return port, nil
+	return filepath.Join(l.root, filepath.FromSlash(relative)), source
 }
 
 // adminEndpoint resolves the loopback admin API address and token that the

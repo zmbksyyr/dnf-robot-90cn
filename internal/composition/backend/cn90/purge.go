@@ -28,7 +28,7 @@ type SQLiteRobotPurger struct {
 }
 
 type purgeAccount struct {
-	id         int
+	name       string
 	uid        int
 	totalChars int
 	cids       []int
@@ -74,16 +74,17 @@ func (p SQLiteRobotPurger) ExecuteDangerousDelete(ctx context.Context, requested
 	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
 		return purgeResult(requested, false), fmt.Errorf("configure 90CN purge database: %w", err)
 	}
-	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
 		return purgeResult(requested, false), fmt.Errorf("begin 90CN purge: %w", err)
 	}
 	committed := false
 	defer func() {
 		if !committed {
-			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
+			_ = tx.Rollback()
 		}
 	}()
-	actual, accounts, err := p.planOnConn(ctx, conn, request)
+	actual, accounts, err := p.planOnConn(ctx, tx, request)
 	if err != nil {
 		return purgeResult(requested, false), err
 	}
@@ -95,10 +96,10 @@ func (p SQLiteRobotPurger) ExecuteDangerousDelete(ctx context.Context, requested
 			"90CN delete plan changed since preview: previewed accounts=%d characters=%d, current accounts=%d characters=%d; re-run the preview",
 			requested.AccountCount, requested.CharacterCount, actual.AccountCount, actual.CharacterCount)
 	}
-	if err := executePurge(ctx, conn, request.Mode, accounts); err != nil {
+	if err := executePurge(ctx, tx, request.Mode, accounts); err != nil {
 		return purgeResult(actual, false), err
 	}
-	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+	if err := tx.Commit(); err != nil {
 		return purgeResult(actual, false), fmt.Errorf("commit 90CN purge: %w", err)
 	}
 	committed = true
@@ -207,45 +208,77 @@ func (p SQLiteRobotPurger) planOnConn(ctx context.Context, query purgeQuery, req
 }
 
 func (p SQLiteRobotPurger) selectAccounts(ctx context.Context, query purgeQuery, request robotcap.DangerousDeleteRequest) ([]purgeAccount, error) {
-	rows, err := query.QueryContext(ctx, `SELECT a.account_id,a.m_id,c.character_id,
-(SELECT COUNT(*) FROM characters cx WHERE cx.account_id=a.account_id)
-FROM accounts a LEFT JOIN characters c ON c.account_id=a.account_id
-WHERE a.m_id LIKE ? ORDER BY a.account_id,c.character_id`, p.AccountPrefix+"%")
+	byName := make(map[string]*purgeAccount)
+	ordered := make([]*purgeAccount, 0)
+
+	characterRows, err := query.QueryContext(ctx,
+		`SELECT c.account_id, c.character_id, (SELECT COUNT(*) FROM `+dnfCharactersTable+` cx WHERE cx.account_id=c.account_id) FROM `+
+			dnfCharactersTable+` c WHERE c.account_id LIKE ? ORDER BY c.account_id, c.character_id`, p.AccountPrefix+"%")
 	if err != nil {
 		return nil, fmt.Errorf("scan 90CN purge candidates: %w", err)
 	}
-	defer rows.Close()
-	byID := make(map[int]*purgeAccount)
-	ordered := make([]*purgeAccount, 0)
-	for rows.Next() {
-		var accountID int
-		var accountName string
-		var cid sql.NullInt64
+	for characterRows.Next() {
+		var accountName, characterID string
 		var totalChars int
-		if err := rows.Scan(&accountID, &accountName, &cid, &totalChars); err != nil {
+		if err := characterRows.Scan(&accountName, &characterID, &totalChars); err != nil {
+			characterRows.Close()
 			return nil, fmt.Errorf("read 90CN purge candidate: %w", err)
 		}
 		uid, owned := strictRobotUID(accountName, p.AccountPrefix)
-		if !owned || !purgeRequestMatches(request, uid, cid) {
+		cid := parseCharacterID(characterID)
+		if !owned || cid <= 0 || !purgeRequestMatches(request, uid, cid, true) {
 			continue
 		}
-		account := byID[accountID]
+		account := byName[accountName]
 		if account == nil {
-			account = &purgeAccount{id: accountID, uid: uid, totalChars: totalChars}
-			byID[accountID] = account
+			account = &purgeAccount{name: accountName, uid: uid, totalChars: totalChars}
+			byName[accountName] = account
 			ordered = append(ordered, account)
 		}
-		if cid.Valid {
-			account.cids = append(account.cids, int(cid.Int64))
-		}
+		account.cids = append(account.cids, cid)
 	}
-	if err := rows.Err(); err != nil {
+	if err := characterRows.Close(); err != nil {
+		return nil, fmt.Errorf("close 90CN purge candidate rows: %w", err)
+	}
+	if err := characterRows.Err(); err != nil {
 		return nil, fmt.Errorf("scan 90CN purge candidates: %w", err)
 	}
+
+	accountRows, err := query.QueryContext(ctx,
+		`SELECT a.account_id FROM `+dnfAccountsTable+` a WHERE a.account_id LIKE ? AND NOT EXISTS (SELECT 1 FROM `+
+			dnfCharactersTable+` c WHERE c.account_id=a.account_id)`, p.AccountPrefix+"%")
+	if err != nil {
+		return nil, fmt.Errorf("scan empty 90CN purge candidates: %w", err)
+	}
+	for accountRows.Next() {
+		var accountName string
+		if err := accountRows.Scan(&accountName); err != nil {
+			accountRows.Close()
+			return nil, fmt.Errorf("read empty 90CN purge candidate: %w", err)
+		}
+		uid, owned := strictRobotUID(accountName, p.AccountPrefix)
+		if !owned || request.Mode == robotcap.DangerousDeleteModeCID || !purgeRequestMatches(request, uid, 0, false) {
+			continue
+		}
+		if _, exists := byName[accountName]; exists {
+			continue
+		}
+		account := &purgeAccount{name: accountName, uid: uid}
+		byName[accountName] = account
+		ordered = append(ordered, account)
+	}
+	if err := accountRows.Close(); err != nil {
+		return nil, fmt.Errorf("close empty 90CN purge candidate rows: %w", err)
+	}
+	if err := accountRows.Err(); err != nil {
+		return nil, fmt.Errorf("scan empty 90CN purge candidates: %w", err)
+	}
+
 	accounts := make([]purgeAccount, 0, len(ordered))
 	for _, account := range ordered {
 		accounts = append(accounts, *account)
 	}
+	sort.Slice(accounts, func(i, j int) bool { return accounts[i].name < accounts[j].name })
 	return accounts, nil
 }
 
@@ -278,10 +311,10 @@ func equalIntSets(left, right []int) bool {
 	return true
 }
 
-func purgeRequestMatches(request robotcap.DangerousDeleteRequest, uid int, cid sql.NullInt64) bool {
+func purgeRequestMatches(request robotcap.DangerousDeleteRequest, uid, cid int, hasCharacter bool) bool {
 	switch request.Mode {
 	case robotcap.DangerousDeleteModeCID:
-		return cid.Valid && int(cid.Int64) == request.CID
+		return hasCharacter && cid == request.CID
 	case robotcap.DangerousDeleteModeUID:
 		return uid == request.UID
 	default:
@@ -320,7 +353,7 @@ func (p SQLiteRobotPurger) registryUIDs(ctx context.Context, selected []int) ([]
 	return result, nil
 }
 
-func executePurge(ctx context.Context, conn *sql.Conn, mode string, accounts []purgeAccount) error {
+func executePurge(ctx context.Context, tx *sql.Tx, mode string, accounts []purgeAccount) error {
 	if len(accounts) == 0 {
 		return nil
 	}
@@ -329,19 +362,26 @@ func executePurge(ctx context.Context, conn *sql.Conn, mode string, accounts []p
 		if len(account.cids) != 1 {
 			return fmt.Errorf("90CN CID purge candidate is inconsistent")
 		}
-		if _, err := conn.ExecContext(ctx, `DELETE FROM characters WHERE account_id=? AND character_id=?`, account.id, account.cids[0]); err != nil {
-			return fmt.Errorf("delete 90CN character cid=%d: %w", account.cids[0], err)
+		if err := deleteCharacterRows(ctx, tx, strconv.Itoa(account.cids[0])); err != nil {
+			return err
 		}
-		if _, err := conn.ExecContext(ctx, `DELETE FROM accounts WHERE account_id=? AND NOT EXISTS (SELECT 1 FROM characters WHERE account_id=?)`, account.id, account.id); err != nil {
-			return fmt.Errorf("delete empty 90CN robot account uid=%d: %w", account.uid, err)
+		var remaining int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+dnfCharactersTable+` WHERE account_id=?`, account.name).Scan(&remaining); err != nil {
+			return fmt.Errorf("count remaining 90CN account %s characters: %w", account.name, err)
+		}
+		if remaining == 0 {
+			if err := deleteAccountRows(ctx, tx, account.name); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
-	ids := make([]int, 0, len(accounts))
 	for _, account := range accounts {
-		ids = append(ids, account.id)
+		if err := deleteAccountRows(ctx, tx, account.name); err != nil {
+			return err
+		}
 	}
-	return deleteStartupAccounts(ctx, conn, ids)
+	return nil
 }
 
 func purgeResult(plan robotcap.DangerousDeletePlan, deleted bool) robotcap.DangerousDeleteResult {

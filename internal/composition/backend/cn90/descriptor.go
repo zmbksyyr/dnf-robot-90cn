@@ -6,19 +6,19 @@ const BackendID shared.BackendID = "sim_90cn"
 
 func Info() shared.BackendInfo {
 	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "90CN capability is not implemented yet"})
-	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Reason: "the create-character protocol is implemented, but the 90CN persistence/loadout stage is still pending"}
-	capabilities[shared.CapabilityTownMove] = shared.CapabilityStatus{Enabled: true, Reason: "op36 town/area and op35 position requests follow the current client shapes; live verification pending"}
+	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true, Reason: "protocol character creation plus offline level/grow writes; equipment generation is a later stage"}
+	capabilities[shared.CapabilityTownMove] = shared.CapabilityStatus{Enabled: true, Reason: "op36 town/area and op35 position requests follow the current client shapes; verified live"}
 	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Reason: "90CN party/dungeon follower is not implemented yet"}
 	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Reason: "90CN party protocol is not implemented yet"}
 	capabilities[shared.CapabilityGuildInvite] = shared.CapabilityStatus{Reason: "90CN guild invitation protocol is not implemented yet"}
 	capabilities[shared.CapabilityShout] = shared.CapabilityStatus{Reason: "90CN chat transport is not implemented yet"}
 	capabilities[shared.CapabilityStore] = shared.CapabilityStatus{Reason: "90CN expert-job store protocol is not implemented yet"}
 	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "90CN has no verified world-shout protocol mode"}
-	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Reason: "90CN roster cleanup requires the persistence stage"}
-	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Reason: "90CN dangerous delete requires the persistence stage"}
+	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Enabled: true, Reason: "verified roster deletion protocol; live verified"}
+	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Enabled: true, Reason: "adapter-owned SQLite purge over the dnf_* tables; not yet live verified"}
 	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "90CN party diagnostics are not implemented"}
 	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "90CN mail notification is not implemented"}
-	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Reason: "90CN schema validation is pending the persistence stage"}
+	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the dnf_* schema of the configured SQLite file; live verified"}
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "90CN diagnostics are not implemented"}
 	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "90CN system announcement transport is not implemented"}
 	capabilities[shared.CapabilityServerNotice] = shared.CapabilityStatus{Reason: "90CN server notice transport is not implemented"}

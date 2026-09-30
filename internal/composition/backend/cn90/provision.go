@@ -14,9 +14,10 @@ import (
 )
 
 type Provisioner struct {
-	Address string
-	Timeout time.Duration
-	Binder  *AccountBinder
+	ConnectHost string
+	Channels    channelCatalog
+	Timeout     time.Duration
+	Binder      *AccountBinder
 }
 
 type AccountRosterConflictError struct {
@@ -69,7 +70,11 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.Timeout)
 	defer cancel()
-	client, first, err := dialBoundSession(ctx, p.Binder, p.Address, request.AccountName)
+	address, err := channelAddress(p.ConnectHost, p.Channels, request.AccountName)
+	if err != nil {
+		return result, err
+	}
+	client, first, err := dialBoundSession(ctx, p.Binder, address, request.AccountName)
 	if err != nil {
 		return result, err
 	}

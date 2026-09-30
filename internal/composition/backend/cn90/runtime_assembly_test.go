@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	robotconfig "robot/internal/capability/robotconfig"
@@ -167,26 +168,58 @@ func TestResolveDatabasePathFollowsInstanceAndOverrides(t *testing.T) {
 	}
 }
 
-func TestResolveGamePortUsesInstanceAndOverride(t *testing.T) {
+func TestResolveChannelCatalogUsesChannelInfoAndOverride(t *testing.T) {
 	projectRoot, _ := writeTestRuntime(t, "127.0.0.1:7001")
+	channelInfo := "[server] 1\n" +
+		"   19   `<chn_channel_info_046>`   1   `[crack]`   0 \n" +
+		"   251  `<chn_channel_info_046>`   40  `[crack]`   0 \n" +
+		"   501  `<chn_channel_info_039>`   13  `[pvp]`     0 \n" +
+		"   3    `<chn_channel_info_001>`   0   `[cain]`    0 \n" +
+		"[/server]\n"
+	if err := os.WriteFile(filepath.Join(projectRoot, projectRuntimeDirName, "data", "dnf", "channel_info.etc"), []byte(channelInfo), 0644); err != nil {
+		t.Fatal(err)
+	}
 	serverLayout, err := resolveRuntimeLayout(projectRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if port, err := resolveGamePort(serverLayout, 0); err != nil || port != 7001 {
-		t.Fatalf("instance port = %d, %v", port, err)
+	catalog, source, err := resolveChannelCatalog(serverLayout, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if port, err := resolveGamePort(serverLayout, 10011); err != nil || port != 10011 {
-		t.Fatalf("override port = %d, %v", port, err)
+	if source != "instance game.channelInfoPath" {
+		t.Fatalf("catalog source = %q", source)
 	}
-	if _, err := resolveGamePort(serverLayout, 70000); err == nil {
+	// The ordinary [cain] channel wins over the crack/pvp entrances.
+	if len(catalog.ports) != 1 || catalog.ports[0] != gamePortBase+3 {
+		t.Fatalf("catalog ports = %v", catalog.ports)
+	}
+	if got := catalog.portForAccount("robot17000001", 0); got != gamePortBase+3 {
+		t.Fatalf("account port = %d", got)
+	}
+	if got := catalog.portForAccount("robot17000001", 0); got != catalog.portForAccount("robot17000001", 0) {
+		t.Fatal("account channel selection is not stable")
+	}
+
+	// Without an ordinary channel the crack bootstrap channels form the pool.
+	crackOnly := strings.Replace(channelInfo, "   3    `<chn_channel_info_001>`   0   `[cain]`    0 \n", "", 1)
+	if err := os.WriteFile(filepath.Join(projectRoot, projectRuntimeDirName, "data", "dnf", "channel_info.etc"), []byte(crackOnly), 0644); err != nil {
+		t.Fatal(err)
+	}
+	crackCatalog, _, err := resolveChannelCatalog(serverLayout, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(crackCatalog.ports) != 2 || crackCatalog.ports[0] != gamePortBase+19 || crackCatalog.ports[1] != gamePortBase+251 {
+		t.Fatalf("crack catalog ports = %v", crackCatalog.ports)
+	}
+
+	pinned, source, err := resolveChannelCatalog(serverLayout, 10011)
+	if err != nil || source != "adapter game_port setting" || len(pinned.ports) != 1 || pinned.ports[0] != 10011 {
+		t.Fatalf("override catalog = %v/%q, %v", pinned.ports, source, err)
+	}
+	if _, _, err := resolveChannelCatalog(serverLayout, 70000); err == nil {
 		t.Fatal("out-of-range override was accepted")
-	}
-	if source := gamePortSource(0); source != "instance server.channelListen" {
-		t.Fatalf("instance source = %q", source)
-	}
-	if source := gamePortSource(10011); source != "adapter game_port setting" {
-		t.Fatalf("override source = %q", source)
 	}
 }
 
@@ -203,13 +236,13 @@ func TestAdminEndpointFollowsInstance(t *testing.T) {
 }
 
 func TestNewRuntimeTransportValidatesAddress(t *testing.T) {
-	if _, err := NewRuntimeTransport("", 0, nil); err == nil {
-		t.Fatal("empty address was accepted")
+	if _, err := NewRuntimeTransport("", singlePortCatalog(7001), nil); err == nil {
+		t.Fatal("empty host was accepted")
 	}
-	if _, err := NewRuntimeTransport("127.0.0.1", 0, nil); err == nil {
-		t.Fatal("missing port was accepted")
+	if _, err := NewRuntimeTransport("127.0.0.1", channelCatalog{}, nil); err == nil {
+		t.Fatal("empty channel catalog was accepted")
 	}
-	transport, err := NewRuntimeTransport("127.0.0.1", 7001, nil)
+	transport, err := NewRuntimeTransport("127.0.0.1", singlePortCatalog(7001), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
