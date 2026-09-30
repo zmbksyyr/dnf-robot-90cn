@@ -282,3 +282,19 @@ func (m *RobotManager) robotGamePortAddress() string {
 	}
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }
+
+// SetBackendPortProbe installs an adapter-owned readiness probe. Backends
+// whose game listener allocates real work per TCP connection (for example a
+// game server that creates a session on accept) must install one so the
+// periodic AutoGate check does not create game sessions. A nil probe restores
+// the default TCP dial.
+func (m *RobotManager) SetBackendPortProbe(probe func() bool) {
+	if m == nil {
+		return
+	}
+	m.autoMu.Lock()
+	m.autoPortProbe = probe
+	m.autoPortProbeAddr = ""
+	m.autoPortProbeAt = time.Time{}
+	m.autoMu.Unlock()
+}

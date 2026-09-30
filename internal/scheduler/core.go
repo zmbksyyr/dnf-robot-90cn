@@ -64,6 +64,10 @@ type RobotManager struct {
 	autoPortProbeError              string
 	autoPortProbeInflight           bool
 	autoPortDial                    func(string, string, time.Duration) (net.Conn, error)
+	// autoPortProbe is an adapter-provided readiness probe. Backends whose
+	// game listener allocates a session per connection install one so the
+	// periodic AutoGate check does not create game work.
+	autoPortProbe func() bool
 	autoStats                       robotcap.AutoStatus
 	autoBreakerUntil                time.Time
 	autoBreakerReason               string

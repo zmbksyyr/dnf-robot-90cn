@@ -153,6 +153,7 @@ func (m *RobotManager) autoGamePortStable(now time.Time, rc robotconfig.RuntimeC
 	open := m.autoPortProbeOpen
 	errText := m.autoPortProbeError
 	dial := m.autoPortDial
+	backendProbe := m.autoPortProbe
 	probeInFlight := m.autoPortProbeInflight
 	m.autoMu.Unlock()
 	if !probeCached && !probeInFlight {
@@ -167,14 +168,22 @@ func (m *RobotManager) autoGamePortStable(now time.Time, rc robotconfig.RuntimeC
 		m.autoPortProbeInflight = true
 		m.autoMu.Unlock()
 		go func() {
-			conn, err := dial("tcp", probeAddr, timeout)
-			probeOpen := err == nil
+			probeOpen := false
 			probeErr := ""
-			if err != nil {
-				probeErr = err.Error()
-			}
-			if conn != nil {
-				_ = conn.Close()
+			if backendProbe != nil {
+				probeOpen = backendProbe()
+				if !probeOpen {
+					probeErr = "backend readiness probe is not ready"
+				}
+			} else {
+				conn, err := dial("tcp", probeAddr, timeout)
+				probeOpen = err == nil
+				if err != nil {
+					probeErr = err.Error()
+				}
+				if conn != nil {
+					_ = conn.Close()
+				}
 			}
 			probeTTL := time.Second
 			if !probeOpen {

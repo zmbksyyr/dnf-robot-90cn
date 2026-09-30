@@ -94,6 +94,10 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	manager.SetBackendRobotCleaner(bundle.Cleaner)
 	manager.SetBackendRobotPurger(bundle.Purger)
 	manager.SetBackendPopulationInspector(bundle.Inspector)
+	// The DNF90 game listener allocates a session per accepted connection, so
+	// the periodic AutoGate readiness check uses the admin health route
+	// instead of dialing the game port.
+	manager.SetBackendPortProbe(cn90backend.NewBackendHealthProbe(bundle.AdminAddress))
 	defer func() {
 		if err := manager.Shutdown(); err != nil {
 			foundationlog.Robotf("ADAPTER_MANAGER_SHUTDOWN_FAILED err=%v\n", err)
