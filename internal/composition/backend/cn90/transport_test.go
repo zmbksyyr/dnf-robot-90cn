@@ -81,20 +81,6 @@ func TestActionTransportMapsVerifiedTownActions(t *testing.T) {
 	}
 }
 
-func TestActionTransportProjectsFollowerPartyState(t *testing.T) {
-	session := &actionTestSession{party: true}
-	transport := NewActionTransport()
-	if err := transport.Attach(7, session); err != nil {
-		t.Fatal(err)
-	}
-	if status := transport.RuntimeStatusMap()[7]; !status.PartyActive {
-		t.Fatalf("runtime status did not project party state: %+v", status)
-	}
-	if !transport.PartyActive(7) || transport.PartyActive(8) {
-		t.Fatal("live party lookup did not match the attached follower")
-	}
-}
-
 func TestActionTransportRoutesVerifiedTownAreaTransition(t *testing.T) {
 	session := &areaActionTestSession{}
 	transport := NewActionTransport(actionTestFactory{session: session})

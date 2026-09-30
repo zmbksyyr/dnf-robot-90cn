@@ -5,26 +5,26 @@ import "robot/internal/shared"
 const BackendID shared.BackendID = "sim_90cn"
 
 func Info() shared.BackendInfo {
-	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "90CN protocol operation is not implemented yet"})
-	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Enabled: true}
-	capabilities[shared.CapabilityTownMove] = shared.CapabilityStatus{Enabled: true, Reason: "coordinates and verified town-area transitions"}
-	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Enabled: true, Mode: "auto_accept", Reason: "accepts ordinary party invitations without filtering by inviter account"}
-	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Enabled: true, Mode: "follower", Reason: "accepts leader invitations and mirrors the leader's town position and area projections; no active invite, party creation or dungeon room movement"}
-	capabilities[shared.CapabilityGuildInvite] = shared.CapabilityStatus{Enabled: true, Mode: "auto_accept", Reason: "automatically accepts verified 90CN guild invitation notifications"}
-	capabilities[shared.CapabilityShout] = shared.CapabilityStatus{Enabled: true, Reason: "area channel only; party requires the separate party capability"}
-	capabilities[shared.CapabilityStore] = shared.CapabilityStatus{Enabled: true, Mode: "expert_job", Reason: "disassembler machine and enchanter stall via CREATE_EXPERT_JOB_STORE; the private item stall is not implemented"}
-	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "90CN SEND_MESSAGE has no generic world-recipient path"}
-	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Enabled: true, Reason: "verified character deletion protocol and robot-state cleanup"}
-	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Enabled: true, Reason: "adapter-owned SQLite purge for invisible robot accounts and characters"}
+	capabilities := shared.CapabilityMatrix(shared.CapabilityStatus{Reason: "90CN capability is not implemented yet"})
+	capabilities[shared.CapabilityProvision] = shared.CapabilityStatus{Reason: "the create-character protocol is implemented, but the 90CN persistence/loadout stage is still pending"}
+	capabilities[shared.CapabilityTownMove] = shared.CapabilityStatus{Enabled: true, Reason: "op36 town/area and op35 position requests follow the current client shapes; live verification pending"}
+	capabilities[shared.CapabilityDungeonFollow] = shared.CapabilityStatus{Reason: "90CN party/dungeon follower is not implemented yet"}
+	capabilities[shared.CapabilityParty] = shared.CapabilityStatus{Reason: "90CN party protocol is not implemented yet"}
+	capabilities[shared.CapabilityGuildInvite] = shared.CapabilityStatus{Reason: "90CN guild invitation protocol is not implemented yet"}
+	capabilities[shared.CapabilityShout] = shared.CapabilityStatus{Reason: "90CN chat transport is not implemented yet"}
+	capabilities[shared.CapabilityStore] = shared.CapabilityStatus{Reason: "90CN expert-job store protocol is not implemented yet"}
+	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "90CN has no verified world-shout protocol mode"}
+	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Reason: "90CN roster cleanup requires the persistence stage"}
+	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Reason: "90CN dangerous delete requires the persistence stage"}
 	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "90CN party diagnostics are not implemented"}
 	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "90CN mail notification is not implemented"}
-	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the configured SQLite file and required schema"}
+	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Reason: "90CN schema validation is pending the persistence stage"}
 	capabilities[shared.CapabilityDiagnostics] = shared.CapabilityStatus{Reason: "90CN diagnostics are not implemented"}
 	capabilities[shared.CapabilitySystemAnnouncement] = shared.CapabilityStatus{Reason: "90CN system announcement transport is not implemented"}
-	capabilities[shared.CapabilityServerNotice] = shared.CapabilityStatus{Enabled: true, Mode: "lottery_upgrade", Reason: "robot-side lottery box opens and +12 reinforcements drive the server's 0x0056 item notices; stock is written offline per robot"}
+	capabilities[shared.CapabilityServerNotice] = shared.CapabilityStatus{Reason: "90CN server notice transport is not implemented"}
 	capabilities[shared.CapabilityServiceControl] = shared.CapabilityStatus{Reason: "90CN service control is not implemented"}
-	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "dungeon room movement and the in-dungeon position plane are not implemented"}
-	capabilities[shared.CapabilityMarket] = shared.CapabilityStatus{Reason: "90CN exposes auction opcode enums only; no verified auction or gold-consignment handler/service is present"}
+	capabilities[shared.CapabilityDungeonMove] = shared.CapabilityStatus{Reason: "90CN dungeon movement is not implemented"}
+	capabilities[shared.CapabilityMarket] = shared.CapabilityStatus{Reason: "90CN exposes no verified auction or gold-consignment path"}
 	return shared.BackendInfo{
 		ID: BackendID, DisplayName: "90CN", SupportedOS: []string{"linux", "windows"}, Selectable: true,
 		Capabilities: capabilities, MaxOnline: 10000,

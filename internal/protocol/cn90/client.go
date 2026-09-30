@@ -12,26 +12,24 @@ import (
 	"robot/internal/foundation/network"
 )
 
-const DefaultMaxPacketLength = 1024 * 1024
-
 // defaultWriteTimeout bounds a single framed write. Without it a peer that
 // stops reading can block the write path (and the shared sendMu) forever.
 const defaultWriteTimeout = 15 * time.Second
 
+// Client is one DNF90 game-channel connection. The adapter binds the account
+// through the launcher admin API before dialing; the client itself only speaks
+// the game wire.
 type Client struct {
 	conn         net.Conn
-	udpConn      *net.UDPConn
 	sendMu       lockhub.Locker
-	udpMu        lockhub.Locker
-	udpPeers     map[string]*partyUDPPeer
-	udpPeerDrops int
-	selfUID      uint16
-	selfSlot     byte
-	slotKnown    bool
+	sequence     uint16
+	headerSize   int
 	maxSize      int
 	writeTimeout time.Duration
 }
 
+// Dial opens a game-channel connection. The address must be the channel game
+// port (GamePortBase + channel id), not the channel directory port.
 func Dial(ctx context.Context, address string) (*Client, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -48,250 +46,144 @@ func Dial(ctx context.Context, address string) (*Client, error) {
 func NewClient(conn net.Conn) *Client {
 	return &Client{
 		conn:         conn,
-		maxSize:      DefaultMaxPacketLength,
+		headerSize:   upperHeaderSize16,
+		maxSize:      DefaultMaxPacketSize,
 		writeTimeout: defaultWriteTimeout,
-		udpPeers:     make(map[string]*partyUDPPeer),
 	}
 }
 
-// SetPartyIdentity gives the wire adapter the selected session identity. The
-// member slot itself is learned from PARTY_MEMBER_REALTIME_INFO after joining.
-func (c *Client) SetPartyIdentity(uid uint16) {
-	c.udpMu.Lock()
-	c.selfUID = uid
-	c.selfSlot = 0
-	c.slotKnown = false
-	c.udpPeers = make(map[string]*partyUDPPeer)
-	c.udpPeerDrops = 0
-	c.udpMu.Unlock()
+// SetUpperHeaderSize switches the inbound parser between the locked server16
+// profile (16, the default) and the historical 13-byte channel header.
+func (c *Client) SetUpperHeaderSize(size int) {
+	if c == nil {
+		return
+	}
+	if size != upperHeaderSize16 && size != upperHeaderSize13 {
+		return
+	}
+	c.headerSize = size
 }
 
 func (c *Client) Close() error {
-	if c == nil {
-		return nil
-	}
-	c.udpMu.Lock()
-	udpConn := c.udpConn
-	c.udpConn = nil
-	c.udpMu.Unlock()
-	if udpConn != nil {
-		_ = udpConn.Close()
-	}
-	if c.conn == nil {
+	if c == nil || c.conn == nil {
 		return nil
 	}
 	return c.conn.Close()
 }
 
-// RegisterUDPEndpoint announces a real local UDP port before party packets
-// can reference this session. 90CN clients expect this endpoint to be present;
-// the server's fallback port is not a valid robot endpoint.
-func (c *Client) RegisterUDPEndpoint(ctx context.Context) error {
-	if c == nil || c.conn == nil {
-		return fmt.Errorf("cn90 client is closed")
+// CompleteHandshake drives the bound-session login exchange: an account-bound
+// connection first receives the class0/op1 CHANNELINFO notice and must answer
+// it with the class1/op1 endpoint request; an unbound connection already
+// received the class1/op1 success from the server fallback account.
+func (c *Client) CompleteHandshake(ctx context.Context) (Packet, error) {
+	return c.CompleteHandshakeFrom(ctx, nil)
+}
+
+// CompleteHandshakeFrom continues the handshake when the caller already read
+// the first inbound packet (the account-binding critical section keeps that
+// read together with registration and dial).
+func (c *Client) CompleteHandshakeFrom(ctx context.Context, first *Packet) (Packet, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	c.udpMu.Lock()
-	if c.udpConn != nil {
-		c.udpMu.Unlock()
-		return nil
-	}
-	c.udpMu.Unlock()
-	localIP := net.IPv4zero
-	if addr, ok := c.conn.LocalAddr().(*net.TCPAddr); ok && addr.IP.To4() != nil {
-		localIP = addr.IP.To4()
-	}
-	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: localIP, Port: 0})
-	if err != nil {
-		return fmt.Errorf("cn90 udp endpoint: %w", err)
-	}
-	endpoint := udpConn.LocalAddr().(*net.UDPAddr)
-	ip := endpoint.IP.To4()
-	if ip == nil || ip.IsUnspecified() {
-		ip = localIP.To4()
-	}
-	if ip == nil || ip.IsUnspecified() {
-		_ = udpConn.Close()
-		return fmt.Errorf("cn90 udp endpoint has no IPv4 address")
-	}
-	body, err := SetUDPIPPortBody(ip, uint16(endpoint.Port), 1200)
-	if err != nil {
-		_ = udpConn.Close()
-		return err
-	}
-	c.udpMu.Lock()
-	if c.udpConn != nil {
-		// Another caller registered first; keep its socket and discard ours.
-		c.udpMu.Unlock()
-		_ = udpConn.Close()
-		return nil
-	}
-	c.udpConn = udpConn
-	c.udpMu.Unlock()
-	go c.servePartyUDP(udpConn)
-	if err := c.send(ctx, Encode(1, CmdSetUDPIPPort, body)); err != nil {
-		c.udpMu.Lock()
-		if c.udpConn == udpConn {
-			c.udpConn = nil
+	noticeSeen := false
+	pending := first
+	for {
+		var packet Packet
+		if pending != nil {
+			packet = *pending
+			pending = nil
+		} else {
+			var err error
+			packet, err = c.Read(ctx)
+			if err != nil {
+				return Packet{}, err
+			}
 		}
-		c.udpMu.Unlock()
-		_ = udpConn.Close()
-		return err
+		switch {
+		case packet.Class == ClassCommand && packet.Type == ResponseEndpoint:
+			if !EndpointResultOK(packet.Body) {
+				return Packet{}, fmt.Errorf("cn90 endpoint response is not a success")
+			}
+			return packet, nil
+		case packet.Class == ClassNotice && packet.Type == NotiChannelInfo:
+			if noticeSeen {
+				continue
+			}
+			noticeSeen = true
+			if err := c.send(ctx, CmdEndpointRequest, EndpointRequestBody()); err != nil {
+				return Packet{}, err
+			}
+		}
 	}
-	return nil
 }
 
-func (c *Client) Login(ctx context.Context, mID, passwordHash string) error {
-	body, err := LoginBody(mID, passwordHash)
-	if err != nil {
-		return err
-	}
-	return c.send(ctx, Encode(1, CmdLogin, body))
+// RequestRoster asks for the account character list (class0/op2 response).
+func (c *Client) RequestRoster(ctx context.Context) error {
+	return c.send(ctx, CmdGetUserInfo, RosterRequestBody())
 }
 
+// SelectCharacter selects one roster slot (class1/op4 response).
+func (c *Client) SelectCharacter(ctx context.Context, slot uint16) error {
+	return c.send(ctx, CmdSelectCharacter, SelectCharacterBody(slot))
+}
+
+// ProgressInitialTown emits the op143 checkpoint that the server's initial
+// town route waits for after a completed character selection.
+func (c *Client) ProgressInitialTown(ctx context.Context) error {
+	return c.send(ctx, CmdChangeTutorial, TutorialProgressBody(InitialTownProgress))
+}
+
+// SetUserArea requests one town/area location (class1/op36 request shape).
+func (c *Client) SetUserArea(ctx context.Context, town, area byte, x, y int16, direction byte) error {
+	return c.send(ctx, CmdSetUserArea, SetUserAreaBody(town, area, x, y, direction))
+}
+
+// SetUserPosition reports a town position update.
+func (c *Client) SetUserPosition(ctx context.Context, x, y int16, movementCode byte, opaqueScaled uint16) error {
+	return c.send(ctx, CmdSetUserPosition, SetUserPositionBody(x, y, movementCode, opaqueScaled))
+}
+
+// CheckConnection sends the heartbeat. The server answers only after a
+// character has been selected.
+func (c *Client) CheckConnection(ctx context.Context) error {
+	return c.send(ctx, CmdCheckConnection, nil)
+}
+
+// Exit announces an orderly channel exit. Callers close the socket afterwards.
+func (c *Client) Exit(ctx context.Context) error {
+	return c.send(ctx, CmdExit, ExitBody())
+}
+
+// CreateCharacter creates one character (class1/op5 response plus a fresh
+// class0/op2 roster).
 func (c *Client) CreateCharacter(ctx context.Context, job byte, name []byte) error {
 	body, err := CreateCharacterBody(job, name)
 	if err != nil {
 		return err
 	}
-	return c.send(ctx, Encode(1, CmdCreateCharacter, body))
+	return c.send(ctx, CmdCreateCharacter, body)
 }
 
-func (c *Client) CheckCharacterName(ctx context.Context, name []byte) error {
-	body, err := CheckCharacterNameBody(name)
-	if err != nil {
-		return err
-	}
-	return c.send(ctx, Encode(1, CmdCheckCharacterName, body))
-}
-
+// DeleteCharacter deletes one roster slot by slot and name.
 func (c *Client) DeleteCharacter(ctx context.Context, slot uint16, name []byte) error {
 	body, err := DeleteCharacterBody(slot, name)
 	if err != nil {
 		return err
 	}
-	return c.send(ctx, Encode(1, CmdDeleteCharacter, body))
+	return c.send(ctx, CmdDeleteCharacter, body)
 }
 
-func (c *Client) RequestCharacterRoster(ctx context.Context) error {
-	return c.send(ctx, Encode(1, CmdGetUserInfo, CharacterRosterRequestBody()))
-}
-
-func (c *Client) SelectCharacter(ctx context.Context, slot uint16) error {
-	return c.send(ctx, Encode(1, CmdSelectCharacter, SelectCharacterBody(slot)))
-}
-
-func (c *Client) CheckConnection(ctx context.Context) error {
-	return c.send(ctx, Encode(1, CmdCheckConnection, nil))
-}
-
-// Quest methods expose only verified wire primitives. They are intentionally
-// not part of shared scheduling until a complete legal task workflow has been
-// proven against the target server.
-func (c *Client) AcceptQuest(ctx context.Context, questID uint16) error {
-	return c.send(ctx, Encode(1, CmdAcceptQuest, AcceptQuestBody(questID)))
-}
-
-func (c *Client) SetQuestTrigger(ctx context.Context, questID uint16, triggerType byte, increment bool) error {
-	return c.send(ctx, Encode(1, CmdSetQuestTrigger, SetQuestTriggerBody(questID, triggerType, increment)))
-}
-
-func (c *Client) FinishQuest(ctx context.Context, questID uint16, rewardSelection int16, completionCount uint16) error {
-	return c.send(ctx, Encode(1, CmdFinishQuest, FinishQuestBody(questID, rewardSelection, completionCount)))
-}
-
-// The dungeon methods expose only verified wire primitives. The backend
-// session deliberately does not call them until the complete dungeon
-// workflow, settlement and recovery gates are implemented.
-func (c *Client) EnterSelectDungeon(ctx context.Context, dungeonID uint32) error {
-	return c.send(ctx, Encode(1, CmdEnterSelectDungeon, EnterSelectDungeonBody(dungeonID)))
-}
-
-func (c *Client) SelectDungeon(ctx context.Context, dungeonID uint32, difficulty, flag1, flag2 byte) error {
-	return c.send(ctx, Encode(1, CmdSelectDungeon, SelectDungeonBody(dungeonID, difficulty, flag1, flag2)))
-}
-
-func (c *Client) ChangeTutorialFlag(ctx context.Context, flagIndex uint32, rewardFlag byte) error {
-	return c.send(ctx, Encode(1, CmdChangeTutorialFlag, ChangeTutorialFlagBody(flagIndex, rewardFlag)))
-}
-
-func (c *Client) FinishLoading(ctx context.Context) error {
-	return c.send(ctx, Encode(1, CmdFinishLoading, FinishLoadingBody()))
-}
-
-func (c *Client) SetUserPosition(ctx context.Context, x, y int16, direction byte, motion uint16) error {
-	return c.send(ctx, Encode(1, CmdSetUserPosition, SetUserPositionBody(x, y, direction, motion)))
-}
-
-func (c *Client) SetUserArea(ctx context.Context, town, area byte, x, y int16) error {
-	return c.send(ctx, Encode(1, CmdSetUserArea, SetUserAreaBody(town, area, x, y)))
-}
-
-func (c *Client) SendMessage(ctx context.Context, mode byte, targetUID uint16, targetCharacterID uint32, message []byte) error {
-	body, err := SendMessageBody(mode, targetUID, targetCharacterID, message)
+// CheckCharacterName queries global name availability (class1/op692).
+func (c *Client) CheckCharacterName(ctx context.Context, name []byte) error {
+	body, err := CheckCharacterNameBody(name)
 	if err != nil {
 		return err
 	}
-	return c.send(ctx, Encode(1, CmdSendMessage, body))
+	return c.send(ctx, CmdCheckCharacterName, body)
 }
 
-// Party methods are protocol-probe primitives only. They are intentionally
-// not exposed through the backend session until the complete party lifecycle
-// and dungeon-selection gates are verified.
-func (c *Client) SetPartyInfo(ctx context.Context, settings []byte) error {
-	body, err := SetPartyInfoBody(settings)
-	if err != nil {
-		return err
-	}
-	return c.send(ctx, Encode(1, CmdSetPartyInfo, body))
-}
-
-func (c *Client) RequestPeer(ctx context.Context, targetUID uint16, requestType byte, peerValue int32) error {
-	return c.send(ctx, Encode(1, CmdRequestPeer, RequestPeerBody(targetUID, requestType, peerValue)))
-}
-
-func (c *Client) AcceptPartyInvite(ctx context.Context, inviterUID uint16, peerValue int32) error {
-	return c.send(ctx, Encode(1, CmdResponsePeer, ResponsePeerBody(inviterUID, peerValue)))
-}
-
-func (c *Client) AcceptGuildInvite(ctx context.Context) error {
-	return c.send(ctx, Encode(1, CmdReplyGuildInvite, GuildInviteReplyBody(true)))
-}
-
-func (c *Client) LeaveParty(ctx context.Context) error {
-	return c.send(ctx, Encode(1, CmdLeaveParty, LeavePartyBody()))
-}
-
-func (c *Client) WalkoutPartyMember(ctx context.Context, slot byte) error {
-	return c.send(ctx, Encode(1, CmdWalkoutPartyMember, WalkoutPartyMemberBody(slot)))
-}
-
-func (c *Client) MoveMap(ctx context.Context, request MoveMapRequest) error {
-	return c.send(ctx, Encode(1, CmdMoveMap, MoveMapBody(request)))
-}
-
-// CreateExpertJobStore opens an expert job store (the disassembler machine when
-// the body carries ExpertJobStoreKindDisjointMachine). The caller builds the
-// body with CreateExpertJobStoreBody.
-func (c *Client) CreateExpertJobStore(ctx context.Context, body []byte) error {
-	return c.send(ctx, Encode(1, CmdCreateExpertJobStore, body))
-}
-
-// CloseExpertJobStore closes the caller's expert job store. The server parser
-// requires an empty body.
-func (c *Client) CloseExpertJobStore(ctx context.Context) error {
-	return c.send(ctx, Encode(1, CmdCloseExpertJobStore, nil))
-}
-
-// UseLotteryItem opens one lottery box. Phase 0 opens the box directly.
-func (c *Client) UseLotteryItem(ctx context.Context, phase uint16, slot int16) error {
-	return c.send(ctx, Encode(1, CmdUseLotteryItem, UseLotteryItemBody(phase, slot)))
-}
-
-// UpgradeItem sends one reinforcement request built with UpgradeItemBody.
-func (c *Client) UpgradeItem(ctx context.Context, body []byte) error {
-	return c.send(ctx, Encode(1, CmdUpgradeItem, body))
-}
-
+// Read reads one inbound packet with cancellation support.
 func (c *Client) Read(ctx context.Context) (Packet, error) {
 	if c == nil || c.conn == nil {
 		return Packet{}, fmt.Errorf("cn90 client is closed")
@@ -300,7 +192,7 @@ func (c *Client) Read(ctx context.Context) (Packet, error) {
 		ctx = context.Background()
 	}
 	resetDeadline := interruptOnCancel(ctx, c.conn.SetReadDeadline)
-	packet, err := c.readFrame()
+	packet, err := ReadPacket(c.conn, c.headerSize, c.maxSize)
 	resetDeadline()
 	if err != nil && ctx.Err() != nil {
 		return Packet{}, ctx.Err()
@@ -308,14 +200,7 @@ func (c *Client) Read(ctx context.Context) (Packet, error) {
 	return packet, err
 }
 
-func (c *Client) readFrame() (Packet, error) {
-	packet, err := ReadFrame(c.conn, c.maxSize)
-	if err == nil && packet.Type == NotiPartyRealtimeInfo {
-		c.applyPartyRealtimeInfo(packet.Body)
-	}
-	return packet, err
-}
-
+// Run reads packets until the connection ends or onPacket fails.
 func (c *Client) Run(ctx context.Context, onPacket func(Packet) error) error {
 	if c == nil || c.conn == nil {
 		return fmt.Errorf("cn90 client is closed")
@@ -326,7 +211,7 @@ func (c *Client) Run(ctx context.Context, onPacket func(Packet) error) error {
 	resetDeadline := interruptOnCancel(ctx, c.conn.SetReadDeadline)
 	defer resetDeadline()
 	for {
-		packet, err := c.readFrame()
+		packet, err := c.Read(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -341,7 +226,7 @@ func (c *Client) Run(ctx context.Context, onPacket func(Packet) error) error {
 	}
 }
 
-func (c *Client) send(ctx context.Context, frame []byte) error {
+func (c *Client) send(ctx context.Context, typ uint16, body []byte) error {
 	if c == nil || c.conn == nil {
 		return fmt.Errorf("cn90 client is closed")
 	}
@@ -360,6 +245,8 @@ func (c *Client) send(ctx context.Context, frame []byte) error {
 		return ctx.Err()
 	default:
 	}
+	c.sequence++
+	frame := EncodeLegacy(typ, body, c.sequence)
 	writeTimeout := c.writeTimeout
 	if writeTimeout <= 0 {
 		writeTimeout = defaultWriteTimeout

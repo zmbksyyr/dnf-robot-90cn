@@ -37,7 +37,6 @@ type RuntimeBundle struct {
 	AdminToken     string
 	TownMaps       []shared.MapCatalogItem
 	FollowAccounts FollowAccountLocator
-	NoticeStock    ServerNoticeStock
 }
 
 // Close releases the adapter-owned resources in shutdown order.
@@ -177,16 +176,15 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	if replaced > 0 {
 		foundationlog.Robotf("CN90_LOADOUT_RECONCILED robots=%d\n", replaced)
 	}
-	transport, err := NewRuntimeTransport(opts.ConnectIP, gamePort)
+	transport, err := NewRuntimeTransport(opts.ConnectIP, gamePort, NewAccountBinder(adminAddress, adminToken))
 	if err != nil {
 		_ = loadouts.Close()
 		return bundle, fmt.Errorf("transport: %w", err)
 	}
-	noticeStock := NewServerNoticeStock(databasePath, catalogs.Equipment)
-	transport.SetServerNoticeStock(noticeStock)
 	logStartupStage("transport")
 	address := net.JoinHostPort(opts.ConnectIP, fmt.Sprint(gamePort))
 	names := catalog.NameTemplates(opts.Paths.Templates)
+	binder := NewAccountBinder(adminAddress, adminToken)
 
 	bundle.Inventory = inventory
 	bundle.State = state
@@ -199,9 +197,8 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	bundle.AdminToken = adminToken
 	bundle.TownMaps = catalogs.TownMaps
 	bundle.FollowAccounts = FollowAccountLocator{DatabasePath: databasePath}
-	bundle.NoticeStock = noticeStock
 	bundle.Creator = RobotCreator{
-		Provisioner: Provisioner{Address: address},
+		Provisioner: Provisioner{Address: address, Binder: binder},
 		BatchStore:  state, IdentityStore: state, RobotCatalog: state,
 		Config: opts.Config, Names: names, Maps: catalogs.TownMaps, JobGrows: catalogs.JobGrows,
 		AccountPrefix: prefix, IDStart: opts.Config.RobotUIDStart,
@@ -209,7 +206,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 		Loadouts: loadouts, Profiles: loadouts,
 	}
 	bundle.Cleaner = RobotCleaner{
-		Protocol: CharacterDeleter{Address: address},
+		Protocol: CharacterDeleter{Address: address, Binder: binder},
 		State:    state, Sessions: transport,
 	}
 	bundle.Purger = SQLiteRobotPurger{
@@ -223,12 +220,13 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 }
 
 // NewRuntimeTransport dials the 90CN game server for both actions and session
-// lifecycle. The same transport implements both scheduler ports.
-func NewRuntimeTransport(connectIP string, gamePort int) (*ActionTransport, error) {
+// lifecycle. The same transport implements both scheduler ports. The binder
+// registers each robot account for this process id before dialing.
+func NewRuntimeTransport(connectIP string, gamePort int, binder *AccountBinder) (*ActionTransport, error) {
 	if strings.TrimSpace(connectIP) == "" || gamePort <= 0 {
 		return nil, fmt.Errorf("90CN game address is incomplete")
 	}
-	factory := SessionFactory{Address: net.JoinHostPort(connectIP, fmt.Sprint(gamePort))}
+	factory := SessionFactory{Address: net.JoinHostPort(connectIP, fmt.Sprint(gamePort)), Binder: binder}
 	return NewActionTransport(factory), nil
 }
 

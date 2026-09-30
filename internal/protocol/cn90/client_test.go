@@ -4,366 +4,162 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
+	"io"
 	"net"
 	"testing"
 	"time"
 )
 
-type partialWriteConn struct {
-	net.Conn
-	buffer bytes.Buffer
-	limit  int
-}
-
-func (c *partialWriteConn) Write(data []byte) (int, error) {
-	if len(data) > c.limit {
-		data = data[:c.limit]
-	}
-	return c.buffer.Write(data)
-}
-
-func (c *partialWriteConn) SetWriteDeadline(time.Time) error { return nil }
-
-type observedConn struct {
-	net.Conn
-	readStarted  chan struct{}
-	writeStarted chan struct{}
-}
-
-func (c *observedConn) Read(data []byte) (int, error) {
-	if c.readStarted != nil {
-		select {
-		case c.readStarted <- struct{}{}:
-		default:
-		}
-	}
-	return c.Conn.Read(data)
-}
-
-func (c *observedConn) Write(data []byte) (int, error) {
-	if c.writeStarted != nil {
-		select {
-		case c.writeStarted <- struct{}{}:
-		default:
-		}
-	}
-	return c.Conn.Write(data)
-}
-
-func TestClientSendWritesCompleteFrameAfterShortWrites(t *testing.T) {
-	conn := &partialWriteConn{limit: 3}
-	client := NewClient(conn)
-	want := Encode(1, CmdCheckConnection, nil)
-	if err := client.CheckConnection(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(conn.buffer.Bytes(), want) {
-		t.Fatalf("written frame = %x, want %x", conn.buffer.Bytes(), want)
-	}
-}
-
-func TestClientCanceledWriteDoesNotPoisonNextSend(t *testing.T) {
+// TestCompleteHandshakeBoundSession drives the account-bound exchange: the
+// server sends CHANNELINFO first, expects the 590-byte endpoint request, then
+// answers with the endpoint success.
+func TestCompleteHandshakeBoundSession(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
 	defer serverConn.Close()
-	writeStarted := make(chan struct{}, 1)
-	client := NewClient(&observedConn{Conn: clientConn, writeStarted: writeStarted})
+	client := NewClient(clientConn)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() { result <- client.CheckConnection(ctx) }()
-	<-writeStarted
-	cancel()
-	if err := <-result; err != context.Canceled {
-		t.Fatalf("canceled send error = %v, want %v", err, context.Canceled)
+	type observation struct {
+		typ     uint16
+		bodyLen int
 	}
-
-	read := make(chan error, 1)
+	observed := make(chan observation, 1)
 	go func() {
-		packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
-		if err == nil && packet.Type != CmdCheckConnection {
-			err = fmt.Errorf("packet type = 0x%04X", packet.Type)
+		_, _ = serverConn.Write(buildServerUpper(ClassNotice, NotiChannelInfo, []byte{1, 2, 3, 4}, 0))
+		header := make([]byte, legacyHeaderSize)
+		if _, err := io.ReadFull(serverConn, header); err != nil {
+			return
 		}
-		read <- err
+		length := int(binary.LittleEndian.Uint32(header[3:7]))
+		body := make([]byte, length-legacyHeaderSize)
+		if _, err := io.ReadFull(serverConn, body); err != nil {
+			return
+		}
+		observed <- observation{typ: binary.LittleEndian.Uint16(header[1:3]), bodyLen: len(body)}
+		success := make([]byte, 6)
+		success[0] = 1
+		_, _ = serverConn.Write(buildServerUpper(ClassCommand, ResponseEndpoint, success, 1))
 	}()
-	if err := client.CheckConnection(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-read; err != nil {
-		t.Fatal(err)
-	}
-}
 
-func TestClientCanceledReadDoesNotPoisonNextRead(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-	readStarted := make(chan struct{}, 1)
-	client := NewClient(&observedConn{Conn: clientConn, readStarted: readStarted})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() {
-		_, err := client.Read(ctx)
-		result <- err
-	}()
-	<-readStarted
-	cancel()
-	if err := <-result; err != context.Canceled {
-		t.Fatalf("canceled read error = %v, want %v", err, context.Canceled)
-	}
-
-	written := make(chan error, 1)
-	go func() {
-		_, err := serverConn.Write(EncodeResponse(0, NotiUserArea, nil))
-		written <- err
-	}()
-	packet, err := client.Read(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	packet, err := client.CompleteHandshake(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if packet.Type != NotiUserArea {
-		t.Fatalf("packet type = 0x%04X", packet.Type)
+	if packet.Type != ResponseEndpoint || !EndpointResultOK(packet.Body) {
+		t.Fatalf("handshake packet = %+v", packet)
 	}
-	if err := <-written; err != nil {
-		t.Fatal(err)
+	select {
+	case got := <-observed:
+		if got.typ != CmdEndpointRequest || got.bodyLen != EndpointRequestSize {
+			t.Fatalf("endpoint request = type %d len %d", got.typ, got.bodyLen)
+		}
+	case <-ctx.Done():
+		t.Fatal("server did not observe the endpoint request")
 	}
 }
 
-func TestClientLoginWritesProtocolPacket(t *testing.T) {
+// TestCompleteHandshakeUnboundSession covers the fallback-account path where
+// the server answers immediately without a CHANNELINFO notice.
+func TestCompleteHandshakeUnboundSession(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
 	defer serverConn.Close()
 	client := NewClient(clientConn)
-	done := make(chan error, 1)
+
 	go func() {
-		packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
-		if err == nil && (packet.Type != CmdLogin || string(packet.Body[4:9]) != "robot") {
-			err = fmt.Errorf("unexpected packet: %+v", packet)
-		}
-		done <- err
+		success := []byte{1}
+		_, _ = serverConn.Write(buildServerUpper(ClassCommand, ResponseEndpoint, success, 0))
 	}()
-	if err := client.Login(context.Background(), "robot", "hash"); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := client.CompleteHandshake(ctx); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestClientMethodsUseCN90Widths(t *testing.T) {
+func TestClientMethodsWriteLegacyFrames(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
 	defer serverConn.Close()
 	client := NewClient(clientConn)
-	done := make(chan error, 1)
+
+	type exchange struct {
+		typ  uint16
+		body []byte
+	}
+	received := make(chan exchange, 8)
 	go func() {
-		for i := 0; i < 2; i++ {
-			packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
-			if err != nil {
-				done <- err
+		for i := 0; i < 8; i++ {
+			header := make([]byte, legacyHeaderSize)
+			if _, err := io.ReadFull(serverConn, header); err != nil {
 				return
 			}
-			if i == 0 && (packet.Type != CmdSelectCharacter || len(packet.Body) != 2) {
-				done <- fmt.Errorf("select packet = %+v", packet)
+			length := int(binary.LittleEndian.Uint32(header[3:7]))
+			body := make([]byte, length-legacyHeaderSize)
+			if _, err := io.ReadFull(serverConn, body); err != nil {
 				return
 			}
-			if i == 1 && (packet.Type != CmdMoveMap || len(packet.Body) != 64) {
-				done <- fmt.Errorf("move packet = %+v", packet)
-				return
-			}
+			received <- exchange{typ: binary.LittleEndian.Uint16(header[1:3]), body: body}
 		}
-		done <- nil
 	}()
-	if err := client.SelectCharacter(context.Background(), 2); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.RequestRoster(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.MoveMap(context.Background(), MoveMapRequest{}); err != nil {
+	if err := client.SelectCharacter(ctx, 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-done; err != nil {
+	if err := client.ProgressInitialTown(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if err := client.SetUserArea(ctx, 38, 1, 100, 200, 5); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SetUserPosition(ctx, 100, 200, 5, 100); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.CheckConnection(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.CreateCharacter(ctx, 3, []byte{0xB5, 0xC4}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Exit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []uint16{CmdGetUserInfo, CmdSelectCharacter, CmdChangeTutorial, CmdSetUserArea, CmdSetUserPosition, CmdCheckConnection, CmdCreateCharacter, CmdExit}
+	for i, typ := range want {
+		select {
+		case got := <-received:
+			if got.typ != typ {
+				t.Fatalf("frame %d type = %d want %d", i, got.typ, typ)
+			}
+			if i == 1 {
+				if len(got.body) != 16 || binary.LittleEndian.Uint32(got.body) != 2 {
+					t.Fatalf("select body = %X", got.body)
+				}
+			}
+			if i == 3 {
+				if len(got.body) != 16 || got.body[0] != 38 || got.body[1] != 1 {
+					t.Fatalf("area body = %X", got.body)
+				}
+			}
+		case <-ctx.Done():
+			t.Fatalf("frame %d was not received", i)
+		}
 	}
 }
 
-func TestClientDeleteCharacterWritesVerifiedPacket(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-	client := NewClient(clientConn)
-	done := make(chan error, 1)
-	go func() {
-		packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
-		if err == nil && (packet.Type != CmdDeleteCharacter || len(packet.Body) != 13 || binary.LittleEndian.Uint16(packet.Body[:2]) != 2 || string(packet.Body[6:]) != "robot01") {
-			err = fmt.Errorf("delete packet = %+v", packet)
-		}
-		done <- err
-	}()
-	if err := client.DeleteCharacter(context.Background(), 2, []byte("robot01")); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestClientCharacterRosterRequestWritesGetUserInfoModeTwo(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-	client := NewClient(clientConn)
-	done := make(chan error, 1)
-	go func() {
-		packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
-		if err == nil && (packet.Type != CmdGetUserInfo || string(packet.Body) != string([]byte{0, 0, 2})) {
-			err = fmt.Errorf("roster request packet = %+v", packet)
-		}
-		done <- err
-	}()
-	if err := client.RequestCharacterRoster(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestClientVerifiedDungeonPrimitives(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-	client := NewClient(clientConn)
-	done := make(chan error, 1)
-	go func() {
-		want := []struct {
-			typ uint16
-			len int
-		}{
-			{CmdEnterSelectDungeon, 4},
-			{CmdSelectDungeon, 15},
-			{CmdChangeTutorialFlag, 6},
-			{CmdFinishLoading, 0},
-		}
-		for _, item := range want {
-			packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
-			if err != nil {
-				done <- err
-				return
-			}
-			if packet.Type != item.typ || len(packet.Body) != item.len {
-				done <- fmt.Errorf("dungeon packet type=0x%04X body=%d want type=0x%04X body=%d", packet.Type, len(packet.Body), item.typ, item.len)
-				return
-			}
-		}
-		done <- nil
-	}()
-	if err := client.EnterSelectDungeon(context.Background(), 144); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.SelectDungeon(context.Background(), 144, 0, 0, 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.ChangeTutorialFlag(context.Background(), 30, 1); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.FinishLoading(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestClientVerifiedQuestPrimitives(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-	client := NewClient(clientConn)
-	done := make(chan error, 1)
-	go func() {
-		want := []struct {
-			typ uint16
-			len int
-		}{
-			{CmdAcceptQuest, 4},
-			{CmdSetQuestTrigger, 6},
-			{CmdFinishQuest, 10},
-		}
-		for _, item := range want {
-			packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
-			if err != nil {
-				done <- err
-				return
-			}
-			if packet.Type != item.typ || len(packet.Body) != item.len {
-				done <- fmt.Errorf("quest packet type=0x%04X body=%d want type=0x%04X body=%d", packet.Type, len(packet.Body), item.typ, item.len)
-				return
-			}
-		}
-		done <- nil
-	}()
-	if err := client.AcceptQuest(context.Background(), 1016); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.SetQuestTrigger(context.Background(), 1016, 2, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.FinishQuest(context.Background(), 1016, -1, 1); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestClientPartyProbePrimitives(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-	client := NewClient(clientConn)
-	done := make(chan error, 1)
-	go func() {
-		want := []struct {
-			typ uint16
-			len int
-		}{
-			{CmdSetPartyInfo, 12},
-			{CmdRequestPeer, 7},
-			{CmdResponsePeer, 7},
-			{CmdLeaveParty, 0},
-			{CmdWalkoutPartyMember, 1},
-		}
-		for _, item := range want {
-			packet, err := ReadRequestFrame(serverConn, DefaultMaxPacketLength)
-			if err != nil {
-				done <- err
-				return
-			}
-			if packet.Type != item.typ || len(packet.Body) != item.len {
-				done <- fmt.Errorf("party packet type=0x%04X body=%d want type=0x%04X body=%d", packet.Type, len(packet.Body), item.typ, item.len)
-				return
-			}
-		}
-		done <- nil
-	}()
-	settings := []byte{0, 0, 4, 0, 0, 0, 0, 5, 0, 0, 0xFF, 0xFF}
-	if err := client.SetPartyInfo(context.Background(), settings); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.RequestPeer(context.Background(), 12, 0, 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.AcceptPartyInvite(context.Background(), 12, 34); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.LeaveParty(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.WalkoutPartyMember(context.Background(), 2); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
+func TestReadPacketRejectsBrokenHeader(t *testing.T) {
+	frame := buildServerUpper(ClassCommand, ResponseSelect, []byte{1}, 1)
+	binary.LittleEndian.PutUint32(frame[3:7], 4)
+	if _, err := ReadPacket(bytes.NewReader(frame), upperHeaderSize16, DefaultMaxPacketSize); err == nil {
+		t.Fatal("short declared length was accepted")
 	}
 }

@@ -16,6 +16,7 @@ import (
 type Provisioner struct {
 	Address string
 	Timeout time.Duration
+	Binder  *AccountBinder
 }
 
 type AccountRosterConflictError struct {
@@ -68,21 +69,18 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.Timeout)
 	defer cancel()
-	client, err := protocol.Dial(ctx, p.Address)
+	client, first, err := dialBoundSession(ctx, p.Binder, p.Address, request.AccountName)
 	if err != nil {
 		return result, err
 	}
 	defer client.Close()
-	if err := client.Login(ctx, request.AccountName, request.PasswordHash); err != nil {
-		return result, err
-	}
-	if err := waitFor(ctx, client, protocol.CmdLogin, 1); err != nil {
+	if _, err := client.CompleteHandshakeFrom(ctx, first); err != nil {
 		return result, fmt.Errorf("90CN login: %w", err)
 	}
-	if err := client.RequestCharacterRoster(ctx); err != nil {
+	if err := client.RequestRoster(ctx); err != nil {
 		return result, fmt.Errorf("90CN request character roster: %w", err)
 	}
-	rosterPacket, err := waitPacket(ctx, client, protocol.NotiCharacterList, 0)
+	rosterPacket, err := waitUpperPacket(ctx, client, protocol.ClassNotice, protocol.NotiCharacterList)
 	if err != nil {
 		return result, fmt.Errorf("90CN character roster: %w", err)
 	}
@@ -118,52 +116,50 @@ func (p Provisioner) ProvisionCharacter(ctx context.Context, request shared.Prov
 			}
 			return result, err
 		}
-		if len(name) < 2 || len(name) > 18 {
+		if len(name) < 2 || len(name) > 30 {
 			if index < len(candidates)-1 {
 				continue
 			}
-			return result, fmt.Errorf("90CN character name candidates must be 2..18 GBK bytes")
+			return result, fmt.Errorf("90CN character name candidates must be 2..30 GBK bytes")
 		}
 		if err := client.CheckCharacterName(ctx, name); err != nil {
 			return result, fmt.Errorf("90CN check character name: %w", err)
 		}
-		nameAck, err := waitPacketRaw(ctx, client, protocol.CmdCheckCharacterName, 1)
+		nameAck, err := waitUpperPacket(ctx, client, protocol.ClassCommand, protocol.ResponseCheckName)
 		if err != nil {
 			return result, fmt.Errorf("90CN check character name: %w", err)
 		}
-		if !commandAccepted(nameAck.Body) {
-			code := commandErrorCode(nameAck.Body)
-			if (code == 24 || code == 159) && index < len(candidates)-1 {
+		if ok, code := protocol.CheckNameResult(nameAck.Body); !ok {
+			// 0x00 marks a duplicate, 0x14 a parse/query failure.
+			if (code == 0x00 || code == 0x14) && index < len(candidates)-1 {
 				continue
 			}
-			return result, fmt.Errorf("90CN check character name: command 0x%04X rejected with body %v", protocol.CmdCheckCharacterName, nameAck.Body)
+			return result, fmt.Errorf("90CN check character name rejected with code 0x%02X", code)
 		}
 		if err := client.CreateCharacter(ctx, byte(request.Job), name); err != nil {
 			return result, err
 		}
-		ack, err := waitPacketRaw(ctx, client, protocol.CmdCreateCharacter, 1)
+		ack, err := waitUpperPacket(ctx, client, protocol.ClassCommand, protocol.ResponseCreate)
 		if err != nil {
 			return result, fmt.Errorf("90CN create character: %w", err)
 		}
-		if commandAccepted(ack.Body) {
-			createdName = candidate
-			break
+		if _, code, err := protocol.CreateResultCharacterID(ack.Body); err != nil {
+			return result, fmt.Errorf("90CN create character: %w", err)
+		} else if code != 0 {
+			// 0x04 is the generic create rejection; keep the same fallback for
+			// the race between the availability check and creation.
+			if code == 0x04 && index < len(candidates)-1 {
+				continue
+			}
+			return result, fmt.Errorf("90CN create character rejected with code 0x%02X", code)
 		}
-		code := commandErrorCode(ack.Body)
-		// Keep the same fallback for the race between availability check and
-		// creation, where another session may reserve the requested name.
-		// Code 4 is 90CN's generic persistence failure. Soft-deleted names
-		// remain under a unique index even though CHECK_NAME reports them as
-		// available, so retry with a fresh protocol name.
-		if (code == 4 || code == 24 || code == 159) && index < len(candidates)-1 {
-			continue
-		}
-		return result, fmt.Errorf("90CN create character: command 0x%04X rejected with body %v", protocol.CmdCreateCharacter, ack.Body)
+		createdName = candidate
+		break
 	}
 	if createdName == "" {
 		return result, fmt.Errorf("90CN create character exhausted name candidates")
 	}
-	packet, err := waitPacket(ctx, client, protocol.NotiCharacterList, 0)
+	packet, err := waitUpperPacket(ctx, client, protocol.ClassNotice, protocol.NotiCharacterList)
 	if err != nil {
 		return result, fmt.Errorf("90CN character list refresh: %w", err)
 	}
@@ -248,52 +244,6 @@ func freshCharacterName(base string, seed uint64) string {
 		prefix.WriteString("旅人")
 	}
 	return prefix.String() + suffix
-}
-
-func commandAccepted(body []byte) bool {
-	return len(body) > 0 && body[0] == 1
-}
-
-func commandErrorCode(body []byte) byte {
-	if len(body) == 1 {
-		if body[0] != 1 {
-			return body[0]
-		}
-		return 0
-	}
-	if len(body) >= 2 && body[0] == 0 {
-		return body[1]
-	}
-	return 0
-}
-
-func waitFor(ctx context.Context, client *protocol.Client, typ uint16, command byte) error {
-	_, err := waitPacket(ctx, client, typ, command)
-	return err
-}
-
-func waitPacket(ctx context.Context, client *protocol.Client, typ uint16, command byte) (protocol.Packet, error) {
-	packet, err := waitPacketRaw(ctx, client, typ, command)
-	if err != nil {
-		return protocol.Packet{}, err
-	}
-	if command == 1 && !commandAccepted(packet.Body) {
-		return protocol.Packet{}, fmt.Errorf("90CN command 0x%04X rejected with body %v", typ, packet.Body)
-	}
-	return packet, nil
-}
-
-func waitPacketRaw(ctx context.Context, client *protocol.Client, typ uint16, command byte) (protocol.Packet, error) {
-	for {
-		packet, err := client.Read(ctx)
-		if err != nil {
-			return protocol.Packet{}, err
-		}
-		if packet.Type != typ || packet.Command != command {
-			continue
-		}
-		return packet, nil
-	}
 }
 
 var _ shared.CharacterProvisioner = Provisioner{}

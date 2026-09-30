@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"robot/internal/foundation/charset"
 	"robot/internal/foundation/lockhub"
 	foundationlog "robot/internal/foundation/log"
 	protocol "robot/internal/protocol/cn90"
@@ -19,17 +18,23 @@ import (
 type SessionFactory struct {
 	Address string
 	Timeout time.Duration
+	// Binder registers the robot process id with the account the DNF90
+	// launcher would normally launch. It may be nil when the deployment only
+	// uses the server fallback account.
+	Binder *AccountBinder
 }
 
 const sessionKeepaliveInterval = 5 * time.Second
 const townAreaTransitionTimeout = 5 * time.Second
 
-// storeAreaTransitionTimeout bounds a disjoint-store area transition. The store
-// slot is held for the whole attempt and the server may answer the area
-// notification late during an online burst, so it gets a wider window than
-// ordinary movement.
+// storeAreaTransitionTimeout bounds the town/area transition that a store
+// placement uses. Store slots stay held during the attempt and the server may
+// answer the area notification late during an online burst.
 const storeAreaTransitionTimeout = 12 * time.Second
-const guildInviteQueueSize = 4
+
+// initialTownRouteTimeout bounds the wait for the initial town transition
+// (class0/op24) after the op143 checkpoint is sent.
+const initialTownRouteTimeout = 15 * time.Second
 
 // sessionKeepaliveAckTimeout is how long the server may stop answering
 // CHECK_CONNECTION before the session is treated as half-open. Enforcement
@@ -42,28 +47,14 @@ type Session struct {
 	cancel             context.CancelFunc
 	done               chan struct{}
 	keepaliveDone      chan struct{}
-	guildInviteEvents  chan protocol.GuildInvite
 	packetObserverLock lockhub.RWLocker
 	packetObservers    []*packetObserverRegistration
 	terminationGuard   lockhub.Locker
 	termination        func()
-	followerGuard      lockhub.Locker
-	followerCancel     context.CancelFunc
-	followerEvents     chan protocol.Packet
-	followerDone       chan struct{}
-	followerStarting   bool
-	selfUID            uint16
-	partyID            uint16
-	partyLeaderUID     uint16
-	partyActive        bool
+	selfCharacterID    uint16
 	keepaliveGuard     lockhub.Locker
 	lastCheckAck       time.Time
 	checkAckSeen       bool
-	storeGuard         lockhub.Locker
-	store              expertJobStoreState
-	noticeGuard        lockhub.Locker
-	notice             serverNoticeState
-	noticeObserver     func(shared.ServerNoticeEvent)
 }
 
 type packetObserverRegistration struct {
@@ -83,7 +74,14 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 	}
 	openCtx, cancelOpen := context.WithTimeout(ctx, timeout)
 	defer cancelOpen()
-	client, err := protocol.Dial(openCtx, f.Address)
+
+	// The DNF90 server binds a connection to the account registered for the
+	// TCP owner process id, resolved at accept time. Registration, dial and
+	// the first inbound packet therefore form one critical section: without
+	// the first packet the accept lookup may not have run yet, and a later
+	// registration for the next robot would leak into this connection.
+	var first *protocol.Packet
+	client, err := f.dialBound(openCtx, request.AccountName, &first)
 	if err != nil {
 		return nil, err
 	}
@@ -93,65 +91,64 @@ func (f SessionFactory) OpenSession(ctx context.Context, request shared.OpenSess
 			_ = client.Close()
 		}
 	}()
-	if err := client.Login(openCtx, request.AccountName, request.PasswordHash); err != nil {
+
+	if _, err := client.CompleteHandshakeFrom(openCtx, first); err != nil {
+		return nil, fmt.Errorf("90CN login: %w", err)
+	}
+	if err := client.RequestRoster(openCtx); err != nil {
 		return nil, err
 	}
-	if err := waitFor(openCtx, client, protocol.CmdLogin, 1); err != nil {
-		return nil, fmt.Errorf("90CN login: %w", err)
+	if _, err := waitUpperPacket(openCtx, client, protocol.ClassNotice, protocol.NotiCharacterList); err != nil {
+		return nil, fmt.Errorf("90CN roster: %w", err)
 	}
 	if err := client.SelectCharacter(openCtx, request.CharacterSlot); err != nil {
 		return nil, err
 	}
-	selectPacket, err := waitPacket(openCtx, client, protocol.CmdSelectCharacter, 1)
+	selectPacket, err := waitUpperPacket(openCtx, client, protocol.ClassCommand, protocol.ResponseSelect)
 	if err != nil {
 		return nil, fmt.Errorf("90CN select character: %w", err)
 	}
-	selfUID, identityErr := protocol.SelectCharacterUID(selectPacket.Body)
-	if request.EnablePartyDungeonFollower && identityErr != nil {
-		return nil, fmt.Errorf("90CN follower identity: %w", identityErr)
+	selfCharacterID, err := protocol.SelectResultCharacterID(selectPacket.Body)
+	if err != nil {
+		return nil, fmt.Errorf("90CN select character: %w", err)
 	}
-	// Ordinary sessions only need the identity for expert-job store ownership;
-	// SelectCharacterUID already reports zero when the projection is missing.
-	if request.EnablePartyDungeonFollower {
-		client.SetPartyIdentity(selfUID)
-		if err := client.RegisterUDPEndpoint(openCtx); err != nil {
-			return nil, err
-		}
-	}
-	if err := client.CheckConnection(openCtx); err != nil {
+	// A completed character must acknowledge the initial town checkpoint so
+	// the server commits the town actor and transition before op35/op36 are
+	// owned by the scene.
+	if err := client.ProgressInitialTown(openCtx); err != nil {
 		return nil, err
 	}
-	if err := waitFor(openCtx, client, protocol.CmdCheckConnection, 1); err != nil {
-		return nil, fmt.Errorf("90CN session readiness: %w", err)
+	if _, err := waitUpperPacket(openCtx, client, protocol.ClassNotice, protocol.NotiSceneTransition); err != nil {
+		return nil, fmt.Errorf("90CN initial town: %w", err)
 	}
 	if request.InitialTownKnown {
 		if err := initializeTownPresence(openCtx, client, request); err != nil {
-			return nil, err
+			// The persisted login location is owned by the server. A spawn
+			// request that does not match it is rejected server-side; keep the
+			// session online instead of failing the whole login.
+			foundationlog.Robotf("CN90_TOWN_PRESENCE_DEFERRED err=%v\n", err)
 		}
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	session := &Session{
 		client: client, cancel: cancel, done: make(chan struct{}), keepaliveDone: make(chan struct{}),
-		guildInviteEvents: make(chan protocol.GuildInvite, guildInviteQueueSize), selfUID: selfUID,
+		selfCharacterID: selfCharacterID,
 	}
 	go session.drain(runCtx)
 	go session.keepalive(runCtx)
-	if request.EnablePartyDungeonFollower {
-		go session.prepareOptionalDungeonFollower(runCtx)
-	}
 	closeOnError = false
 	return session, nil
 }
 
-func (s *Session) prepareOptionalDungeonFollower(ctx context.Context) {
-	if err := s.EnableDungeonFollower(ctx); err != nil {
-		select {
-		case <-s.Done():
-			return
-		default:
-			foundationlog.Robotf("CN90_PARTY_PREPARE_FAILED uid=%d err=%v\n", s.selfUID, err)
-		}
+// dialBound registers the account for this process id, dials the game channel
+// and returns the connection plus the first inbound packet.
+func (f SessionFactory) dialBound(ctx context.Context, accountName string, first **protocol.Packet) (*protocol.Client, error) {
+	client, packet, err := dialBoundSession(ctx, f.Binder, f.Address, accountName)
+	if err != nil {
+		return nil, err
 	}
+	*first = packet
+	return client, nil
 }
 
 func initializeTownPresence(ctx context.Context, client *protocol.Client, request shared.OpenSessionRequest) error {
@@ -161,7 +158,7 @@ func initializeTownPresence(ctx context.Context, client *protocol.Client, reques
 	if request.InitialX < math.MinInt16 || request.InitialX > math.MaxInt16 || request.InitialY < math.MinInt16 || request.InitialY > math.MaxInt16 {
 		return fmt.Errorf("90CN initial town position out of range: %d,%d", request.InitialX, request.InitialY)
 	}
-	if err := client.SetUserArea(ctx, byte(request.InitialVillage), byte(request.InitialArea), int16(request.InitialX), int16(request.InitialY)); err != nil {
+	if err := client.SetUserArea(ctx, byte(request.InitialVillage), byte(request.InitialArea), int16(request.InitialX), int16(request.InitialY), 5); err != nil {
 		return fmt.Errorf("90CN enter town: %w", err)
 	}
 	for {
@@ -169,7 +166,7 @@ func initializeTownPresence(ctx context.Context, client *protocol.Client, reques
 		if err != nil {
 			return fmt.Errorf("90CN enter town confirmation: %w", err)
 		}
-		if packet.Type != protocol.NotiUserArea || len(packet.Body) < 8 {
+		if packet.Class != protocol.ClassNotice || packet.Type != protocol.NotiUserArea || len(packet.Body) < 8 {
 			continue
 		}
 		if int(packet.Body[2]) != request.InitialVillage || int(packet.Body[3]) != request.InitialArea ||
@@ -178,6 +175,19 @@ func initializeTownPresence(ctx context.Context, client *protocol.Client, reques
 			continue
 		}
 		return nil
+	}
+}
+
+// waitUpperPacket reads packets until one matches the class and type.
+func waitUpperPacket(ctx context.Context, client *protocol.Client, class byte, typ uint16) (protocol.Packet, error) {
+	for {
+		packet, err := client.Read(ctx)
+		if err != nil {
+			return protocol.Packet{}, err
+		}
+		if packet.Class == class && packet.Type == typ {
+			return packet, nil
+		}
 	}
 }
 
@@ -199,7 +209,7 @@ func (s *Session) MoveTownArea(ctx context.Context, intent shared.TownAreaMoveIn
 	}
 	confirmed := make(chan struct{}, 1)
 	cleanup := s.setPacketObserver(func(packet protocol.Packet) {
-		if packet.Type != protocol.NotiUserArea || len(packet.Body) < 8 ||
+		if packet.Class != protocol.ClassNotice || packet.Type != protocol.NotiUserArea || len(packet.Body) < 8 ||
 			int(packet.Body[2]) != intent.Village ||
 			int(packet.Body[3]) != intent.Area ||
 			int16(binary.LittleEndian.Uint16(packet.Body[4:6])) != intent.X ||
@@ -212,7 +222,7 @@ func (s *Session) MoveTownArea(ctx context.Context, intent shared.TownAreaMoveIn
 		}
 	})
 	defer cleanup()
-	if err := s.client.SetUserArea(ctx, byte(intent.Village), byte(intent.Area), intent.X, intent.Y); err != nil {
+	if err := s.client.SetUserArea(ctx, byte(intent.Village), byte(intent.Area), intent.X, intent.Y, 5); err != nil {
 		return err
 	}
 	select {
@@ -225,41 +235,30 @@ func (s *Session) MoveTownArea(ctx context.Context, intent shared.TownAreaMoveIn
 	}
 }
 
+// Shout is not implemented for 90CN yet: the verified outbound chat mode and
+// recipient encoding have not been established for this client profile.
 func (s *Session) Shout(ctx context.Context, intent shared.ShoutIntent) error {
-	mode := byte(0)
-	switch intent.Channel {
-	case shared.ShoutChannelArea:
-		mode = 3
-	case shared.ShoutChannelParty:
-		return shared.UnsupportedCapabilityError{Backend: BackendID, Operation: shared.CapabilityShout, Reason: "90CN party-recipient message mode is not verified"}
-	case shared.ShoutChannelWorld:
-		return shared.UnsupportedCapabilityError{Backend: BackendID, Operation: shared.CapabilityWorldShout, Reason: "90CN has no verified world-shout protocol mode"}
-	default:
-		return fmt.Errorf("90CN unknown shout channel %q", intent.Channel)
+	return shared.UnsupportedCapabilityError{
+		Backend:   BackendID,
+		Operation: shared.CapabilityShout,
+		Reason:    "90CN chat transport is not implemented yet",
 	}
-	message, err := charset.EncodeGBKString(strings.TrimSpace(intent.Message))
-	if err != nil {
-		return err
-	}
-	return s.client.SendMessage(ctx, mode, 0, 0, message)
 }
 
 func (s *Session) Close() error {
 	if s == nil || s.client == nil {
 		return nil
 	}
+	exitCtx, cancelExit := context.WithTimeout(context.Background(), 2*time.Second)
+	_ = s.client.Exit(exitCtx)
+	cancelExit()
 	if s.cancel != nil {
 		s.cancel()
 	}
-	// Cancel the follower before closing the socket. Closing the socket is
-	// still done before waiting so a worker blocked in a protocol write can
-	// leave promptly.
-	s.stopDungeonFollower(false)
 	err := s.client.Close()
 	if s.done != nil {
 		<-s.done
 	}
-	s.stopDungeonFollower(true)
 	if s.keepaliveDone != nil {
 		<-s.keepaliveDone
 	}
@@ -307,11 +306,10 @@ func (s *Session) signalTermination() {
 	}
 }
 
-// setPacketObserver is intentionally private to the 90CN adapter. It gives a
-// future verified dungeon workflow a narrow way to consume packets already
-// owned by the session drain, without exposing raw packets to shared layers.
-// Registrations are additive: overlapping waiters (move, follower preparation,
-// dungeon workflow) must not steal each other's confirmation packets.
+// setPacketObserver is intentionally private to the 90CN adapter. It gives
+// verified workflows a narrow way to consume packets already owned by the
+// session drain without exposing raw packets to shared layers. Registrations
+// are additive: overlapping waiters must not steal each other's packets.
 func (s *Session) setPacketObserver(observer func(protocol.Packet)) func() {
 	if s == nil {
 		return func() {}
@@ -339,48 +337,8 @@ func (s *Session) dispatchPacket(packet protocol.Packet) {
 	if s == nil {
 		return
 	}
-	if packet.Type == protocol.CmdCheckConnection {
+	if packet.Class == protocol.ClassCommand && packet.Type == protocol.ResponseCheckConnection {
 		s.recordCheckAck(time.Now())
-	}
-	s.handleExpertJobStorePacket(packet)
-	s.handleServerNoticePacket(packet)
-	s.followerGuard.Lock()
-	followerEvents := s.followerEvents
-	s.followerGuard.Unlock()
-	if followerEvents != nil {
-		queueFollowerPacket := false
-		switch packet.Type {
-		case protocol.NotiRequestPeer, protocol.NotiPartyInfo:
-			queueFollowerPacket = true
-		case protocol.NotiUserPosition, protocol.NotiUserArea:
-			if len(packet.Body) >= 2 {
-				uid := binary.LittleEndian.Uint16(packet.Body[:2])
-				s.followerGuard.Lock()
-				queueFollowerPacket = s.partyActive && s.partyLeaderUID != 0 && uid == s.partyLeaderUID && uid != s.selfUID
-				s.followerGuard.Unlock()
-			}
-		}
-		if queueFollowerPacket {
-			// Never send from drain. The follower worker owns all writes.
-			select {
-			case followerEvents <- packet:
-			default:
-				// Dropping a party or loading projection would leave the
-				// adapter out of sync while the session still appeared healthy.
-				// End it so the existing scheduler can reconnect cleanly.
-				s.abortFollowerQueue(followerEvents)
-			}
-		}
-	}
-	if packet.Type == protocol.NotiGuildInvite && s.guildInviteEvents != nil {
-		invitation, err := protocol.ParseGuildInvite(packet.Body)
-		if err == nil {
-			select {
-			case s.guildInviteEvents <- invitation:
-			default:
-				s.abort()
-			}
-		}
 	}
 	s.packetObserverLock.RLock()
 	observers := append([]*packetObserverRegistration(nil), s.packetObservers...)
@@ -411,17 +369,9 @@ func (s *Session) keepalive(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-s.guildInviteEvents:
-			replyCtx, cancel := context.WithTimeout(ctx, sessionKeepaliveInterval/2)
-			err := s.client.AcceptGuildInvite(replyCtx)
-			cancel()
-			if err != nil {
-				s.abort()
-				return
-			}
 		case <-ticker.C:
 			if s.keepaliveStalled(time.Now()) {
-				foundationlog.Robotf("CN90_KEEPALIVE_STALLED uid=%d timeout=%s\n", s.selfUID, sessionKeepaliveAckTimeout)
+				foundationlog.Robotf("CN90_KEEPALIVE_STALLED cid=%d timeout=%s\n", s.selfCharacterID, sessionKeepaliveAckTimeout)
 				s.abort()
 				return
 			}

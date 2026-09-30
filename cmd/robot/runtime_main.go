@@ -85,8 +85,6 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	manager.SetBackendStorePolicy(cn90backend.StorePolicy{})
 	manager.SetBackendStoreRuntime(bundle.Transport)
 	manager.SetBackendExpertJobProfessionWriter(cn90backend.ExpertJobProfessionWriter{DatabasePath: bundle.DatabasePath})
-	manager.SetBackendServerNoticeRuntime(bundle.Transport)
-	manager.SetBackendServerNoticeStockWriter(bundle.NoticeStock)
 	manager.SetBackendAccountOnlineChecker(bundle.Transport)
 	manager.SetBackendFollowAccountLocator(bundle.FollowAccounts)
 	manager.SetBackendRobotCreator(info, bundle.Creator)

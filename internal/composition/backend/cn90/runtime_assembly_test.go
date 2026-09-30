@@ -203,13 +203,13 @@ func TestAdminEndpointFollowsInstance(t *testing.T) {
 }
 
 func TestNewRuntimeTransportValidatesAddress(t *testing.T) {
-	if _, err := NewRuntimeTransport("", 0); err == nil {
+	if _, err := NewRuntimeTransport("", 0, nil); err == nil {
 		t.Fatal("empty address was accepted")
 	}
-	if _, err := NewRuntimeTransport("127.0.0.1", 0); err == nil {
+	if _, err := NewRuntimeTransport("127.0.0.1", 0, nil); err == nil {
 		t.Fatal("missing port was accepted")
 	}
-	transport, err := NewRuntimeTransport("127.0.0.1", 7001)
+	transport, err := NewRuntimeTransport("127.0.0.1", 7001, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -20,8 +20,6 @@ type ActionTransport struct {
 	sessions      map[int]shared.RobotSession
 	status        map[int]shared.RuntimeStatus
 	locationKnown map[int]bool
-	noticeStock   ServerNoticeStock
-	notices       noticeHistory
 }
 
 func NewActionTransport(factory ...shared.SessionFactory) *ActionTransport {
@@ -71,7 +69,6 @@ func (t *ActionTransport) Attach(uid int, session shared.RobotSession) error {
 	t.status[uid] = shared.RuntimeStatus{UID: uid, StateName: shared.RuntimeStateRunning, State: 3, RunStartTime: time.Now().Unix()}
 	delete(t.locationKnown, uid)
 	t.mu.Unlock()
-	t.attachServerNoticeObserver(session)
 	if lifecycle, ok := session.(interface{ setTerminationCallback(func()) }); ok {
 		lifecycle.setTerminationCallback(func() { t.reapSession(uid, session) })
 		return nil
@@ -163,45 +160,9 @@ func (t *ActionTransport) RuntimeStatusMap() map[int]shared.RuntimeStatus {
 				status.UptimeSeconds = 0
 			}
 		}
-		if session := t.sessions[uid]; session != nil {
-			if party, ok := session.(interface{ PartyActive() bool }); ok {
-				status.PartyActive = party.PartyActive()
-			}
-			if store, ok := session.(interface {
-				ExpertJobStoreState() (shared.ExpertJobStoreKind, bool, bool, bool, byte)
-			}); ok {
-				kind, sent, directAck, active, lastError := store.ExpertJobStoreState()
-				if kind != shared.ExpertJobStoreNone && (sent || directAck || active || lastError != 0) {
-					status.RobotType = 3
-					switch kind {
-					case shared.ExpertJobStoreDisjoint:
-						status.DisjointCreateSent = sent
-						status.DisjointDirectAck = directAck
-						status.DisjointActive = active
-						status.LastDisjointError = lastError
-					case shared.ExpertJobStoreEnchant:
-						status.EnchantCreateSent = sent
-						status.EnchantDirectAck = directAck
-						status.EnchantActive = active
-						status.LastEnchantError = lastError
-					}
-				}
-			}
-		}
 		out[uid] = status
 	}
 	return out
-}
-
-func (t *ActionTransport) PartyActive(uid int) bool {
-	if t == nil || uid <= 0 {
-		return false
-	}
-	t.mu.RLock()
-	session := t.sessions[uid]
-	t.mu.RUnlock()
-	party, ok := session.(interface{ PartyActive() bool })
-	return ok && party.PartyActive()
 }
 
 func (t *ActionTransport) session(uid int) (shared.RobotSession, error) {
@@ -288,66 +249,20 @@ func (t *ActionTransport) SetAreaFrom(uid int, village, area int, x, y int, from
 	return true
 }
 
-// StartExpertJobStore opens an expert-job stall (disassembler machine or
-// enchanter shop) at the robot's last confirmed position. The server
-// acknowledgement is observed asynchronously by the session and published
-// through RuntimeStatusMap.
+// StartExpertJobStore is not implemented for 90CN yet: the disassembler and
+// enchanter store protocol belongs to a later capability stage.
 func (t *ActionTransport) StartExpertJobStore(uid int, kind shared.ExpertJobStoreKind, cost uint32) bool {
-	session, err := t.session(uid)
-	if err != nil {
-		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s err=%v\n", uid, kind.Name(), err)
-		return false
-	}
-	opener, ok := session.(interface {
-		OpenExpertJobStore(context.Context, shared.ExpertJobStoreKind, uint32, int16, int16, int16) error
-	})
-	if !ok {
-		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=session_unsupported\n", uid, kind.Name())
-		return false
-	}
-	t.mu.RLock()
-	status, known := t.status[uid], t.locationKnown[uid]
-	t.mu.RUnlock()
-	if !known {
-		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=position_unknown\n", uid, kind.Name())
-		return false
-	}
-	if status.X < math.MinInt16 || status.X > math.MaxInt16 || status.Y < math.MinInt16 || status.Y > math.MaxInt16 {
-		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=position_out_of_range x=%d y=%d\n", uid, kind.Name(), status.X, status.Y)
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), expertJobStoreOpenTimeout)
-	defer cancel()
-	if err := opener.OpenExpertJobStore(ctx, kind, cost, int16(status.X), int16(status.Y), 0); err != nil {
-		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s err=%v\n", uid, kind.Name(), err)
-		return false
-	}
-	return true
+	foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=protocol_not_implemented\n", uid, kind.Name())
+	return false
 }
 
-// CloseExpertJobStore asks the server to remove the robot's stall. The server
-// also removes it when the owner session ends; this method exists for a prompt
-// cleanup while the session stays online.
+// CloseExpertJobStore is not implemented for 90CN yet.
 func (t *ActionTransport) CloseExpertJobStore(uid int) bool {
-	session, err := t.session(uid)
-	if err != nil {
-		return false
-	}
-	closer, ok := session.(interface{ CloseExpertJobStore(context.Context) error })
-	if !ok {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), townAreaTransitionTimeout)
-	defer cancel()
-	if err := closer.CloseExpertJobStore(ctx); err != nil {
-		foundationlog.Robotf("[CN90_STORE_CLOSE_FAILED] uid=%d err=%v\n", uid, err)
-		return false
-	}
-	return true
+	return false
 }
 
 // AccountOnline reports whether the transport still holds a game session for
-// uid. The 90CN server keeps account sessions in memory, so the robot's own
+// uid. The DNF90 server keeps account sessions in memory, so the robot's own
 // attachment is the only boundary it can observe; the scheduler's relogin
 // delay still gives the server time to finish its final character save.
 func (t *ActionTransport) AccountOnline(uid int) (bool, error) {

@@ -2,7 +2,6 @@ package cn90
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"sort"
 	"strings"
@@ -133,9 +132,9 @@ func cleanupUIDSelected(uid int, request robotcap.CleanupRequest, wanted map[int
 }
 
 type CharacterDeleter struct {
-	Address      string
-	Timeout      time.Duration
-	PasswordHash string
+	Address string
+	Timeout time.Duration
+	Binder  *AccountBinder
 }
 
 // DeleteCharacter clears the roster of one robot-owned account through the
@@ -154,21 +153,18 @@ func (d CharacterDeleter) DeleteCharacter(ctx context.Context, identity robotsta
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	client, err := protocol.Dial(ctx, d.Address)
+	client, first, err := dialBoundSession(ctx, d.Binder, d.Address, identity.Account)
 	if err != nil {
 		return false, err
 	}
 	defer client.Close()
-	if err := client.Login(ctx, identity.Account, d.PasswordHash); err != nil {
-		return false, err
-	}
-	if err := waitFor(ctx, client, protocol.CmdLogin, 1); err != nil {
+	if _, err := client.CompleteHandshakeFrom(ctx, first); err != nil {
 		return false, fmt.Errorf("90CN delete login: %w", err)
 	}
-	if err := client.RequestCharacterRoster(ctx); err != nil {
+	if err := client.RequestRoster(ctx); err != nil {
 		return false, err
 	}
-	rosterPacket, err := waitPacket(ctx, client, protocol.NotiCharacterList, 0)
+	rosterPacket, err := waitUpperPacket(ctx, client, protocol.ClassNotice, protocol.NotiCharacterList)
 	if err != nil {
 		return false, fmt.Errorf("90CN delete character list: %w", err)
 	}
@@ -198,10 +194,10 @@ func clearRobotAccountRoster(ctx context.Context, client *protocol.Client, roste
 			return err
 		}
 	}
-	if err := client.RequestCharacterRoster(ctx); err != nil {
+	if err := client.RequestRoster(ctx); err != nil {
 		return err
 	}
-	packet, err := waitPacket(ctx, client, protocol.NotiCharacterList, 0)
+	packet, err := waitUpperPacket(ctx, client, protocol.ClassNotice, protocol.NotiCharacterList)
 	if err != nil {
 		return fmt.Errorf("90CN confirm deleted character list: %w", err)
 	}
@@ -227,12 +223,12 @@ func deleteRosterEntry(ctx context.Context, client *protocol.Client, character p
 	if err := client.DeleteCharacter(ctx, character.Slot, name); err != nil {
 		return err
 	}
-	ack, err := waitPacket(ctx, client, protocol.CmdDeleteCharacter, 1)
+	ack, err := waitUpperPacket(ctx, client, protocol.ClassCommand, protocol.ResponseDelete)
 	if err != nil {
 		return fmt.Errorf("90CN delete character: %w", err)
 	}
-	if len(ack.Body) != 4 || ack.Body[0] != 1 || binary.LittleEndian.Uint16(ack.Body[2:4]) != character.Slot {
-		return fmt.Errorf("90CN delete character returned invalid ACK %v", ack.Body)
+	if ok, code := protocol.DeleteResult(ack.Body); !ok {
+		return fmt.Errorf("90CN delete character rejected with code 0x%02X", code)
 	}
 	return nil
 }
