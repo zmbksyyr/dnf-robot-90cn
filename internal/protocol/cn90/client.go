@@ -183,6 +183,21 @@ func (c *Client) CheckCharacterName(ctx context.Context, name []byte) error {
 	return c.send(ctx, CmdCheckCharacterName, body)
 }
 
+// CreateExpertJobStore sends the op598 create request. The {1} / {0,code}
+// acknowledgement is observed by the session, not read here.
+func (c *Client) CreateExpertJobStore(ctx context.Context, kind byte, name []byte, charge uint32, x, y int16, link uint16) error {
+	body, err := ExpertJobStoreCreateBody(kind, name, charge, x, y, link)
+	if err != nil {
+		return err
+	}
+	return c.send(ctx, CmdCreateExpertStore, body)
+}
+
+// CloseExpertJobStore sends the empty op600 close request.
+func (c *Client) CloseExpertJobStore(ctx context.Context) error {
+	return c.send(ctx, CmdCloseExpertStore, nil)
+}
+
 // Read reads one inbound packet with cancellation support.
 func (c *Client) Read(ctx context.Context) (Packet, error) {
 	if c == nil || c.conn == nil {

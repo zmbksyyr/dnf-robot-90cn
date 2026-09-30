@@ -19,6 +19,8 @@ const (
 	CmdSetUserPosition    uint16 = 35
 	CmdSetUserArea        uint16 = 36
 	CmdChangeTutorial     uint16 = 143
+	CmdCreateExpertStore  uint16 = 598
+	CmdCloseExpertStore   uint16 = 600
 	CmdCheckCharacterName uint16 = 692
 	CmdCheckConnection    uint16 = 1276
 )
@@ -35,6 +37,9 @@ const (
 	NotiUserArea            uint16 = 0x0017
 	NotiSceneTransition     uint16 = 24
 	NotiCompletedQuestGate  uint16 = 356
+	NotiExpertStoreCreate   uint16 = 538
+	NotiExpertStoreClose    uint16 = 539
+	NotiExpertStoreUpdate   uint16 = 544
 	ResponseCheckName       uint16 = 692
 	ResponseCheckConnection uint16 = 1276
 )

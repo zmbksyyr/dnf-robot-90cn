@@ -46,6 +46,9 @@ const townAreaTransitionTimeout = 5 * time.Second
 // answer the area notification late during an online burst.
 const storeAreaTransitionTimeout = 12 * time.Second
 
+// expertJobStoreAckTimeout bounds the op598/op600 store acknowledgement wait.
+const expertJobStoreAckTimeout = 8 * time.Second
+
 // initialTownRouteTimeout bounds the wait for the initial town transition
 // (class0/op24) after the op143 checkpoint is sent.
 const initialTownRouteTimeout = 15 * time.Second
@@ -260,6 +263,110 @@ func (s *Session) Shout(ctx context.Context, intent shared.ShoutIntent) error {
 		Backend:   BackendID,
 		Operation: shared.CapabilityShout,
 		Reason:    "90CN chat transport is not implemented yet",
+	}
+}
+
+// StartExpertJobStore opens one expert-job stall and waits for the class1/op598
+// acknowledgement the server sends after it registers the store.
+func (s *Session) StartExpertJobStore(ctx context.Context, kind shared.ExpertJobStoreKind, charge uint32, name []byte, x, y int16) error {
+	wireKind, err := expertJobWireKind(kind)
+	if err != nil {
+		return err
+	}
+	if len(name) == 0 {
+		return fmt.Errorf("90CN expert store name is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, expertJobStoreAckTimeout)
+		defer cancel()
+	}
+	ack := make(chan error, 1)
+	cleanup := s.setPacketObserver(func(packet protocol.Packet) {
+		if packet.Type != protocol.CmdCreateExpertStore {
+			return
+		}
+		select {
+		case ack <- protocol.ExpertJobStoreAck(protocol.CmdCreateExpertStore, packet.Body):
+		default:
+		}
+	})
+	defer cleanup()
+	if err := s.client.CreateExpertJobStore(ctx, wireKind, name, charge, x, y, s.selfCharacterID); err != nil {
+		return err
+	}
+	select {
+	case err := <-ack:
+		if err != nil {
+			return fmt.Errorf("90CN expert store open rejected: %w", err)
+		}
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("90CN expert store open confirmation: %w", ctx.Err())
+	case <-s.Done():
+		return fmt.Errorf("90CN session ended during expert store open")
+	}
+}
+
+// CloseExpertJobStore closes the session's stall. A successful close is
+// confirmed by the op539 notification the server broadcasts to the area (the
+// owner included); only a rejected close answers on op600.
+func (s *Session) CloseExpertJobStore(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, expertJobStoreAckTimeout)
+		defer cancel()
+	}
+	ack := make(chan error, 1)
+	cleanup := s.setPacketObserver(func(packet protocol.Packet) {
+		switch packet.Type {
+		case protocol.CmdCloseExpertStore:
+			select {
+			case ack <- protocol.ExpertJobStoreAck(protocol.CmdCloseExpertStore, packet.Body):
+			default:
+			}
+		case protocol.NotiExpertStoreClose:
+			if len(packet.Body) < 2 || binary.LittleEndian.Uint16(packet.Body[0:2]) != s.selfCharacterID {
+				return
+			}
+			select {
+			case ack <- nil:
+			default:
+			}
+		}
+	})
+	defer cleanup()
+	if err := s.client.CloseExpertJobStore(ctx); err != nil {
+		return err
+	}
+	select {
+	case err := <-ack:
+		if err != nil {
+			return fmt.Errorf("90CN expert store close rejected: %w", err)
+		}
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("90CN expert store close confirmation: %w", ctx.Err())
+	case <-s.Done():
+		return fmt.Errorf("90CN session ended during expert store close")
+	}
+}
+
+// expertJobWireKind maps the shared stall kind onto the wire byte.
+func expertJobWireKind(kind shared.ExpertJobStoreKind) (byte, error) {
+	switch kind {
+	case shared.ExpertJobStoreDisjoint:
+		return protocol.ExpertJobStoreDisjoint, nil
+	case shared.ExpertJobStoreEnchant:
+		return protocol.ExpertJobStoreEnchant, nil
+	default:
+		return 0, fmt.Errorf("90CN expert store kind %s is not supported", kind.Name())
 	}
 }
 

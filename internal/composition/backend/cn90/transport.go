@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 
+	"robot/internal/foundation/charset"
 	"robot/internal/foundation/lockhub"
 	foundationlog "robot/internal/foundation/log"
 	"robot/internal/shared"
@@ -249,16 +250,80 @@ func (t *ActionTransport) SetAreaFrom(uid int, village, area int, x, y int, from
 	return true
 }
 
-// StartExpertJobStore is not implemented for 90CN yet: the disassembler and
-// enchanter store protocol belongs to a later capability stage.
-func (t *ActionTransport) StartExpertJobStore(uid int, kind shared.ExpertJobStoreKind, cost uint32) bool {
-	foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=protocol_not_implemented\n", uid, kind.Name())
-	return false
+// expertJobStoreName encodes the stall name the owner broadcasts. Chinese
+// names go on the wire as GBK bytes, matching the client's code page.
+func expertJobStoreName(kind shared.ExpertJobStoreKind) ([]byte, error) {
+	switch kind {
+	case shared.ExpertJobStoreDisjoint:
+		return charset.EncodeGBKString("分解机")
+	case shared.ExpertJobStoreEnchant:
+		return charset.EncodeGBKString("附魔机")
+	default:
+		return nil, fmt.Errorf("90CN expert store kind %s is not supported", kind.Name())
+	}
 }
 
-// CloseExpertJobStore is not implemented for 90CN yet.
+// StartExpertJobStore opens one expert-job stall on the robot's current
+// position and waits for the server acknowledgement.
+func (t *ActionTransport) StartExpertJobStore(uid int, kind shared.ExpertJobStoreKind, cost uint32) bool {
+	session, err := t.session(uid)
+	if err != nil {
+		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=session_unavailable err=%v\n", uid, kind.Name(), err)
+		return false
+	}
+	starter, ok := session.(interface {
+		StartExpertJobStore(context.Context, shared.ExpertJobStoreKind, uint32, []byte, int16, int16) error
+	})
+	if !ok {
+		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=protocol_not_implemented\n", uid, kind.Name())
+		return false
+	}
+	t.mu.RLock()
+	status, known := t.status[uid]
+	t.mu.RUnlock()
+	if !known {
+		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=location_unknown\n", uid, kind.Name())
+		return false
+	}
+	name, err := expertJobStoreName(kind)
+	if err != nil {
+		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s reason=name err=%v\n", uid, kind.Name(), err)
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), expertJobStoreAckTimeout)
+	defer cancel()
+	if err := starter.StartExpertJobStore(ctx, kind, cost, name, int16(status.X), int16(status.Y)); err != nil {
+		foundationlog.Robotf("[CN90_STORE_START_FAILED] uid=%d kind=%s at=%d/%d/%d/%d err=%v\n",
+			uid, kind.Name(), status.Village, status.Area, status.X, status.Y, err)
+		return false
+	}
+	foundationlog.Robotf("[CN90_STORE_STARTED] uid=%d kind=%s at=%d/%d/%d/%d charge=%d\n",
+		uid, kind.Name(), status.Village, status.Area, status.X, status.Y, cost)
+	return true
+}
+
+// CloseExpertJobStore closes the robot's stall. The server also closes a stall
+// when the session ends, so a missing acknowledgement only means the store was
+// already gone.
 func (t *ActionTransport) CloseExpertJobStore(uid int) bool {
-	return false
+	session, err := t.session(uid)
+	if err != nil {
+		return false
+	}
+	closer, ok := session.(interface {
+		CloseExpertJobStore(context.Context) error
+	})
+	if !ok {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), expertJobStoreAckTimeout)
+	defer cancel()
+	if err := closer.CloseExpertJobStore(ctx); err != nil {
+		foundationlog.Robotf("[CN90_STORE_CLOSE_FAILED] uid=%d err=%v\n", uid, err)
+		return false
+	}
+	foundationlog.Robotf("[CN90_STORE_CLOSED] uid=%d\n", uid)
+	return true
 }
 
 // AccountOnline reports whether the transport still holds a game session for

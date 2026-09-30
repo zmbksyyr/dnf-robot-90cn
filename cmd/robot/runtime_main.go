@@ -84,6 +84,7 @@ func runBackend(cfg *config.SysConfig, paths layout.Paths, info shared.BackendIn
 	manager.ConfigureBackendRuntime(info, cn90backend.NewPersistenceInspector(bundle.DatabasePath), nil)
 	manager.SetBackendStorePolicy(cn90backend.StorePolicy{})
 	manager.SetBackendStoreRuntime(bundle.Transport)
+	manager.SetBackendExpertJobProfessionWriter(bundle.Loadouts)
 	manager.SetBackendAccountOnlineChecker(bundle.Transport)
 	manager.SetBackendFollowAccountLocator(bundle.FollowAccounts)
 	manager.SetBackendRobotCreator(info, bundle.Creator)
