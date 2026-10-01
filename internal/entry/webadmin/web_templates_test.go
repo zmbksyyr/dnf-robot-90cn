@@ -42,6 +42,22 @@ func TestAutoDialogUsesBackendCapacityAndCapabilities(t *testing.T) {
 	}
 }
 
+// TestNoticeCardReportsUnsupportedBackend pins the notice card boundary: a
+// backend without a notice broadcast must render a localized unsupported
+// marker with the capability reason instead of a misleading zero.
+func TestNoticeCardReportsUnsupportedBackend(t *testing.T) {
+	for _, want := range []string{"backendCapabilities.server_notice", "i18nFormat('common.unsupported')", "noticeCard.className='card'"} {
+		if !strings.Contains(appJS, want) {
+			t.Errorf("notice card boundary is missing %q", want)
+		}
+	}
+	for _, want := range []string{"'common.unsupported':'Unsupported'", "'common.unsupported':'不支持'"} {
+		if !strings.Contains(i18nJS, want) {
+			t.Errorf("i18n table is missing %q", want)
+		}
+	}
+}
+
 func TestDatabaseCardUsesDashboardProjection(t *testing.T) {
 	for _, want := range []string{"api('dashboardStatus')", "backendCapabilities.database", "String(r.engine).toUpperCase()", "r.writable?' · '+i18nFormat('database.writable'):''"} {
 		if !strings.Contains(appJS, want) {
