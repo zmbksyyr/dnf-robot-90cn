@@ -204,7 +204,7 @@ func (t *ActionTransport) MoveTown(ctx context.Context, command shared.RuntimeMo
 		if !ok {
 			return shared.UnsupportedCapabilityError{Backend: BackendID, Operation: shared.CapabilityTownMove, Reason: "90CN area transition protocol is not available on this session"}
 		}
-		if err := areaMover.MoveTownArea(ctx, shared.TownAreaMoveIntent{Village: command.Village, Area: command.Area, X: int16(command.X), Y: int16(command.Y)}); err != nil {
+		if err := areaMover.MoveTownArea(ctx, shared.TownAreaMoveIntent{Village: command.Village, Area: command.Area, X: int16(command.X), Y: int16(command.Y), SourceVillage: status.Village}); err != nil {
 			return err
 		}
 	}

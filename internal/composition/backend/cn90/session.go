@@ -250,7 +250,13 @@ func (s *Session) MoveTownArea(ctx context.Context, intent shared.TownAreaMoveIn
 		}
 	})
 	defer cleanup()
-	if err := s.client.SetUserArea(ctx, byte(intent.Village), byte(intent.Area), intent.X, intent.Y, 5); err != nil {
+	if intent.SourceVillage > 0 && intent.SourceVillage != intent.Village {
+		// Cross-town transitions only pass the server's route guard when the
+		// request carries the current town in the portal opaque field.
+		if err := s.client.SetUserAreaPortal(ctx, byte(intent.Village), byte(intent.Area), intent.X, intent.Y, 5, uint16(intent.SourceVillage)); err != nil {
+			return err
+		}
+	} else if err := s.client.SetUserArea(ctx, byte(intent.Village), byte(intent.Area), intent.X, intent.Y, 5); err != nil {
 		return err
 	}
 	select {

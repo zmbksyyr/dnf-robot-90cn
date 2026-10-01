@@ -31,6 +31,10 @@ type TownAreaMoveIntent struct {
 	Area    int
 	X       int16
 	Y       int16
+	// SourceVillage is the town the character currently stands in. When it is
+	// positive and differs from Village the move is a cross-town transition,
+	// which the server only accepts with the portal request shape.
+	SourceVillage int
 }
 
 type ShoutChannel string

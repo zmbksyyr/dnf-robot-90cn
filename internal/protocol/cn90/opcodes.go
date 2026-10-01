@@ -143,6 +143,17 @@ func SetUserAreaBody(town, area byte, x, y int16, direction byte) []byte {
 	return body
 }
 
+// SetUserAreaPortalBody builds the cross-town portal shape of op36: the same
+// 16-byte layout with the source town repeated in the first opaque u16. The
+// server only admits a transition between towns when that field names the
+// character's current town, so an ordinary route body is always blocked with
+// cross_town_route_not_proven_by_current_pvf_topology.
+func SetUserAreaPortalBody(town, area byte, x, y int16, direction byte, sourceTown uint16) []byte {
+	body := SetUserAreaBody(town, area, x, y, direction)
+	binary.LittleEndian.PutUint16(body[7:9], sourceTown)
+	return body
+}
+
 // SetUserPositionBody builds the seven-byte op35 shape:
 // `u16 x, u16 y, u8 movement code, u16 opaque scaled value`.
 func SetUserPositionBody(x, y int16, movementCode byte, opaqueScaled uint16) []byte {

@@ -139,6 +139,13 @@ func (c *Client) SetUserArea(ctx context.Context, town, area byte, x, y int16, d
 	return c.send(ctx, CmdSetUserArea, SetUserAreaBody(town, area, x, y, direction))
 }
 
+// SetUserAreaPortal requests an area in another town using the portal shape:
+// the character's current town travels in the first opaque field, which the
+// server requires before it admits a cross-town transition.
+func (c *Client) SetUserAreaPortal(ctx context.Context, town, area byte, x, y int16, direction byte, sourceTown uint16) error {
+	return c.send(ctx, CmdSetUserArea, SetUserAreaPortalBody(town, area, x, y, direction, sourceTown))
+}
+
 // SetUserPosition reports a town position update.
 func (c *Client) SetUserPosition(ctx context.Context, x, y int16, movementCode byte, opaqueScaled uint16) error {
 	return c.send(ctx, CmdSetUserPosition, SetUserPositionBody(x, y, movementCode, opaqueScaled))
