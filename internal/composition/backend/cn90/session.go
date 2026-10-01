@@ -49,6 +49,10 @@ const storeAreaTransitionTimeout = 12 * time.Second
 // expertJobStoreAckTimeout bounds the op598/op600 store acknowledgement wait.
 const expertJobStoreAckTimeout = 8 * time.Second
 
+// crossTownPresenceTimeout bounds the portal-shaped login presence attempt that
+// an assigned town differing from the home town uses.
+const crossTownPresenceTimeout = 6 * time.Second
+
 // initialTownRouteTimeout bounds the wait for the initial town transition
 // (class0/op24) after the op143 checkpoint is sent.
 const initialTownRouteTimeout = 15 * time.Second
@@ -186,13 +190,38 @@ func initializeTownPresence(ctx context.Context, client *protocol.Client, reques
 	if request.InitialX < math.MinInt16 || request.InitialX > math.MaxInt16 || request.InitialY < math.MinInt16 || request.InitialY > math.MaxInt16 {
 		return fmt.Errorf("90CN initial town position out of range: %d,%d", request.InitialX, request.InitialY)
 	}
+	// An assigned town that differs from the server-side home town must be
+	// requested with the cross-town portal shape, otherwise the server answers
+	// with a blocked event and the robot stays on its home route until the
+	// first move relocates it.
+	if request.HomeVillage > 0 && request.HomeVillage != request.InitialVillage {
+		portalCtx, cancel := context.WithTimeout(ctx, crossTownPresenceTimeout)
+		sendErr := client.SetUserAreaPortal(portalCtx, byte(request.InitialVillage), byte(request.InitialArea),
+			int16(request.InitialX), int16(request.InitialY), 5, uint16(request.HomeVillage))
+		if sendErr == nil {
+			if confirmErr := waitTownPresence(portalCtx, client, request); confirmErr == nil {
+				cancel()
+				return nil
+			}
+		}
+		cancel()
+	}
 	if err := client.SetUserArea(ctx, byte(request.InitialVillage), byte(request.InitialArea), int16(request.InitialX), int16(request.InitialY), 5); err != nil {
 		return fmt.Errorf("90CN enter town: %w", err)
 	}
+	if err := waitTownPresence(ctx, client, request); err != nil {
+		return fmt.Errorf("90CN enter town confirmation: %w", err)
+	}
+	return nil
+}
+
+// waitTownPresence waits for the area notification that confirms the requested
+// town/area/position.
+func waitTownPresence(ctx context.Context, client *protocol.Client, request shared.OpenSessionRequest) error {
 	for {
 		packet, err := client.Read(ctx)
 		if err != nil {
-			return fmt.Errorf("90CN enter town confirmation: %w", err)
+			return err
 		}
 		if packet.Class != protocol.ClassNotice || packet.Type != protocol.NotiUserArea || len(packet.Body) < 8 {
 			continue

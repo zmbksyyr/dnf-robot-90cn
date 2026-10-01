@@ -18,6 +18,11 @@ type OpenSessionRequest struct {
 	InitialArea      int
 	InitialX         int
 	InitialY         int
+	// HomeVillage is the town the server still considers current for this
+	// character (its login route). Adapters whose server only accepts
+	// cross-town transitions with an explicit source town use it to request
+	// the assigned town with the portal shape.
+	HomeVillage int
 }
 
 type TownMoveIntent struct {

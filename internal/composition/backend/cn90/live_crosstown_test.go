@@ -190,12 +190,85 @@ func TestLiveCrossTownSpawn(t *testing.T) {
 	}
 	if len(committedTowns) == len(foreign) {
 		t.Logf("CROSS-TOWN RESULT: ACCEPTED chained portal moves through towns %v", commits)
-		return
-	}
-	if blocked != "" {
+	} else if blocked != "" {
 		t.Logf("CROSS-TOWN RESULT: BLOCKED at some town; server line: %s", blocked)
+	} else {
+		t.Logf("CROSS-TOWN RESULT: committed towns %v, expected %v (client errors above)", committedTowns, commits)
 	}
-	t.Logf("CROSS-TOWN RESULT: committed towns %v, expected %v (client errors above)", committedTowns, commits)
+
+	// Phase 2: assigned-town login. Close the session, point the character at a
+	// different town offline and log in with the home town hint: the presence
+	// init must use the portal shape so the robot appears in the assigned town
+	// without a separate move. The server now considers the last committed
+	// town (the final chained destination) as current.
+	liveSession.client.Close()
+	time.Sleep(2 * time.Second)
+	assigned := shared.MapCatalogItem{}
+	for _, village := range []int{1, 3, 2} {
+		for _, mp := range catalogs.TownMaps {
+			if mp.Village != village || !mp.Use || mp.Level > 70 {
+				continue
+			}
+			if mp.NormalEligible != nil && !*mp.NormalEligible {
+				continue
+			}
+			assigned = mp
+			break
+		}
+		if assigned.Village != 0 {
+			break
+		}
+	}
+	if assigned.Village == 0 {
+		t.Fatal("no assigned town candidate")
+	}
+	assignedX, assignedY := assigned.XMin+30, assigned.YMin+30
+	db := openPurgeTestDatabase(t, databasePath)
+	if _, err := db.Exec(`UPDATE dnf_characters SET town_id=?, area_id=?, pos_x=?, pos_y=? WHERE character_id=?`,
+		assigned.Village, assigned.Area, assignedX, assignedY, leveled.CID); err != nil {
+		t.Fatalf("write assigned location: %v", err)
+	}
+	db.Close()
+	var assignOffset int64
+	if fileInfo, err := os.Stat(logPath); err == nil {
+		assignOffset = fileInfo.Size()
+	}
+	assignedSession, err := factory.OpenSession(ctx, shared.OpenSessionRequest{
+		AccountName: account, CharacterSlot: *result.BackendSlot,
+		InitialTownKnown: true, InitialVillage: assigned.Village, InitialArea: assigned.Area,
+		InitialX: assignedX, InitialY: assignedY, HomeVillage: 38,
+	})
+	if err != nil {
+		t.Fatalf("open assigned-town session: %v", err)
+	}
+	if assignSession, ok := assignedSession.(*Session); ok {
+		time.Sleep(3 * time.Second)
+		exitCtx, cancelExit := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = assignSession.client.Exit(exitCtx)
+		cancelExit()
+		_ = assignSession.Close()
+	}
+	assignData, assignErr := os.ReadFile(logPath)
+	if assignErr != nil || int64(len(assignData)) <= assignOffset {
+		t.Fatalf("packet log unreadable after assigned login: %v", assignErr)
+	}
+	assignedTail := string(assignData[assignOffset:])
+	loginCommitted := false
+	for _, line := range strings.Split(assignedTail, "\n") {
+		if !strings.Contains(line, "char_id="+strconv.Itoa(leveled.CID)) {
+			continue
+		}
+		if strings.Contains(line, "town-set-user-area-committed") &&
+			strings.Contains(line, "town_id="+strconv.Itoa(assigned.Village)) &&
+			strings.Contains(line, "town_cross_town_portal_request=true") {
+			loginCommitted = true
+		}
+	}
+	if loginCommitted {
+		t.Logf("ASSIGNED-TOWN LOGIN RESULT: ACCEPTED: presence landed directly in town=%d (%s) area=%d", assigned.Village, assigned.VillageName, assigned.Area)
+	} else {
+		t.Errorf("ASSIGNED-TOWN LOGIN RESULT: no portal commit for town=%d area=%d", assigned.Village, assigned.Area)
+	}
 }
 
 func shortenLine(line string, limit int) string {

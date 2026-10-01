@@ -181,6 +181,7 @@ func (d protocolSessionDriver) SendOnline(users []shared.RuntimeOnlineUser) erro
 			InitialArea:                user.BirthArea,
 			InitialX:                   user.BirthX,
 			InitialY:                   user.BirthY,
+			HomeVillage:                rc.SpawnFallbackVillage,
 		}); err != nil {
 			d.closeOpened(opened)
 			return err
