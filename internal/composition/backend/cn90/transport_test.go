@@ -100,7 +100,7 @@ func TestActionTransportRoutesVerifiedTownAreaTransition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cross-area error = %v", err)
 	}
-	if session.area != (shared.TownAreaMoveIntent{Village: 1, Area: 3, X: 120, Y: 240}) {
+	if session.area != (shared.TownAreaMoveIntent{Village: 1, Area: 3, X: 120, Y: 240, SourceVillage: 1}) {
 		t.Fatalf("cross-area intent = %+v", session.area)
 	}
 	if session.town != (shared.TownMoveIntent{}) {
