@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 
 	robotconfig "robot/internal/capability/robotconfig"
@@ -36,11 +38,25 @@ func TestLiveRedistributeRobotSpawns(t *testing.T) {
 	config.SpawnXMax = 1800
 	config.SpawnYMin = 180
 	config.SpawnYMax = 460
-	updated, err := RedistributeRobotSpawns(context.Background(), databasePath, pvfPath, "robot", config)
+	villages := []int{38}
+	if raw := os.Getenv("CN90_LIVE_REDISTRIBUTE_VILLAGES"); raw != "" {
+		villages = villages[:0]
+		for _, field := range strings.Split(raw, ",") {
+			if value, err := strconv.Atoi(strings.TrimSpace(field)); err == nil && value > 0 {
+				villages = append(villages, value)
+			}
+		}
+	}
+	var updated int
+	if len(villages) > 1 {
+		updated, err = RedistributeRobotSpawnsToVillages(context.Background(), databasePath, pvfPath, "robot", config, villages)
+	} else {
+		updated, err = RedistributeRobotSpawns(context.Background(), databasePath, pvfPath, "robot", config)
+	}
 	if err != nil {
 		t.Fatalf("redistribute: %v", err)
 	}
-	t.Logf("redistributed %d robot characters", updated)
+	t.Logf("redistributed %d robot characters across villages %v", updated, villages)
 
 	db, err := sql.Open("sqlite", sqliteReadOnlyDSN(databasePath))
 	if err != nil {

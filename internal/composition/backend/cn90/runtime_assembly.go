@@ -213,9 +213,24 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	}
 	bundle.Inspector = SQLitePopulationInspector{
 		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config,
-		Maps: catalogs.TownMaps,
+		Maps: catalogs.TownMaps, EquipmentSets: itemSetKeys(catalogs.Equipment),
 	}
 	return bundle, nil
+}
+
+// itemSetKeys maps equipment item ids to their PVF set keys so the population
+// report can tell which robots wear a matched set.
+func itemSetKeys(items []shared.EquipmentCatalogItem) map[int]string {
+	keys := make(map[int]string, len(items))
+	for _, item := range items {
+		if item.ID <= 0 {
+			continue
+		}
+		if key := strings.TrimSpace(item.SetKey); key != "" {
+			keys[item.ID] = key
+		}
+	}
+	return keys
 }
 
 // NewRuntimeTransport dials the 90CN game server for both actions and session
