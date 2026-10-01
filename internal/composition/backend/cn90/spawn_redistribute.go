@@ -10,6 +10,7 @@ import (
 	robotcap "robot/internal/capability/robot"
 	robotconfig "robot/internal/capability/robotconfig"
 	"robot/internal/capability/robotspawn"
+	"robot/internal/shared"
 )
 
 // RedistributeRobotSpawns rewrites the persisted town/area/position of every
@@ -18,16 +19,42 @@ import (
 // characters are offline: the server owns the live location and would
 // overwrite an online write on its next save.
 func RedistributeRobotSpawns(ctx context.Context, databasePath, pvfPath, accountPrefix string, rc robotconfig.RuntimeConfig) (int, error) {
-	prefix := strings.TrimSpace(accountPrefix)
-	if prefix == "" {
-		return 0, fmt.Errorf("90CN spawn redistribution account prefix is required")
-	}
 	maps, err := ReadTownMapCatalog(pvfPath)
 	if err != nil {
 		return 0, err
 	}
-	if rc.SpawnVillage <= 0 {
-		return 0, fmt.Errorf("90CN spawn redistribution requires a fixed spawn village")
+	return RedistributeRobotSpawnsWithMaps(ctx, databasePath, accountPrefix, rc, maps, []int{rc.SpawnVillage})
+}
+
+// RedistributeRobotSpawnsToVillages spreads the fleet across the given towns
+// (round robin over the character order) instead of one village. Each robot
+// still starts at its home login route and reaches its assigned town through
+// the portal request shape, which the transport now emits for cross-town moves.
+func RedistributeRobotSpawnsToVillages(ctx context.Context, databasePath, pvfPath, accountPrefix string, rc robotconfig.RuntimeConfig, villages []int) (int, error) {
+	maps, err := ReadTownMapCatalog(pvfPath)
+	if err != nil {
+		return 0, err
+	}
+	return RedistributeRobotSpawnsWithMaps(ctx, databasePath, accountPrefix, rc, maps, villages)
+}
+
+// RedistributeRobotSpawnsWithMaps is the map-injected form used by tests.
+func RedistributeRobotSpawnsWithMaps(ctx context.Context, databasePath, accountPrefix string, rc robotconfig.RuntimeConfig, maps []shared.MapCatalogItem, villages []int) (int, error) {
+	prefix := strings.TrimSpace(accountPrefix)
+	if prefix == "" {
+		return 0, fmt.Errorf("90CN spawn redistribution account prefix is required")
+	}
+	targets := make([]int, 0, len(villages))
+	for _, village := range villages {
+		if village > 0 {
+			targets = append(targets, village)
+		}
+	}
+	if len(targets) == 0 {
+		if rc.SpawnVillage <= 0 {
+			return 0, fmt.Errorf("90CN spawn redistribution requires at least one target village")
+		}
+		targets = []int{rc.SpawnVillage}
 	}
 	db, err := sql.Open("sqlite", databasePath)
 	if err != nil {
@@ -66,9 +93,9 @@ func RedistributeRobotSpawns(ctx context.Context, databasePath, pvfPath, account
 		return 0, err
 	}
 	defer tx.Rollback()
-	for _, characterID := range characterIDs {
+	for index, characterID := range characterIDs {
 		info := robotcap.Info{Level: rc.LevelMax}
-		robotspawn.ApplyVillageLocation(env, &info, rc.SpawnVillage, rc, maps)
+		robotspawn.ApplyVillageLocation(env, &info, targets[index%len(targets)], rc, maps)
 		if info.Village <= 0 || info.Area < 0 {
 			continue
 		}

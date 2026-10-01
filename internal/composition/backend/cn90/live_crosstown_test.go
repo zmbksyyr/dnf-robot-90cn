@@ -132,51 +132,70 @@ func TestLiveCrossTownSpawn(t *testing.T) {
 		_ = liveSession.Close()
 	}()
 
-	// Cross-town transition with the portal request shape.
-	targetX, targetY := int16(target.XMin+30), int16(target.YMin+30)
-	moveCtx, cancelMove := context.WithTimeout(ctx, 20*time.Second)
-	moveErr := liveSession.MoveTownArea(moveCtx, shared.TownAreaMoveIntent{
-		Village: target.Village, Area: target.Area, X: targetX, Y: targetY, SourceVillage: 38,
-	})
-	cancelMove()
-	if moveErr != nil {
-		t.Logf("portal move reported: %v", moveErr)
+	// Cross-town transitions with the portal request shape, chained through
+	// several towns: home 38 -> target 3 -> 1 -> 2.
+	foreign := make([]shared.MapCatalogItem, 0, 3)
+	for _, village := range []int{target.Village, 1, 2} {
+		for _, mp := range catalogs.TownMaps {
+			if mp.Village != village || !mp.Use || mp.Level > 70 {
+				continue
+			}
+			if mp.NormalEligible != nil && !*mp.NormalEligible {
+				continue
+			}
+			foreign = append(foreign, mp)
+			break
+		}
 	}
-	time.Sleep(2 * time.Second)
+	sourceVillage := 38
+	commits := make([]string, 0, len(foreign))
+	for _, destination := range foreign {
+		moveCtx, cancelMove := context.WithTimeout(ctx, 20*time.Second)
+		moveErr := liveSession.MoveTownArea(moveCtx, shared.TownAreaMoveIntent{
+			Village: destination.Village, Area: destination.Area,
+			X: int16(destination.XMin + 30), Y: int16(destination.YMin + 30),
+			SourceVillage: sourceVillage,
+		})
+		cancelMove()
+		if moveErr != nil {
+			t.Logf("portal move %d->%d reported: %v", sourceVillage, destination.Village, moveErr)
+		}
+		time.Sleep(2 * time.Second)
+		sourceVillage = destination.Village
+		commits = append(commits, strconv.Itoa(sourceVillage))
+	}
 
 	data, readErr := os.ReadFile(logPath)
 	if readErr != nil || int64(len(data)) <= offset {
 		t.Fatalf("packet log unreadable: %v", readErr)
 	}
 	tail := string(data[offset:])
-	committed := false
+	committedTowns := map[int]bool{}
 	blocked := ""
 	for _, line := range strings.Split(tail, "\n") {
 		if !strings.Contains(line, "char_id="+strconv.Itoa(leveled.CID)) {
 			continue
 		}
-		if strings.Contains(line, "town-set-user-area-committed") && strings.Contains(line, "town_id="+strconv.Itoa(target.Village)) {
-			committed = true
+		if strings.Contains(line, "town-set-user-area-committed") {
+			for _, destination := range foreign {
+				if strings.Contains(line, "town_id="+strconv.Itoa(destination.Village)) &&
+					strings.Contains(line, "town_cross_town_portal_request=true") {
+					committedTowns[destination.Village] = true
+				}
+			}
 		}
 		if strings.Contains(line, "town-set-user-area-blocked") && blocked == "" {
 			blocked = shortenLine(line, 240)
 		}
 	}
-	switch {
-	case committed && moveErr == nil:
-		t.Logf("CROSS-TOWN RESULT: ACCEPTED with the portal shape: robot moved to town=%d (%s) area=%d", target.Village, target.VillageName, target.Area)
-	case committed:
-		t.Logf("CROSS-TOWN RESULT: committed despite client error %v (town=%d area=%d)", moveErr, target.Village, target.Area)
-	default:
-		if blocked != "" {
-			t.Logf("CROSS-TOWN RESULT: BLOCKED town=%d; server line: %s", target.Village, blocked)
-		} else {
-			t.Logf("CROSS-TOWN RESULT: NO COMMIT for town=%d area=%d", target.Village, target.Area)
-		}
-		if moveErr != nil {
-			t.Logf("client move error: %v", moveErr)
-		}
+	if len(committedTowns) == len(foreign) {
+		t.Logf("CROSS-TOWN RESULT: ACCEPTED chained portal moves through towns %v", commits)
+		return
 	}
+	if blocked != "" {
+		t.Logf("CROSS-TOWN RESULT: BLOCKED at some town; server line: %s", blocked)
+	}
+	t.Logf("CROSS-TOWN RESULT: committed towns %v, expected %v (client errors above)", committedTowns, commits)
 }
 
 func shortenLine(line string, limit int) string {
