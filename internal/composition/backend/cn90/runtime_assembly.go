@@ -214,6 +214,7 @@ func ComposeRuntime(ctx context.Context, opts RuntimeComposeOptions) (RuntimeBun
 	bundle.Inspector = SQLitePopulationInspector{
 		DatabasePath: databasePath, AccountPrefix: prefix, Config: opts.Config,
 		Maps: catalogs.TownMaps, EquipmentSets: itemSetKeys(catalogs.Equipment),
+		AvatarSets: itemSetKeys(catalogs.Equipment),
 	}
 	return bundle, nil
 }
