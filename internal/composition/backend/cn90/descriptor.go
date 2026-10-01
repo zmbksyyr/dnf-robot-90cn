@@ -15,7 +15,7 @@ func Info() shared.BackendInfo {
 	capabilities[shared.CapabilityStore] = shared.CapabilityStatus{Enabled: true, Reason: "disassembler machine (op598 kind 0) and enchanter stall (op598 kind 3) with offline profession preparation; the private item stall stays unsupported; live protocol verified"}
 	capabilities[shared.CapabilityWorldShout] = shared.CapabilityStatus{Reason: "90CN has no verified world-shout protocol mode"}
 	capabilities[shared.CapabilityCleanup] = shared.CapabilityStatus{Enabled: true, Reason: "verified roster deletion protocol; live verified"}
-	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Enabled: true, Reason: "adapter-owned SQLite purge over the dnf_* tables; not yet live verified"}
+	capabilities[shared.CapabilityDangerousDelete] = shared.CapabilityStatus{Enabled: true, Reason: "adapter-owned SQLite purge over the dnf_* tables; live verified (1197-account fleet purge, zero orphan rows)"}
 	capabilities[shared.CapabilityPartyDebug] = shared.CapabilityStatus{Reason: "90CN party diagnostics are not implemented"}
 	capabilities[shared.CapabilityMailNotification] = shared.CapabilityStatus{Reason: "90CN mail notification is not implemented"}
 	capabilities[shared.CapabilityDatabase] = shared.CapabilityStatus{Enabled: true, Mode: "sqlite_health", Reason: "validates the dnf_* schema of the configured SQLite file; live verified"}
